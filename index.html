@@ -2,8 +2,7 @@
 <html>
 <head>
   <title>Soundiox</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     body{
       margin:0;
@@ -12,41 +11,48 @@
       color:white;
       text-align:center;
     }
-
     .hero{
       padding-top:120px;
+      padding-left:20px;
+      padding-right:20px;
     }
-
     h1{
       font-size:48px;
       margin-bottom:10px;
+      line-height:1.1;
     }
-
     p{
       color:#cbd5e1;
       font-size:18px;
+      margin:0;
     }
-
     .section{
       margin-top:120px;
       padding:0 20px;
     }
-
     .features{
       display:flex;
       justify-content:center;
       gap:60px;
-      flex-wrap:wrap;
       margin-top:40px;
+      flex-wrap:wrap;
     }
-
     .feature{
       max-width:260px;
     }
-
     .feature h3{
       margin-bottom:10px;
       font-size:20px;
+      color:white;
+    }
+    .feature p{
+      font-size:16px;
+      color:#cbd5e1;
+      line-height:1.4;
+    }
+    @media (max-width: 700px){
+      h1{ font-size:34px; }
+      .features{ gap:30px; }
     }
   </style>
 </head>
@@ -56,53 +62,56 @@
   <div class="hero">
     <h1>Create Music at the Speed of Thought</h1>
     <p>Soundiox turns ideas into finished tracks using AI.</p>
-  
-<form action="https://docs.google.com/forms/d/e/1FAIpQLSetP6HXBTnTnctKggzJ3Co7A-gC7ou2ybR4A14MHNYU80mBmQ/formResponse"
+
+    <form
+      action="https://docs.google.com/forms/d/e/1FAIpQLSetP6HXBTnTnctKggzJ3Co7A-gC7ou2ybR4A14MHNYU80mBmQ/formResponse"
       method="POST"
-      target="hidden_inframe"
-      onsubmit="submitted=true;"
-      style="margin-top:30px;">
-  <input
-    type="email"
-    name="entry.1162948503"
-    placeholder="Enter your email"
-    required
-    style="
-      padding:14px;
-      width:260px;
-      border-radius:8px;
-      border:none;
-      margin-right:10px;
-    "
-  >
-  <button
-    type="submit"
-    style="
-      padding:14px 22px;
-      border-radius:8px;
-      border:none;
-      background:#6366f1;
-      color:white;
-      font-weight:bold;
-      cursor:pointer;
-    "
-  >
-    Join Early Access
-  </button>
-</form>
+      target="hidden_iframe"
+      onsubmit="window.submitted=true;"
+      style="margin-top:30px;"
+    >
+      <input
+        type="email"
+        name="entry.1162948503"
+        placeholder="Enter your email"
+        required
+        style="
+          padding:14px;
+          width:260px;
+          border-radius:8px;
+          border:none;
+          margin-right:10px;
+        "
+      />
+      <button
+        type="submit"
+        style="
+          padding:14px 22px;
+          border-radius:8px;
+          border:none;
+          background:#6366f1;
+          color:white;
+          font-weight:bold;
+          cursor:pointer;
+        "
+      >
+        Join Early Access
+      </button>
+    </form>
 
-<div id="thanks" style="display:none; margin-top:12px; color:#cbd5e1;">
-  Thanks! You’re on the list.
-</div>
+    <div id="thanks" style="display:none; margin-top:12px; color:#cbd5e1;">
+      Thanks! You’re on the list.
+    </div>
 
-<iframe name="hidden_iframe" style="display:none;"
-onload="if(submitted){document.getElementById('thanks').style.display='block'; submitted=false;}">
-</iframe>
+    <iframe
+      name="hidden_iframe"
+      style="display:none;"
+      onload="if(window.submitted){document.getElementById('thanks').style.display='block'; window.submitted=false;}"
+    ></iframe>
+    <script>window.submitted=false;</script>
+  </div>
 
-<script>
-var submitted = false;
-</script>
-<div class="section">
+  <div class="section">
     <h2>Why Soundiox?</h2>
 
     <div class="features">
