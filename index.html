@@ -95,12 +95,8 @@
   Thanks! You’re on the list.
 </div>
 
-<iframe name="hidden_iframe" style="display:none;"></iframe>
-  if(window.submitted){
-    document.getElementById('thanks').style.display='block';
-    window.submitted=false;
-  }
-"></iframe>
+<iframe name="hidden_iframe" style="display:none;" onload="if(window.submitted){document.getElementById('thanks').style.display='block'; window.submitted=false;}"></iframe>
+  
 <script>window.submitted=false;</script>
     "
   >
