@@ -95,11 +95,13 @@
   Thanks! You’re on the list.
 </div>
 
-</form>
-<iframe name="hidden_iframe" style="display:none;" 
-onload="if(window.submitted){document.getElementById('thanks').style.display='block'; window.submitted=false;}">
+<iframe name="hidden_iframe" style="display:none;"
+onload="if(submitted){document.getElementById('thanks').style.display='block'; submitted=false;}">
 </iframe>
-<script>window.submitted=false;</script>
+
+<script>
+var submitted = false;
+</script>
 <div class="section">
     <h2>Why Soundiox?</h2>
 
