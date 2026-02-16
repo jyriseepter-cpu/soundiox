@@ -66,7 +66,9 @@
    <form id="earlyAccessForm"
       action="https://formspree.io/f/xykdjyag"
       method="POST"
-      style="margin-top:30px;"
+      target="hidden_iframe"
+      onsubmit="window.submitted=true;"
+      style="margin-top:30px;">
 
   <input
     type="email"
@@ -97,42 +99,18 @@
     Join Early Access
   </button>
 
-  <div id="thanks"
-       style="display:none; margin-top:12px; color:#cbd5e1;"
-  >
+  <div id="thanks" style="display:none; margin-top:12px; color:#cbd5e1;">
     Thanks! You're on the list.
   </div>
+
 </form>
 
-<script>
-const form = document.getElementById('earlyAccessForm');
-const thanks = document.getElementById('thanks');
+<iframe name="hidden_iframe" style="display:none;"
+  onload="if(window.submitted){
+    document.getElementById('thanks').style.display='block';
+    document.getElementById('earlyAccessForm').reset();
+    window.submitted=false;
+  }">
+</iframe>
 
-form.addEventListener('submit', async (e) => {
-  e.preventDefault();
-
-  try {
-    const data = {
-      email: form.email.value
-    };
-
-    const res = await fetch(form.action, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify(data)
-    });
-
-    if (res.ok) {
-      thanks.style.display = 'block';
-      form.reset();
-    } else {
-      alert('Submit failed. Please try again.');
-    }
-  } catch (err) {
-    alert('Network error. Please try again.');
-  }
-});
-</script>
+<script>window.submitted=false;</script>
