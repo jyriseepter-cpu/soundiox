@@ -139,28 +139,27 @@
       });
 
       if (res.ok) {
-        // success state
-        thanks.textContent = "Thanks! You`re on the list.";
-        thanks.style.display = 'block';
-button.textContent = 'Joined ✓';
+    thanks.textContent = "Thanks! You're on the list.";
+    thanks.style.display = 'block';
 
-form.reset();
+    button.textContent = 'Joined ✓';
 
-hideTimer = setTimeout(() => {
-    thanks.style.display = 'none';
+    form.reset();
+
+    input.style.boxShadow = '0 0 0 3px rgba(34,197,94,0.35)';
+
+    hideTimer = setTimeout(() => {
+        thanks.style.display = 'none';
+        input.style.boxShadow = 'none';
+        button.textContent = originalBtnText;
+        button.disabled = false;
+    }, 3000);
+
+} else {
     button.textContent = originalBtnText;
     button.disabled = false;
-}, 3000);
-
-        // small success highlight on input
-        input.style.boxShadow = '0 0 0 3px rgba(34,197,94,0.35)';
-
-        form.reset();
-
-        hideTimer = setTimeout(() => {
-          thanks.style.display = 'none';
-          input.style.boxShadow = 'none';
-        }, 3000);
+    alert('Submit failed. Please try again.');
+}
       } else {
         alert('Submit failed. Please try again.');
       }
