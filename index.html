@@ -83,21 +83,59 @@
   />
 
   <button
-    type="submit"
-    style="
-      padding:14px 22px;
-      border-radius:8px;
-      border:none;
-      background:#6366f1;
-      color:white;
-      font-weight:bold;
-      cursor:pointer;
-    "
-  >
-    Join Early Access
-  </button>
+  type="submit"
+  style="
+    padding:14px 22px;
+    border-radius:8px;
+    border:none;
+    background:#6366f1;
+    color:white;
+    font-weight:bold;
+    cursor:pointer;
+  "
+
+  Join Early Access
+</button>
 </form>
-    
-<script async src="https://tally.so/widgets/embed.js"></script>
+
+<div id="thanks" style="display:none; margin-top:12px; color:#cbd5e1;">
+  Thanks! You’re on the list.
+</div>
+
+<script>
+  // võtab sinu olemasoleva Formspree vormi (action algab https://formspree.io/)
+  const form = document.querySelector('form[action^="https://formspree.io/"]');
+  const thanks = document.getElementById('thanks');
+
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      try {
+        const res = await fetch(form.action, {
+          method: 'POST',
+          body: new FormData(form),
+          headers: { 'Accept': 'application/json' }
+        });
+
+        if (res.ok) {
+          form.reset();
+          thanks.style.display = 'block';
+        } else {
+          // proovime veateadet lugeda
+          let msg = 'Submit failed.';
+          try {
+            const data = await res.json();
+            if (data?.errors?.[0]?.message) msg = data.errors[0].message;
+          } catch (_) {}
+          alert(msg);
+        }
+      } catch (err) {
+        alert('Network error.');
+      }
+    });
+  }
+</script>
+
 </body>
 </html>
