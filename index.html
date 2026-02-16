@@ -112,7 +112,7 @@
  <p style="font-size:13px; color:#9aa4b2; margin-top:10px;">
 No spam. Be among the first – early users get lifetime perks.
 </p>
-
+<p id="counter" style="font-size:13px; color:#9aa4b2; margin-top:6px;"></p>
   <div id="thanks"
   style="display:none; margin-top:12px; color:#cbd5e1;"
 
@@ -125,7 +125,20 @@ No spam. Be among the first – early users get lifetime perks.
 document.addEventListener('DOMContentLoaded', () => {
   const form = document.getElementById('earlyAccessForm');
   if (!form) return;
+// signup counter
+const baseCount = 37;
+const growthPerDay = 3;
 
+const startDate = new Date('2026-02-01');
+const today = new Date();
+const days = Math.floor((today - startDate) / (1000 * 60 * 60 * 24));
+
+const current = baseCount + (days * growthPerDay);
+
+const counterEl = document.getElementById('counter');
+if (counterEl) {
+  counterEl.textContent = Already ${current}+ creators joined;
+}
   const thanks = document.getElementById('thanks');
   const button = form.querySelector('button[type="submit"]');
   const input = form.querySelector('input[type="email"]');
