@@ -164,35 +164,33 @@
     });
 
     const iframe = document.getElementById('hidden_iframe');
-    if (iframe) {
-      iframe.addEventListener('load', () => {
-        if (!window.submitted) return;
+    if (!iframe) return;
 
-        window.submitted = false;
+    iframe.addEventListener('load', () => {
+      if (!window.submitted) return;
+      window.submitted = false;
 
-        if (thanks) thanks.style.display = 'block';
+      // show success
+      if (thanks) thanks.style.display = 'block';
+
+      if (btn) {
+        btn.textContent = 'Joined ✓';
+      }
+
+      if (form) form.reset();
+
+      setTimeout(() => {
+        if (thanks) thanks.style.display = 'none';
 
         if (btn) {
-          btn.textContent = 'Joined ✓';
+          btn.disabled = false;
+          btn.textContent = 'Get Early Access';
+          btn.style.opacity = '1';
+          btn.style.cursor = 'pointer';
         }
 
-        if (form) form.reset();
-
-        setTimeout(() => {
-          if (thanks) thanks.style.display = 'none';
-
-          if (btn) {
-            btn.disabled = false;
-            btn.textContent = 'Get Early Access';
-            btn.style.opacity = '1';
-            btn.style.cursor = 'pointer';
-          }
-
-          if (input) input.blur();
-        }, 2500);
-      });
-    }
+        if (input) input.blur();
+      }, 2500);
+    });
   });
 </script>
-</body>
-</html>
