@@ -178,8 +178,8 @@
 
         try {
           const { error } = await supabaseClient
-            .from("waitlist")
-            .insert([{ email }]);
+  .from("waitlist")
+  .upsert({ email }, { onConflict: "email" });
 
           if (error) {
             // Kui email juba olemas ja sul on unique constraint, siis võib tulla error.
