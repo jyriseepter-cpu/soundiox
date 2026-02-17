@@ -177,44 +177,36 @@
         btn.textContent = "Joining...";
 
         try {
-          const { error } = await supabaseClient
-  .from("waitlist")
-  .upsert({ email }, { onConflict: "email" });
+          const { data, error } = await supabaseClient
+    .from("waitlist")
+    .insert([{ email: email }])
+    .select();
 
-          if (error) {
-            // Kui email juba olemas ja sul on unique constraint, siis võib tulla error.
-            // Näitame sõbraliku sõnumi.
-            console.log("Insert error:", error);
+  if (error) {
+    console.log("Insert error:", error);
 
-            // Proovime teha viisakaks:
-            const msg = (error.message || "").toLowerCase().includes("duplicate")
-              ? "See email on juba kirjas ✅"
-              : "Midagi läks valesti. Proovi uuesti.";
+    const msg = (error.message || "").toLowerCase().includes("duplicate")
+      ? "See email on juba kirjas ✓"
+      : "Midagi läks valesti. Proovi uuesti.";
 
-            errorMsg.textContent = msg;
-            errorMsg.style.display = "block";
-            btn.textContent = "Try again";
-            btn.disabled = false;
-            return;
-          }
+    errorMsg.textContent = msg;
+    errorMsg.style.display = "block";
+    btn.textContent = "Try again";
+    btn.disabled = false;
+    return;
+  }
 
-          // success
-          thanks.style.display = "block";
-          btn.textContent = "Joined ✓";
-          form.reset();
-
-          // soovi korral paneme 2.5s pärast tagasi
-          setTimeout(() => {
-            btn.textContent = "Join Early Access";
-            btn.disabled = false;
-          }, 2500);
-
-        } catch (err) {
-          console.error(err);
-          errorMsg.textContent = "Midagi läks valesti. Proovi uuesti.";
-          errorMsg.style.display = "block";
-          btn.textContent = "Try again";
-          btn.disabled = false;
+  thanks.style.display = "block";
+  form.reset();
+  btn.textContent = "Joined ✓";
+}
+catch (err) {
+  console.log("Catch error:", err);
+  errorMsg.textContent = "Midagi läks valesti. Proovi uuesti.";
+  errorMsg.style.display = "block";
+  btn.textContent = "Try again";
+  btn.disabled = false;
+}
         }
       });
     });
