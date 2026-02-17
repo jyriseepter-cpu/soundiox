@@ -2,112 +2,162 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Soundiox</title>
 
-  <!-- Supabase JS v2 -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
   <style>
+    :root{
+      --bg:#0f172a;
+      --card:rgba(255,255,255,0.04);
+      --text:#ffffff;
+      --muted:#cbd5e1;
+      --muted2:#9aa4b2;
+      --accent:#6366f1;
+      --danger:#f87171;
+      --ok:#34d399;
+      --stroke:rgba(255,255,255,0.10);
+    }
+
+    * { box-sizing: border-box; }
     body{
       margin:0;
       font-family: Arial, sans-serif;
-      background:#0f172a;
-      color:white;
+      background: radial-gradient(1200px 600px at 50% 20%, rgba(99,102,241,0.18), transparent 60%),
+                  radial-gradient(900px 500px at 20% 60%, rgba(56,189,248,0.10), transparent 55%),
+                  var(--bg);
+      color:var(--text);
       text-align:center;
+      min-height:100vh;
+      display:flex;
+      align-items:flex-start;
+      justify-content:center;
     }
-    .hero{
-      padding-top:120px;
-      padding-left:20px;
-      padding-right:20px;
-      max-width: 900px;
-      margin: 0 auto;
+
+    .wrap{
+      width: 100%;
+      max-width: 980px;
+      padding: 110px 20px 80px;
     }
+
     h1{
-      font-size:48px;
-      margin-bottom:10px;
-      line-height:1.1;
+      font-size: 54px;
+      margin: 0 0 10px;
+      line-height: 1.05;
+      letter-spacing: -0.5px;
     }
-    p{
-      color:#cbd5e1;
-      font-size:18px;
-      margin:0;
-    }
+
     .sub{
-      color:#9aa4b2;
-      font-size:16px;
-      margin-top:8px;
+      color: var(--muted);
+      font-size: 18px;
+      margin: 0;
     }
-    @media (max-width:700px){
-      h1{font-size:34px;}
+
+    .sub2{
+      color: var(--muted2);
+      font-size: 16px;
+      margin: 10px 0 0;
     }
 
     .steps{
-      margin-top:28px;
-      font-size:16px;
-      color:#cbd5e1;
+      margin-top: 26px;
+      color: var(--muted);
+      font-size: 16px;
+      display: inline-block;
+      text-align: left;
+      padding: 14px 18px;
+      border: 1px solid var(--stroke);
+      border-radius: 12px;
+      background: var(--card);
     }
-    .steps div{ margin:6px 0; }
+    .steps div{ margin: 6px 0; }
 
-    form{
-      margin-top:30px;
+    .formRow{
+      margin-top: 28px;
       display:flex;
+      gap: 10px;
       justify-content:center;
       align-items:center;
-      gap:10px;
-      flex-wrap:wrap;
+      flex-wrap: wrap;
     }
+
     input[type="email"]{
-      padding:14px;
-      width:260px;
-      border-radius:8px;
-      border:none;
-      outline:none;
+      padding: 14px 14px;
+      width: 300px;
+      max-width: 76vw;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.10);
+      color: #fff;
+      outline: none;
     }
+    input[type="email"]::placeholder{ color: rgba(255,255,255,0.55); }
+    input[type="email"]:focus{ border-color: rgba(99,102,241,0.7); }
+
     button{
-      padding:14px 22px;
-      border-radius:8px;
-      border:none;
-      background:#6366f1;
-      color:white;
-      font-weight:bold;
-      cursor:pointer;
+      padding: 14px 22px;
+      border-radius: 10px;
+      border: none;
+      background: var(--accent);
+      color: white;
+      font-weight: 700;
+      cursor: pointer;
+      min-width: 170px;
+      box-shadow: 0 10px 30px rgba(99,102,241,0.25);
+      transition: transform .05s ease;
     }
+    button:active{ transform: translateY(1px); }
     button:disabled{
-      opacity:.7;
-      cursor:not-allowed;
+      opacity: 0.65;
+      cursor: not-allowed;
     }
 
     .small{
-      font-size:13px;
-      color:#9aa4b2;
-      margin-top:10px;
+      margin-top: 10px;
+      font-size: 13px;
+      color: var(--muted2);
     }
+
     #counter{
-      font-size:13px;
-      color:#9aa4b2;
-      margin-top:6px;
+      margin-top: 6px;
+      font-size: 13px;
+      color: var(--muted2);
     }
+
     #thanks{
       display:none;
-      margin-top:12px;
-      color:#cbd5e1;
-      font-size:14px;
+      margin-top: 12px;
+      color: var(--ok);
+      font-weight: 700;
     }
-    .error{
+
+    #errorMsg{
       display:none;
-      margin-top:12px;
-      color:#fca5a5;
-      font-size:14px;
+      margin-top: 12px;
+      color: var(--danger);
+      font-weight: 700;
+    }
+
+    .debug{
+      margin-top: 18px;
+      display:none;
+      font-size: 12px;
+      color: rgba(255,255,255,0.55);
+    }
+
+    @media (max-width:700px){
+      h1{ font-size: 36px; }
+      .wrap{ padding-top: 90px; }
     }
   </style>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
 <body>
-  <div class="hero">
+  <div class="wrap">
     <h1>Discover AI-Made Music</h1>
-    <p>Soundiox is a streaming platform for AI-created music.</p>
-    <p class="sub">Upload your AI tracks, discover new creators, and stream unique music daily.</p>
+    <p class="sub">Soundiox is a streaming platform for AI-created music.</p>
+    <p class="sub2">Upload your AI tracks, discover new creators, and stream unique music daily.</p>
 
     <div class="steps">
       <div>1. Upload AI tracks</div>
@@ -115,98 +165,145 @@
       <div>3. Stream and share music</div>
     </div>
 
-    <form id="earlyAccessForm">
-      <input id="emailInput" type="email" placeholder="Enter your email" required />
+    <form id="earlyAccessForm" class="formRow">
+      <input
+        id="emailInput"
+        type="email"
+        name="email"
+        placeholder="Enter your email"
+        required
+        autocomplete="email"
+      />
       <button id="joinBtn" type="submit">Join Early Access</button>
     </form>
 
-    <div class="small">No spam. Be among the first – early users get lifetime perks.</div>
+    <div class="small">No spam. Be among the first — early users get lifetime perks.</div>
     <div id="counter"></div>
-    <div id="thanks">Aitäh! Oled nimekirjas.</div>
-    <div id="errorMsg" class="error"></div>
+
+    <div id="thanks">Thanks! You’re on the list.</div>
+    <div id="errorMsg"></div>
+
+    <div id="debug" class="debug"></div>
   </div>
 
   <script>
-    // 1) PANE SIIA OMA SUPABASE ANDMED (Data API URL + Publishable key)
-    const SUPABASE_URL = "https://ljswysgmdigncyhymngz.supabase.co";
-    const SUPABASE_KEY = "sb_publishable_ZUHoK1LzYVMDAYvNozBRfA_Dhk_VOp8";
-    
-    // Kui need jäävad paste'imata, näitame kohe konsoolis viga
-    if (SUPABASE_URL.includes("PASTE_") || SUPABASE_KEY.includes("PASTE_")) {
-      console.warn("Supabase URL/KEY not set. Paste them into SUPABASE_URL and SUPABASE_KEY.");
-    }
+    // 1) Paste your Supabase project Data API URL + anon (public) key here
+    const SUPABASE_URL = "https://YOUR_PROJECT_REF.supabase.co";
+    const SUPABASE_KEY = "YOUR_ANON_PUBLIC_KEY";
 
-    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-    // 2) “Already X+ joined” counter (lihtne, et landing ei oleks “tühi”)
-    // Muuda neid 3 rida kuidas tahad
-    const baseCount = 85;             // algnumber
-    const growthPerDay = 3;           // kasv päevas
+    // 2) Lightweight "Already X+ creators joined" display (optional)
+    const baseCount = 133;
+    const growthPerDay = 3;
     const startDate = new Date("2026-02-01T00:00:00Z");
 
     function updateCounter() {
-  const today = new Date();
-  const days = Math.max(0, Math.floor((today - startDate) / (1000 * 60 * 60 * 24)));
-  const current = baseCount + (days * growthPerDay);
-
-  const counterEl = document.getElementById("counter");
-    if (counterEl) counterEl.textContent = `Already ${current}+ creators joined`;
+      var today = new Date();
+      var days = Math.max(0, Math.floor((today - startDate) / (1000 * 60 * 60 * 24)));
+      var current = baseCount + (days * growthPerDay);
+      var el = document.getElementById("counter");
+      if (el) el.textContent = "Already " + current + "+ creators joined";
     }
 
-    document.addEventListener("DOMContentLoaded", () => {
+    function showError(msg) {
+      var e = document.getElementById("errorMsg");
+      var t = document.getElementById("thanks");
+      if (t) t.style.display = "none";
+      if (e) {
+        e.textContent = msg;
+        e.style.display = "block";
+      }
+    }
+
+    function showThanks() {
+      var e = document.getElementById("errorMsg");
+      var t = document.getElementById("thanks");
+      if (e) e.style.display = "none";
+      if (t) t.style.display = "block";
+    }
+
+    function setButtonState(text, disabled) {
+      var btn = document.getElementById("joinBtn");
+      if (!btn) return;
+      btn.textContent = text;
+      btn.disabled = !!disabled;
+    }
+
+    function debugLine(msg) {
+      // If you want to see quick debug text on page, set display:block in CSS for .debug
+      var d = document.getElementById("debug");
+      if (!d) return;
+      d.textContent = msg;
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
       updateCounter();
 
-      const form = document.getElementById("earlyAccessForm");
-      const input = document.getElementById("emailInput");
-      const btn = document.getElementById("joinBtn");
-      const thanks = document.getElementById("thanks");
-      const errorMsg = document.getElementById("errorMsg");
+      // Guard checks
+      if (!window.supabase || !window.supabase.createClient) {
+        showError("Supabase library did not load. Check the script tag.");
+        return;
+      }
+      if (SUPABASE_URL.indexOf("YOUR_PROJECT_REF") !== -1 || SUPABASE_KEY.indexOf("YOUR_ANON_PUBLIC_KEY") !== -1) {
+        showError("Supabase keys are not set. Paste SUPABASE_URL and SUPABASE_KEY in the code.");
+        return;
+      }
 
-      form.addEventListener("submit", async (e) => {
+      var form = document.getElementById("earlyAccessForm");
+      var input = document.getElementById("emailInput");
+
+      if (!form) {
+        showError('Form not found: missing id="earlyAccessForm"');
+        return;
+      }
+      if (!input) {
+        showError('Email input not found: missing id="emailInput"');
+        return;
+      }
+
+      var supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+      form.addEventListener("submit", async function (e) {
         e.preventDefault();
 
-        // reset messages
-        thanks.style.display = "none";
-        errorMsg.style.display = "none";
-        errorMsg.textContent = "";
-
-        const email = (input.value || "").trim().toLowerCase();
+        var email = (input.value || "").trim().toLowerCase();
         if (!email) return;
 
-        btn.disabled = true;
-        btn.textContent = "Joining...";
+        setButtonState("Joining…", true);
+        debugLine("");
 
         try {
-          const { data, error } = await supabaseClient
-    .from("waitlist")
-    .insert([{ email: email }])
-    .select();
+          // Insert into table "waitlist" (column "email" text)
+          var res = await supabaseClient
+            .from("waitlist")
+            .insert([{ email: email }]);
 
-  if (error) {
-    console.log("Insert error:", error);
+          // In v2, errors usually show on res.error
+          if (res && res.error) {
+            console.log("Insert error:", res.error);
 
-    const msg = (error.message || "").toLowerCase().includes("duplicate")
-      ? "See email on juba kirjas ✓"
-      : "Midagi läks valesti. Proovi uuesti.";
+            // Friendlier messages
+            var m = ((res.error.message || "") + "").toLowerCase();
+            var isDup = (m.indexOf("duplicate") !== -1) || (m.indexOf("unique") !== -1);
 
-    errorMsg.textContent = msg;
-    errorMsg.style.display = "block";
-    btn.textContent = "Try again";
-    btn.disabled = false;
-    return;
-  }
+            if (isDup) {
+              showError("This email is already on the list ✓");
+            } else {
+              showError("Something went wrong. Please try again.");
+            }
 
-  thanks.style.display = "block";
-  form.reset();
-  btn.textContent = "Joined ✓";
-}
-catch (err) {
-  console.log("Catch error:", err);
-  errorMsg.textContent = "Midagi läks valesti. Proovi uuesti.";
-  errorMsg.style.display = "block";
-  btn.textContent = "Try again";
-  btn.disabled = false;
-}
+            setButtonState("Try again", false);
+            return;
+          }
+
+          // Success
+          showThanks();
+          setButtonState("Joined ✓", true);
+          form.reset();
+
+        } catch (err) {
+          console.log("Unexpected error:", err);
+          showError("Something went wrong. Please try again.");
+          setButtonState("Try again", false);
         }
       });
     });
