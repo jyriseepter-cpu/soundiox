@@ -2,192 +2,220 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Soundiox</title>
+
+  <!-- Supabase JS v2 -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <style>
     body{
       margin:0;
-      font-family:Arial, sans-serif;
+      font-family: Arial, sans-serif;
       background:#0f172a;
       color:white;
       text-align:center;
     }
-    .hero{ padding-top:120px; padding-left:20px; padding-right:20px; }
-    h1{ font-size:48px; margin-bottom:10px; line-height:1.1; }
-    p{ color:#cbd5e1; font-size:18px; margin:0; }
-    @media (max-width:700px){ h1{ font-size:34px; } }
-  </style>
+    .hero{
+      padding-top:120px;
+      padding-left:20px;
+      padding-right:20px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    h1{
+      font-size:48px;
+      margin-bottom:10px;
+      line-height:1.1;
+    }
+    p{
+      color:#cbd5e1;
+      font-size:18px;
+      margin:0;
+    }
+    .sub{
+      color:#9aa4b2;
+      font-size:16px;
+      margin-top:8px;
+    }
+    @media (max-width:700px){
+      h1{font-size:34px;}
+    }
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    .steps{
+      margin-top:28px;
+      font-size:16px;
+      color:#cbd5e1;
+    }
+    .steps div{ margin:6px 0; }
+
+    form{
+      margin-top:30px;
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    input[type="email"]{
+      padding:14px;
+      width:260px;
+      border-radius:8px;
+      border:none;
+      outline:none;
+    }
+    button{
+      padding:14px 22px;
+      border-radius:8px;
+      border:none;
+      background:#6366f1;
+      color:white;
+      font-weight:bold;
+      cursor:pointer;
+    }
+    button:disabled{
+      opacity:.7;
+      cursor:not-allowed;
+    }
+
+    .small{
+      font-size:13px;
+      color:#9aa4b2;
+      margin-top:10px;
+    }
+    #counter{
+      font-size:13px;
+      color:#9aa4b2;
+      margin-top:6px;
+    }
+    #thanks{
+      display:none;
+      margin-top:12px;
+      color:#cbd5e1;
+      font-size:14px;
+    }
+    .error{
+      display:none;
+      margin-top:12px;
+      color:#fca5a5;
+      font-size:14px;
+    }
+  </style>
 </head>
+
 <body>
   <div class="hero">
-  <h1>Discover the Future of AI-Made Music</h1>
+    <h1>Discover AI-Made Music</h1>
+    <p>Soundiox is a streaming platform for AI-created music.</p>
+    <p class="sub">Upload your AI tracks, discover new creators, and stream unique music daily.</p>
 
-  <p>Soundiox is a streaming platform for AI-created music.</p>
+    <div class="steps">
+      <div>1. Upload AI tracks</div>
+      <div>2. Discover new creators</div>
+      <div>3. Stream and share music</div>
+    </div>
 
-  <p style="color:#9aa4b2; font-size:16px; margin-top:8px;">
-    Upload your AI tracks, discover new creators, and stream unique music daily.
-  </p>
-
-  <div style="margin-top:30px; font-size:16px; color:#cbd5e1;">
-    <div>1. Upload AI tracks</div>
-    <div>2. Discover new creators</div>
-    <div>3. Stream and share music</div>
-  </div>
-</div>
-
-    <form id="earlyAccessForm"
-          action="https://formspree.io/f/xykdjyag"
-          method="POST"
-          target="hidden_iframe"
-          style="margin-top:30px;">
-
-      <input
-        type="email"
-        name="email"
-        placeholder="Enter your email"
-        required
-        style="
-          padding:14px;
-          width:260px;
-          border-radius:8px;
-          border:none;
-          margin-right:10px;
-        "
-      />
-
-      <button
-        id="joinBtn"
-        type="submit"
-        style="
-          padding:14px 22px;
-          border-radius:8px;
-          border:none;
-          background:#6366f1;
-          color:white;
-          font-weight:bold;
-          cursor:pointer;
-        "
-      Join Early Access
-        </button>
-
-      <div style="font-size:13px; color:#9aa4b2; margin-top:10px;">
-        No spam. Be among the first – early users get lifetime perks.
-      </div>
-
-      <!-- NB: ainult ÜKS counter element -->
-      <div id="counter" style="font-size:13px; color:#9aa4b2; margin-top:6px;">
-Join 37 creators already testing Soundiox
-</div>
-
-      <div id="thanks" style="display:none; margin-top:12px; color:#cbd5e1;">
-        Aitäh! Oled nimekirjas.
-      </div>
+    <form id="earlyAccessForm">
+      <input id="emailInput" type="email" placeholder="Enter your email" required />
+      <button id="joinBtn" type="submit">Join Early Access</button>
     </form>
-    
-    <iframe id="hidden_iframe" name="hidden_iframe" style="display:none;"></iframe>
+
+    <div class="small">No spam. Be among the first – early users get lifetime perks.</div>
+    <div id="counter"></div>
+    <div id="thanks">Aitäh! Oled nimekirjas.</div>
+    <div id="errorMsg" class="error"></div>
   </div>
 
   <script>
-    window.submitted = false;
+    // 1) PANE SIIA OMA SUPABASE ANDMED (Data API URL + Publishable key)
+    const SUPABASE_URL = "https://ljswysgmdigncyhymngz.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_ZUHoK1LzYVMDAYvNozBRfA_Dhk_VOp8";
+    
+    // Kui need jäävad paste'imata, näitame kohe konsoolis viga
+    if (SUPABASE_URL.includes("PASTE_") || SUPABASE_KEY.includes("PASTE_")) {
+      console.warn("Supabase URL/KEY not set. Paste them into SUPABASE_URL and SUPABASE_KEY.");
+    }
 
-    document.addEventListener('DOMContentLoaded', () => {
-      // Counter
-      const baseCount = 37;
-      const growthPerDay = 3;
-      const startDate = new Date('2026-02-01T00:00:00Z');
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    // 2) “Already X+ joined” counter (lihtne, et landing ei oleks “tühi”)
+    // Muuda neid 3 rida kuidas tahad
+    const baseCount = 85;             // algnumber
+    const growthPerDay = 3;           // kasv päevas
+    const startDate = new Date("2026-02-01T00:00:00Z");
+
+    function updateCounter() {
       const today = new Date();
       const days = Math.max(0, Math.floor((today - startDate) / (1000 * 60 * 60 * 24)));
       const current = baseCount + (days * growthPerDay);
+      document.getElementById("counter").textContent = Already ${current}+ creators joined;
+    }
 
-      const counterEl = document.getElementById('counter');
-      if (counterEl) counterEl.textContent = `Already ${current}+ creators joined`;
+    document.addEventListener("DOMContentLoaded", () => {
+      updateCounter();
 
-      // Form UX
-      const form = document.getElementById('earlyAccessForm');
-      const btn = document.getElementById('joinBtn');
-      const thanks = document.getElementById('thanks');
-      const iframe = document.getElementById('hidden_iframe');
+      const form = document.getElementById("earlyAccessForm");
+      const input = document.getElementById("emailInput");
+      const btn = document.getElementById("joinBtn");
+      const thanks = document.getElementById("thanks");
+      const errorMsg = document.getElementById("errorMsg");
 
-      if (!form) return;
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
 
-      form.addEventListener('submit', () => {
-        window.submitted = true;
+        // reset messages
+        thanks.style.display = "none";
+        errorMsg.style.display = "none";
+        errorMsg.textContent = "";
 
-        if (thanks) thanks.style.display = 'none';
+        const email = (input.value || "").trim().toLowerCase();
+        if (!email) return;
 
-        if (btn) {
-          btn.disabled = true;
-          btn.textContent = 'Joining...';
-          btn.style.opacity = '0.85';
-          btn.style.cursor = 'default';
-        }
-      });
+        btn.disabled = true;
+        btn.textContent = "Joining...";
 
-      if (!iframe) return;
+        try {
+          const { error } = await supabaseClient
+            .from("waitlist")
+            .insert([{ email }]);
 
-      iframe.addEventListener('load', () => {
-        if (!window.submitted) return;
-        window.submitted = false;
+          if (error) {
+            // Kui email juba olemas ja sul on unique constraint, siis võib tulla error.
+            // Näitame sõbraliku sõnumi.
+            console.log("Insert error:", error);
 
-        if (thanks) thanks.style.display = 'block';
-        if (btn) btn.textContent = 'Joined ✓';
-        form.reset();
+            // Proovime teha viisakaks:
+            const msg = (error.message || "").toLowerCase().includes("duplicate")
+              ? "See email on juba kirjas ✅"
+              : "Midagi läks valesti. Proovi uuesti.";
 
-        setTimeout(() => {
-          if (thanks) thanks.style.display = 'none';
-
-          if (btn) {
+            errorMsg.textContent = msg;
+            errorMsg.style.display = "block";
+            btn.textContent = "Try again";
             btn.disabled = false;
-            btn.textContent = 'Get Early Access';
-            btn.style.opacity = '1';
-            btn.style.cursor = 'pointer';
+            return;
           }
-        }, 2500);
+
+          // success
+          thanks.style.display = "block";
+          btn.textContent = "Joined ✓";
+          form.reset();
+
+          // soovi korral paneme 2.5s pärast tagasi
+          setTimeout(() => {
+            btn.textContent = "Join Early Access";
+            btn.disabled = false;
+          }, 2500);
+
+        } catch (err) {
+          console.error(err);
+          errorMsg.textContent = "Midagi läks valesti. Proovi uuesti.";
+          errorMsg.style.display = "block";
+          btn.textContent = "Try again";
+          btn.disabled = false;
+        }
       });
     });
   </script>
-<script>
-// 152
-const SUPABASE_URL = "https://ljswysgmdigncyhymngz.supabase.co";
-// 153
-const SUPABASE_KEY = "sb_publishable_ZUHoKlLzYVMDAYvNOzBRfA_Dhk_VOp8";
-
-const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-document.addEventListener('DOMContentLoaded', () => {
-  const form = document.getElementById('earlyAccessForm');
-  const input = form.querySelector('input[type="email"]');
-  const thanks = document.getElementById('thanks');
-  const btn = document.getElementById('joinBtn');
-
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-
-    const email = input.value;
-
-    btn.disabled = true;
-    btn.textContent = "Joining...";
-
-    const { error } = await supabaseClient
-      .from('waitlist')
-      .insert([{ email: email }]);
-
-    if (!error) {
-      thanks.style.display = 'block';
-      btn.textContent = 'Joined ✓';
-      form.reset();
-    }
-
-    setTimeout(() => {
-      btn.disabled = false;
-      btn.textContent = 'Get Early Access';
-      thanks.style.display = 'none';
-    }, 2500);
-  });
-});
-</script>
 </body>
 </html>
