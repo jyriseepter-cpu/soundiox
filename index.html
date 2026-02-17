@@ -32,6 +32,9 @@
     }
   </style>
 </head>
+  </style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
 <body>
   <div class="hero">
     <h1>Create Music at the Speed of Thought</h1>
@@ -145,5 +148,43 @@
       });
     });
   </script>
+<script>
+const SUPABASE_URL = "SIIN_SINU_PROJECT_URL";
+const SUPABASE_KEY = "SIIN_SINU_ANON_KEY";
+
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+document.addEventListener('DOMContentLoaded', () => {
+  const form = document.getElementById('earlyAccessForm');
+  const input = form.querySelector('input[type="email"]');
+  const thanks = document.getElementById('thanks');
+  const btn = document.getElementById('joinBtn');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const email = input.value;
+
+    btn.disabled = true;
+    btn.textContent = "Joining...";
+
+    const { error } = await supabaseClient
+      .from('emails')
+      .insert([{ email: email }]);
+
+    if (!error) {
+      thanks.style.display = 'block';
+      btn.textContent = 'Joined ✓';
+      form.reset();
+    }
+
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.textContent = 'Get Early Access';
+      thanks.style.display = 'none';
+    }, 2500);
+  });
+});
+</script>
 </body>
 </html>
