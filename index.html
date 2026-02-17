@@ -145,10 +145,12 @@
     const startDate = new Date("2026-02-01T00:00:00Z");
 
     function updateCounter() {
-      const today = new Date();
-      const days = Math.max(0, Math.floor((today - startDate) / (1000 * 60 * 60 * 24)));
-      const current = baseCount + (days * growthPerDay);
-      document.getElementById("counter").textContent = Already ${current}+ creators joined;
+  const today = new Date();
+  const days = Math.max(0, Math.floor((today - startDate) / (1000 * 60 * 60 * 24)));
+  const current = baseCount + (days * growthPerDay);
+
+  const counterEl = document.getElementById("counter");
+  if (counterEl) counterEl.textContent = Already ${current}+ creators joined;
     }
 
     document.addEventListener("DOMContentLoaded", () => {
