@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Soundiox</title>
+
+  <style>
+    :root{
+      --bg:#0f172a;
+      --card:rgba(255,255,255,0.04);
+      --text:#ffffff;
+      --muted:#cbd5e1;
+      --muted2:#9aa4b2;
+      --accent:#6366f1;
+      --danger:#f87171;
+      --ok:#34d399;
+      --stroke:rgba(255,255,255,0.10);
+    }
+
+    * { box-sizing: border-box; }
+    body{
+      margin:0;
+      font-family: Arial, sans-serif;
+      background: radial-gradient(1200px 600px at 50% 20%, rgba(99,102,241,0.18), transparent 60%),
+                  radial-gradient(900px 500px at 20% 60%, rgba(56,189,248,0.10), transparent 55%),
+                  var(--bg);
+      color:var(--text);
+      text-align:center;
+      min-height:100vh;
+      display:flex;
+      align-items:flex-start;
+      justify-content:center;
+    }
+
+    .wrap{
+      width: 100%;
+      max-width: 980px;
+      padding: 110px 20px 80px;
+    }
+
+    h1{
+      font-size: 54px;
+      margin: 0 0 10px;
+      line-height: 1.05;
+      letter-spacing: -0.5px;
+    }
+
+    .sub{
+      color: var(--muted);
+      font-size: 18px;
+      margin: 0;
+    }
+
+    .sub2{
+      color: var(--muted2);
+      font-size: 16px;
+      margin: 10px 0 0;
+    }
+
+    .steps{
+      margin-top: 26px;
+      color: var(--muted);
+      font-size: 16px;
+      display: inline-block;
+      text-align: left;
+      padding: 14px 18px;
+      border: 1px solid var(--stroke);
+      border-radius: 12px;
+      background: var(--card);
+    }
+    .steps div{ margin: 6px 0; }
+
+    .formRow{
+      margin-top: 28px;
+      display:flex;
+      gap: 10px;
+      justify-content:center;
+      align-items:center;
+      flex-wrap: wrap;
+    }
+
+    input[type="email"]{
+      padding: 14px 14px;
+      width: 300px;
+      max-width: 76vw;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.10);
+      color: #fff;
+      outline: none;
+    }
+    input[type="email"]::placeholder{ color: rgba(255,255,255,0.55); }
+    input[type="email"]:focus{ border-color: rgba(99,102,241,0.7); }
+
+    button{
+      padding: 14px 22px;
+      border-radius: 10px;
+      border: none;
+      background: var(--accent);
+      color: white;
+      font-weight: 700;
+      cursor: pointer;
+      min-width: 170px;
+      box-shadow: 0 10px 30px rgba(99,102,241,0.25);
+      transition: transform .05s ease;
+    }
+    button:active{ transform: translateY(1px); }
+    button:disabled{
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+
+    .small{
+      margin-top: 10px;
+      font-size: 13px;
+      color: var(--muted2);
+    }
+
+    #counter{
+      margin-top: 6px;
+      font-size: 13px;
+      color: var(--muted2);
+    }
+
+    #thanks{
+      display:none;
+      margin-top: 12px;
+      color: var(--ok);
+      font-weight: 700;
+    }
+
+    #errorMsg{
+      display:none;
+      margin-top: 12px;
+      color: var(--danger);
+      font-weight: 700;
+    }
+
+    .debug{
+      margin-top: 18px;
+      display:none;
+      font-size: 12px;
+      color: rgba(255,255,255,0.55);
+    }
+
+    @media (max-width:700px){
+      h1{ font-size: 36px; }
+      .wrap{ padding-top: 90px; }
+    }
+  </style>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+
+<body>
+  <div class="wrap">
+    <h1>Discover AI-Made Music</h1>
+    <p class="sub">Soundiox is a streaming platform for AI-created music.</p>
+    <p class="sub2">Upload your AI tracks, discover new creators, and stream unique music daily.</p>
+
+    <div class="steps">
+      <div>1. Upload AI tracks</div>
+      <div>2. Discover new creators</div>
+      <div>3. Stream and share music</div>
+    </div>
+
+    <form id="earlyAccessForm" class="formRow">
+      <input
+        id="emailInput"
+        type="email"
+        name="email"
+        placeholder="Enter your email"
+        required
+        autocomplete="email"
+      />
+      <button id="joinBtn" type="submit">Join Early Access</button>
+    </form>
+
+    <div class="small">No spam. Be among the first — early users get lifetime perks.</div>
+    <div id="counter"></div>
+
+    <div id="thanks">Thanks! You’re on the list.</div>
+    <div id="errorMsg"></div>
+
+    <div id="debug" class="debug"></div>
+  </div>
+
+  <script>
+    // 1) Paste your Supabase project Data API URL + anon (public) key here
+    const SUPABASE_URL = "https://ljswysgmdigncyhymngz.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_ZUHoKlLzYVMDAYvNOzBRfA_Dhk_VOp8";
+
+    // 2) Lightweight "Already X+ creators joined" display (optional)
+    const baseCount = 133;
+    const growthPerDay = 3;
+    const startDate = new Date("2026-02-01T00:00:00Z");
+
+    function updateCounter() {
+      var today = new Date();
+      var days = Math.max(0, Math.floor((today - startDate) / (1000 * 60 * 60 * 24)));
+      var current = baseCount + (days * growthPerDay);
+      var el = document.getElementById("counter");
+      if (el) el.textContent = "Already " + current + "+ creators joined";
+    }
+
+    function showError(msg) {
+      var e = document.getElementById("errorMsg");
+      var t = document.getElementById("thanks");
+      if (t) t.style.display = "none";
+      if (e) {
+        e.textContent = msg;
+        e.style.display = "block";
+      }
+    }
+
+    function showThanks() {
+      var e = document.getElementById("errorMsg");
+      var t = document.getElementById("thanks");
+      if (e) e.style.display = "none";
+      if (t) t.style.display = "block";
+    }
+
+    function setButtonState(text, disabled) {
+      var btn = document.getElementById("joinBtn");
+      if (!btn) return;
+      btn.textContent = text;
+      btn.disabled = !!disabled;
+    }
+
+    function debugLine(msg) {
+      // If you want to see quick debug text on page, set display:block in CSS for .debug
+      var d = document.getElementById("debug");
+      if (!d) return;
+      d.textContent = msg;
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+      updateCounter();
+
+      // Guard checks
+      if (!window.supabase || !window.supabase.createClient) {
+        showError("Supabase library did not load. Check the script tag.");
+        return;
+      }
+      if (SUPABASE_URL.indexOf("YOUR_PROJECT_REF") !== -1 || SUPABASE_KEY.indexOf("YOUR_ANON_PUBLIC_KEY") !== -1) {
+        showError("Supabase keys are not set. Paste SUPABASE_URL and SUPABASE_KEY in the code.");
+        return;
+      }
+
+      var form = document.getElementById("earlyAccessForm");
+      var input = document.getElementById("emailInput");
+
+      if (!form) {
+        showError('Form not found: missing id="earlyAccessForm"');
+        return;
+      }
+      if (!input) {
+        showError('Email input not found: missing id="emailInput"');
+        return;
+      }
+
+      var supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+      form.addEventListener("submit", async function (e) {
+        e.preventDefault();
+
+        var email = (input.value || "").trim().toLowerCase();
+        if (!email) return;
+
+        setButtonState("Joining…", true);
+        debugLine("");
+
+        try {
+          // Insert into table "waitlist" (column "email" text)
+          var res = await supabaseClient
+            .from("waitlist")
+            .insert([{ email: email }]);
+
+          // In v2, errors usually show on res.error
+          if (res && res.error) {
+            console.log("Insert error:", res.error);
+
+            // Friendlier messages
+            var m = ((res.error.message || "") + "").toLowerCase();
+            var isDup = (m.indexOf("duplicate") !== -1) || (m.indexOf("unique") !== -1);
+
+            if (isDup) {
+              showError("This email is already on the list ✓");
+            } else {
+              showError("Something went wrong. Please try again.");
+            }
+
+            setButtonState("Try again", false);
+            return;
+          }
+
+          // Success
+          showThanks();
+          setButtonState("Joined ✓", true);
+          form.reset();
+
+        } catch (err) {
+          console.log("Unexpected error:", err);
+          showError("Something went wrong. Please try again.");
+          setButtonState("Try again", false);
+        }
+      });
+    });
+  </script>
+</body>
+</html>
