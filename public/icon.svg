@@ -1,0 +1,31 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="gx" x1="20" y1="20" x2="236" y2="236">
+      <stop offset="0" stop-color="#22D3EE"/>
+      <stop offset="0.5" stop-color="#8B5CF6"/>
+      <stop offset="1" stop-color="#EC4899"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Headband -->
+  <path d="M64 58 C64 28, 96 18, 128 18 C160 18, 192 28, 192 58"
+        stroke="url(#gx)" stroke-width="8" stroke-linecap="round"/>
+
+  <!-- Left cup -->
+  <rect x="40" y="70" width="40" height="110" rx="16"
+        stroke="url(#gx)" stroke-width="8" fill="none"/>
+
+  <!-- Right cup -->
+  <rect x="176" y="70" width="40" height="110" rx="16"
+        stroke="url(#gx)" stroke-width="8" fill="none"/>
+
+  <!-- X -->
+  <g stroke="url(#gx)" stroke-width="8" stroke-linecap="round">
+    <path d="M90 70 L166 186"/>
+    <path d="M102 70 L178 186"/>
+    <path d="M114 70 L190 186"/>
+    <path d="M190 70 L114 186"/>
+    <path d="M178 70 L102 186"/>
+    <path d="M166 70 L90 186"/>
+  </g>
+</svg>

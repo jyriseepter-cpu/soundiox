@@ -1,0 +1,43 @@
+import "./globals.css";
+import type { Metadata } from "next";
+import { PlayerProvider } from "@/app/components/PlayerContext";
+import PlayerBar from "@/app/components/PlayerBar";
+import Header from "@/app/components/Header";
+import SiteFooter from "@/app/components/SiteFooter";
+import CookieBanner from "@/app/components/CookieBanner";
+
+export const metadata: Metadata = {
+  title: "SoundioX",
+  description: "The AI Artist Launchpad",
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <body className="bg-gradient-to-b from-black via-neutral-900 to-black text-white">
+        <PlayerProvider>
+          <div className="min-h-screen flex flex-col pb-40">
+            {/* HEADER */}
+            <Header />
+
+            {/* COOKIE BANNER (fixed, headeri alt) */}
+            <CookieBanner />
+
+            {/* PAGE CONTENT */}
+            <main className="flex-1">{children}</main>
+
+            {/* FOOTER */}
+            <SiteFooter />
+          </div>
+
+          {/* PLAYER BAR */}
+          <PlayerBar />
+        </PlayerProvider>
+      </body>
+    </html>
+  );
+}
