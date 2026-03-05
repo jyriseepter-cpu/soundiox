@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
 type TrackRow = {
@@ -26,12 +26,11 @@ function pickArtist(t: TrackRow) {
 
 export default function HomeClient() {
   const [tracks, setTracks] = useState<TrackRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
+    async function loadTracks() {
       const { data, error } = await supabase
         .from("tracks")
         .select("id,title,artist,artwork_url")
@@ -39,27 +38,23 @@ export default function HomeClient() {
         .order("created_at", { ascending: false })
         .limit(5);
 
-      if (cancelled) return;
-
       if (error) {
         setError(error.message);
-        setTracks([]);
-        return;
+      } else {
+        setTracks((data ?? []) as TrackRow[]);
       }
 
-      setError(null);
-      setTracks((data ?? []) as TrackRow[]);
-    })();
+      setLoading(false);
+    }
 
-    return () => {
-      cancelled = true;
-    };
+    loadTracks();
   }, []);
 
   return (
     <main className="px-6 py-10">
       <div className="mx-auto max-w-6xl">
         <div className="grid grid-cols-1 gap-10 lg:grid-cols-[1.2fr_0.8fr]">
+
           {/* LEFT */}
           <div className="pt-8">
             <div className="inline-flex items-center gap-3 rounded-full bg-white/10 px-4 py-2 text-sm text-white/80 ring-1 ring-white/10">
@@ -101,13 +96,6 @@ export default function HomeClient() {
               >
                 Become a Founding Artist
               </Link>
-
-              <Link
-                href="/about/pulse"
-                className="rounded-2xl bg-white/10 px-6 py-3 font-semibold text-white ring-1 ring-white/10 hover:bg-white/15"
-              >
-                About Pulse
-              </Link>
             </div>
 
             <div className="mt-6 flex flex-wrap items-center gap-6 text-sm text-white/70">
@@ -135,8 +123,12 @@ export default function HomeClient() {
               </div>
 
               <div className="mt-4 space-y-3">
-                {error ? (
-                  <div className="text-sm text-red-400">Error: {error}</div>
+                {loading ? (
+                  <div className="text-sm text-white/70">Loading...</div>
+                ) : error ? (
+                  <div className="text-sm text-red-400">
+                    Error: {error}
+                  </div>
                 ) : tracks.length === 0 ? (
                   <div className="text-sm text-white/70">No tracks found.</div>
                 ) : (
@@ -179,6 +171,7 @@ export default function HomeClient() {
               <div className="mt-2 text-xs text-white/60">Now playing</div>
             </div>
           </div>
+
         </div>
       </div>
     </main>

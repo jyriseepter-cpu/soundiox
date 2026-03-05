@@ -1,157 +1,138 @@
-import Link from "next/link";
+"use client";
+
+import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
-type TrackRow = {
-  id: string;
-  title: string | null;
-  artist: string | null;
-  artwork_url: string | null;
-};
+export default function UploadPage() {
+  const [title, setTitle] = useState("");
+  const [genre, setGenre] = useState("");
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [artFile, setArtFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
 
-function getArtworkSrc(t: TrackRow) {
-  if (!t.artwork_url) return "/logo-new.png";
-  return t.artwork_url;
-}
+  async function handleUpload() {
+    if (!title.trim()) {
+      alert("Please enter a title.");
+      return;
+    }
+    if (!audioFile) {
+      alert("Please choose an audio file.");
+      return;
+    }
+    if (!artFile) {
+      alert("Please choose an artwork image.");
+      return;
+    }
 
-function pickTitle(t: TrackRow) {
-  return (t.title ?? "Untitled").toString();
-}
+    setUploading(true);
 
-function pickArtist(t: TrackRow) {
-  return (t.artist ?? "AI Artist").toString();
-}
+    try {
+      const { data: auth } = await supabase.auth.getUser();
+      const user = auth?.user;
 
-export default async function HomePage() {
-  const { data, error } = await supabase
-    .from("tracks")
-    .select("id,title,artist,artwork_url")
-    .eq("is_published", true)
-    .order("created_at", { ascending: false })
-    .limit(5);
+      if (!user) {
+        alert("Please log in first.");
+        return;
+      }
 
-  const tracks = (data ?? []) as TrackRow[];
+      const ts = Date.now();
+      const safeAudioName = audioFile.name.replace(/\s+/g, "_");
+      const safeArtName = artFile.name.replace(/\s+/g, "_");
+
+      const audioPath = `tracks/${user.id}/${ts}-${safeAudioName}`;
+      const artPath = `art/${user.id}/${ts}-${safeArtName}`;
+
+      // 1) Upload audio
+      const upAudio = await supabase.storage.from("tracks").upload(audioPath, audioFile, {
+        upsert: false,
+      });
+      if (upAudio.error) throw upAudio.error;
+
+      // 2) Upload artwork
+      const upArt = await supabase.storage.from("art").upload(artPath, artFile, {
+        upsert: false,
+      });
+      if (upArt.error) throw upArt.error;
+
+      // 3) Public URLs
+      const audioUrl = supabase.storage.from("tracks").getPublicUrl(audioPath).data.publicUrl;
+      const artworkUrl = supabase.storage.from("art").getPublicUrl(artPath).data.publicUrl;
+
+      // 4) Insert DB row
+      const ins = await supabase.from("tracks").insert({
+        title: title.trim(),
+        genre: genre.trim() || null,
+        artist: "AI Artist",
+        audio_url: audioUrl,
+        artwork_url: artworkUrl,
+        user_id: user.id,
+        is_published: true,
+      });
+
+      if (ins.error) throw ins.error;
+
+      alert("✅ Track uploaded!");
+      setTitle("");
+      setGenre("");
+      setAudioFile(null);
+      setArtFile(null);
+    } catch (e: any) {
+      console.error("Upload failed:", e);
+      alert(`Upload failed: ${e?.message ?? "Unknown error"}`);
+    } finally {
+      setUploading(false);
+    }
+  }
 
   return (
-    <main className="px-6 py-10">
-      <div className="mx-auto max-w-6xl">
-        <div className="grid grid-cols-1 gap-10 lg:grid-cols-[1.2fr_0.8fr]">
-          
-          {/* LEFT */}
-          <div className="pt-8">
-            <div className="inline-flex items-center gap-3 rounded-full bg-white/10 px-4 py-2 text-sm text-white/80 ring-1 ring-white/10">
-              <span>AI-only music platform</span>
-              <span className="opacity-60">•</span>
-              <span>Charts</span>
-              <span className="opacity-60">•</span>
-              <span>Community</span>
-            </div>
+    <main className="mx-auto max-w-xl p-6 text-white">
+      <h1 className="mb-6 text-2xl font-bold">Upload Track</h1>
 
-            <h1 className="mt-6 text-5xl font-semibold leading-[1.05] text-white md:text-6xl">
-              The new generation
-              <br />
-              of{" "}
-              <span className="bg-gradient-to-r from-cyan-300 via-violet-300 to-fuchsia-300 bg-clip-text text-transparent">
-                AI music
-              </span>{" "}
-              starts
-              <br />
-              here.
-            </h1>
+      <label className="mb-2 block text-sm text-white/70">Title</label>
+      <input
+        className="mb-4 w-full rounded-xl bg-white/10 p-3 ring-1 ring-white/10"
+        placeholder="Track title"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+      />
 
-            <p className="mt-6 max-w-xl text-white/75">
-              SoundioX is an AI-only social music platform where creators publish,
-              listeners discover, and charts reward real engagement.
-            </p>
+      <label className="mb-2 block text-sm text-white/70">Genre</label>
+      <input
+        className="mb-4 w-full rounded-xl bg-white/10 p-3 ring-1 ring-white/10"
+        placeholder="Genre (optional)"
+        value={genre}
+        onChange={(e) => setGenre(e.target.value)}
+      />
 
-            <div className="mt-8 flex flex-wrap items-center gap-3">
-              <Link
-                href="/discover"
-                className="rounded-2xl bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500 px-6 py-3 font-semibold text-white ring-1 ring-white/10 hover:opacity-95"
-              >
-                Join the Wave
-              </Link>
-
-              <Link
-                href="/login"
-                className="rounded-2xl bg-white/10 px-6 py-3 font-semibold text-white ring-1 ring-white/10 hover:bg-white/15"
-              >
-                Become a Founding Artist
-              </Link>
-            </div>
-
-            <div className="mt-6 flex flex-wrap items-center gap-6 text-sm text-white/70">
-              <div className="flex items-center gap-2">
-                <span className="inline-block h-2 w-2 rounded-full bg-white/60" />
-                AI-only uploads
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="inline-block h-2 w-2 rounded-full bg-white/60" />
-                New &amp; Rising
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="inline-block h-2 w-2 rounded-full bg-white/60" />
-                Global charts
-              </div>
-            </div>
-          </div>
-
-          {/* RIGHT: TOP TRACKS */}
-          <div className="lg:pt-10">
-            <div className="rounded-3xl bg-white/10 p-5 ring-1 ring-white/10 backdrop-blur">
-              <div className="text-white">
-                <div className="text-lg font-semibold">Top Tracks</div>
-                <div className="text-sm text-white/70">Trending right now</div>
-              </div>
-
-              <div className="mt-4 space-y-3">
-                {error ? (
-                  <div className="text-sm text-red-400">
-                    Error: {(error as any)?.message}
-                  </div>
-                ) : tracks.length === 0 ? (
-                  <div className="text-sm text-white/70">No tracks found.</div>
-                ) : (
-                  tracks.map((t) => (
-                    <div
-                      key={t.id}
-                      className="flex items-center justify-between rounded-2xl bg-black/20 px-4 py-3 ring-1 ring-white/10"
-                    >
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={getArtworkSrc(t)}
-                          alt=""
-                          className="h-10 w-10 rounded-xl object-cover ring-1 ring-white/10"
-                        />
-                        <div className="leading-tight">
-                          <div className="text-sm font-semibold text-white">
-                            {pickTitle(t)}
-                          </div>
-                          <div className="text-xs text-white/70">
-                            {pickArtist(t)}
-                          </div>
-                        </div>
-                      </div>
-
-                      <Link
-                        href="/discover"
-                        className="rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-white/15"
-                      >
-                        Play
-                      </Link>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              <div className="mt-4 h-2 w-full rounded-full bg-white/10">
-                <div className="h-2 w-2/3 rounded-full bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500" />
-              </div>
-
-              <div className="mt-2 text-xs text-white/60">Now playing</div>
-            </div>
-          </div>
-        </div>
+      <div className="mb-4">
+        <label className="mb-2 block text-sm text-white/70">Audio file (mp3/wav)</label>
+        <input
+          type="file"
+          accept="audio/*"
+          onChange={(e) => setAudioFile(e.target.files?.[0] ?? null)}
+        />
       </div>
+
+      <div className="mb-6">
+        <label className="mb-2 block text-sm text-white/70">Artwork (jpg/png)</label>
+        <input
+          type="file"
+          accept="image/*"
+          onChange={(e) => setArtFile(e.target.files?.[0] ?? null)}
+        />
+      </div>
+
+      <button
+        onClick={handleUpload}
+        disabled={uploading}
+        className="rounded-2xl bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500 px-6 py-3 font-semibold text-white ring-1 ring-white/10 disabled:opacity-60"
+      >
+        {uploading ? "Uploading..." : "Upload"}
+      </button>
+
+      <p className="mt-4 text-xs text-white/60">
+        Note: Buckets must exist: <b>tracks</b> and <b>art</b> (public).
+      </p>
     </main>
   );
 }
