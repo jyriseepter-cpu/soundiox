@@ -12,8 +12,7 @@ if (!webhookSecret) {
   throw new Error("Missing STRIPE_WEBHOOK_SECRET");
 }
 
-const stripe = new Stripe(stripeSecretKey, {
-});
+const stripe = new Stripe(stripeSecretKey);
 
 export async function POST(req: Request) {
   const sig = req.headers.get("stripe-signature");

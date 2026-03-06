@@ -8,8 +8,7 @@ if (!stripeSecretKey) {
   throw new Error("Missing STRIPE_SECRET_KEY in environment variables");
 }
 
-const stripe = new Stripe(stripeSecretKey, {
-});
+const stripe = new Stripe(stripeSecretKey);
 
 function getAppUrl() {
   return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
