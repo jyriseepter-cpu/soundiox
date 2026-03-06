@@ -8,7 +8,7 @@ if (!stripeSecretKey) {
   throw new Error("Missing STRIPE_SECRET_KEY in environment variables");
 }
 
-const stripe = new Stripe(stripeSecretKey, {
+const stripe = new Stripe(stripeSecretKey);
 
 });
 
