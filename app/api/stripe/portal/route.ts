@@ -10,8 +10,6 @@ if (!stripeSecretKey) {
 
 const stripe = new Stripe(stripeSecretKey);
 
-});
-
 function getAppUrl() {
   return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 }
