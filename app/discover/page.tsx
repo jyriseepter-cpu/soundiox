@@ -154,16 +154,15 @@ export default function DiscoverPage() {
               <div className="px-2 py-6 text-white/60">No tracks found.</div>
             ) : (
               displayedTracks.map((t) => (
-                <TrackCard
-                  key={t.id}
-                  track={t as any}
-                  allTracks={displayedTracks as any}
-                  onSelect={() => setSelectedTrack(t)}
-                  onPlay={() => {
-                    setSelectedTrack(t);
-                    void playTrack(t as any, displayedTracks as any);
-                  }}
-                />
+               <TrackCard
+  key={t.id}
+  track={t as any}
+  allTracks={displayedTracks as any}
+  onPlay={() => {
+    setSelectedTrack(t);
+    void playTrack(t as any, displayedTracks as any);
+  }}
+/>
               ))
             )}
           </div>
