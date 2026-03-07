@@ -13,6 +13,7 @@ if (!webhookSecret) {
 }
 
 const stripe = new Stripe(stripeSecretKey);
+const webhookSecretValue: string = webhookSecret;
 
 export async function POST(req: Request) {
   const sig = req.headers.get("stripe-signature");
@@ -26,7 +27,7 @@ export async function POST(req: Request) {
   let event: Stripe.Event;
 
   try {
-    event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
+    event = stripe.webhooks.constructEvent(body, sig, webhookSecretValue);
   } catch (err: any) {
     console.error("Webhook signature verification failed:", err?.message || err);
     return new Response("Webhook Error", { status: 400 });
@@ -36,7 +37,11 @@ export async function POST(req: Request) {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
-        console.log("checkout.session.completed:", session.id, session.customer_email);
+        console.log(
+          "checkout.session.completed:",
+          session.id,
+          session.customer_email
+        );
         break;
       }
 
@@ -55,7 +60,6 @@ export async function POST(req: Request) {
       }
     }
 
-    // ✅ Stripe tahab 2xx ilma redirectita
     return new Response("ok", { status: 200 });
   } catch (err) {
     console.error("Webhook handler error:", err);
@@ -63,7 +67,6 @@ export async function POST(req: Request) {
   }
 }
 
-// (valikuline) lihtne test brauserist/curl-ist
 export async function GET() {
   return new Response("ok", { status: 200 });
 }
