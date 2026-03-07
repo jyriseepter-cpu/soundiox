@@ -1,60 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense } from "react";
+import AccountClient from "./AccountClient";
 
-export default function AccountPage() {
-  const [status, setStatus] = useState<string | null>(null);
-  const [email, setEmail] = useState("");
-  const [loadingPortal, setLoadingPortal] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const params = new URLSearchParams(window.location.search);
-    setStatus(params.get("checkout"));
-  }, []);
-
-  const message = useMemo(() => {
-    if (status === "success") return "✅ Payment successful!";
-    if (status === "cancel") return "Cancelled. You can try again anytime.";
-    return null;
-  }, [status]);
-
-  async function openPortal() {
-    try {
-      if (!email.trim()) {
-        alert("Please enter your email first.");
-        return;
-      }
-
-      setLoadingPortal(true);
-
-      const res = await fetch("/api/stripe/portal", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email: email.trim() }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        alert(data?.error || "Portal failed");
-        return;
-      }
-
-      if (data?.url) {
-        window.location.href = data.url;
-      } else {
-        alert("Portal URL missing");
-      }
-    } catch (err: any) {
-      alert(err?.message || "Portal failed");
-    } finally {
-      setLoadingPortal(false);
-    }
-  }
+export default function Page() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <AccountClient />
+    </Suspense>
+  );
+}
 
   return (
     <main className="mx-auto w-full max-w-3xl px-6 py-10 text-white">
