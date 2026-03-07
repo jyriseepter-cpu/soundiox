@@ -187,11 +187,10 @@ export default function DiscoverPage() {
             isPlaying={isPlaying}
             currentTrackId={nowPlayingId}
             selectedTrack={selectedTrack as any}
-            onUpgradePlan={(plan: any) => {
-              // sul oli see juba olemas: upgrade(plan)
-              // jätan “pass-through” — kui sul on upgrade fn mujal, ühenda siit.
-              console.log("upgrade plan:", plan);
-            }}
+            onUpgradePlan={async (plan: any) => {
+  console.log("upgrade plan:", plan);
+  return;
+}}
           />
         </div>
       </div>
