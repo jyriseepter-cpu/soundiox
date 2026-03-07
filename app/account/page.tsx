@@ -1,11 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 
 export default function AccountPage() {
-  const params = useSearchParams();
-  const status = params.get("checkout");
+  const [status, setStatus] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [loadingPortal, setLoadingPortal] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    setStatus(params.get("checkout"));
+  }, []);
 
   const message = useMemo(() => {
     if (status === "success") return "✅ Payment successful!";
@@ -13,57 +20,80 @@ export default function AccountPage() {
     return null;
   }, [status]);
 
-  const [email, setEmail] = useState("");
-
   async function openPortal() {
     try {
+      if (!email.trim()) {
+        alert("Please enter your email first.");
+        return;
+      }
+
+      setLoadingPortal(true);
+
       const res = await fetch("/api/stripe/portal", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email: email.trim() }),
       });
+
       const data = await res.json();
+
       if (!res.ok) {
         alert(data?.error || "Portal failed");
         return;
       }
-      if (data?.url) window.location.href = data.url;
-    } catch (e: any) {
-      alert(e?.message || "Portal failed");
+
+      if (data?.url) {
+        window.location.href = data.url;
+      } else {
+        alert("Portal URL missing");
+      }
+    } catch (err: any) {
+      alert(err?.message || "Portal failed");
+    } finally {
+      setLoadingPortal(false);
     }
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 pb-28 pt-10">
-      <h1 className="text-3xl font-semibold text-white">Account</h1>
+    <main className="mx-auto w-full max-w-3xl px-6 py-10 text-white">
+      <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+        <h1 className="text-3xl font-semibold">Account</h1>
+        <p className="mt-2 text-sm text-white/70">
+          Manage your SoundioX subscription and billing.
+        </p>
 
-      {message ? (
-        <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/80">
-          {message}
-        </div>
-      ) : null}
+        {message && (
+          <div className="mt-6 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">
+            {message}
+          </div>
+        )}
 
-      <div className="mt-6 rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-        <div className="text-sm font-semibold text-white">Manage plan</div>
-        <div className="mt-2 text-sm text-white/70">
-          Enter your email to open Stripe billing portal (sandbox).
-        </div>
+        <div className="mt-8">
+          <label className="mb-2 block text-sm text-white/80">
+            Your billing email
+          </label>
 
-        <div className="mt-4 flex flex-col gap-3 sm:flex-row">
           <input
+            type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="email@example.com"
-            className="h-10 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-white placeholder:text-white/40 outline-none focus:border-white/20"
+            placeholder="you@example.com"
+            className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/35"
           />
+        </div>
+
+        <div className="mt-6 flex flex-wrap gap-3">
           <button
             onClick={openPortal}
-            className="h-10 rounded-xl bg-white/10 px-4 text-sm font-medium text-white hover:bg-white/15"
+            disabled={loadingPortal}
+            className="rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Manage billing
+            {loadingPortal ? "Opening..." : "Open billing portal"}
           </button>
         </div>
       </div>
-    </div>
+    </main>
   );
 }
