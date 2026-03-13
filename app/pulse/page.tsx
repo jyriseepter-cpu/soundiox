@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { usePlayer } from "@/app/components/PlayerContext";
+import CustomSelect from "@/app/components/CustomSelect";
 
 type SortKey = "plays_month" | "likes_month";
 type CategoryKey = "global" | "new_rising" | "estonia";
@@ -31,18 +32,20 @@ function getArtworkSrc(t: any) {
     t.cover ||
     t.image ||
     "";
+
   if (!raw) return "/logo-new.png";
+
   const s = safeStr(raw).trim();
   if (!s) return "/logo-new.png";
   if (isAbsoluteUrl(s)) return s;
-  if (s.startsWith("/")) return s; // you already store /art/xxx.jpg
-  // fallback: storage relative path
+  if (s.startsWith("/")) return s;
+
   return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${s}`;
 }
 
 export default function PulsePage() {
   const router = useRouter();
-  const { playTrack, currentTrack, isPlaying } = usePlayer();
+  const { playTrack, currentTrack, isPlaying, toggle } = usePlayer();
 
   const [tracks, setTracks] = useState<any[]>([]);
   const [likesMonth, setLikesMonth] = useState<Map<string, number>>(new Map());
@@ -57,14 +60,12 @@ export default function PulsePage() {
   const [loading, setLoading] = useState(true);
   const month = useMemo(() => monthStartISO(), []);
 
-  // auth
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       setUserId(data.user?.id ?? null);
     });
   }, []);
 
-  // load
   useEffect(() => {
     const load = async () => {
       setLoading(true);
@@ -81,7 +82,6 @@ export default function PulsePage() {
 
       const ids = safe.map((t: any) => t.id).filter(Boolean);
 
-      // month likes
       if (ids.length > 0) {
         const { data: lRows, error: lErr } = await supabase
           .from("track_likes_monthly")
@@ -92,15 +92,14 @@ export default function PulsePage() {
         if (lErr) console.warn("Pulse likes view error:", lErr);
 
         const map = new Map<string, number>();
-        (lRows ?? []).forEach((r: any) =>
-          map.set(String(r.track_id), Number(r.likes ?? 0) || 0)
-        );
+        (lRows ?? []).forEach((r: any) => {
+          map.set(String(r.track_id), Number(r.likes ?? 0) || 0);
+        });
         setLikesMonth(map);
       } else {
         setLikesMonth(new Map());
       }
 
-      // user liked this month
       if (userId && ids.length > 0) {
         const { data: myLikes, error: myErr } = await supabase
           .from("likes")
@@ -121,12 +120,14 @@ export default function PulsePage() {
       setLoading(false);
     };
 
-    load();
+    void load();
   }, [userId, month]);
 
   const rewardPool = useMemo(() => {
     let sum = 0;
-    likesMonth.forEach((v) => (sum += v));
+    likesMonth.forEach((v) => {
+      sum += v;
+    });
     return sum;
   }, [likesMonth]);
 
@@ -143,7 +144,6 @@ export default function PulsePage() {
     const s = q.trim().toLowerCase();
 
     return tracks.filter((t: any) => {
-      // category currently UI-only
       if (category === "new_rising") {
         const created = t.created_at ? new Date(t.created_at).getTime() : 0;
         const days30 = 30 * 24 * 60 * 60 * 1000;
@@ -156,7 +156,8 @@ export default function PulsePage() {
 
       if (!s) return true;
 
-      const hay = `${safeStr(t.title)} ${safeStr(t.artist)} ${safeStr(t.genre)}`.toLowerCase();
+      const hay =
+        `${safeStr(t.title)} ${safeStr(t.artist)} ${safeStr(t.genre)}`.toLowerCase();
       return hay.includes(s);
     });
   }, [tracks, q, genre, category]);
@@ -170,7 +171,10 @@ export default function PulsePage() {
 
       if (sort === "likes_month") return bLikes - aLikes;
 
-      return (Number(b.plays_this_month ?? 0) || 0) - (Number(a.plays_this_month ?? 0) || 0);
+      return (
+        (Number(b.plays_this_month ?? 0) || 0) -
+        (Number(a.plays_this_month ?? 0) || 0)
+      );
     });
 
     return list;
@@ -215,7 +219,10 @@ export default function PulsePage() {
       month,
     });
 
-    if (error) console.error("Like error:", error);
+    if (error) {
+      console.error("Like error:", error);
+      return;
+    }
 
     setLikedSet((prev) => new Set(prev).add(trackId));
     setLikesMonth((prev) => {
@@ -225,16 +232,36 @@ export default function PulsePage() {
     });
   };
 
+  const categoryOptions = [
+    { value: "global", label: "Category: Global" },
+    { value: "new_rising", label: "Category: New & Rising" },
+    { value: "estonia", label: "Category: Estonia" },
+  ];
+
+  const genreOptions = availableGenres.map((g) => ({
+    value: g,
+    label: g === "All genres" ? "All genres" : g,
+  }));
+
+  const sortOptions = [
+    { value: "plays_month", label: "Sort: Plays (month)" },
+    { value: "likes_month", label: "Sort: Likes (month)" },
+  ];
+
   return (
-    // ⬇️ IMPORTANT: bottom padding so last row is NOT under PlayerBar
     <div className="mx-auto max-w-6xl p-6 pb-28 md:pb-32">
       <div className="mb-3">
-        <div className="text-2xl font-semibold text-white">Pulse</div>
+        <div className="flex items-center gap-2 text-2xl font-semibold text-white">
+          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-cyan-300">
+            <span className="absolute inset-0 animate-ping rounded-full bg-cyan-300/80" />
+          </span>
+          <span>Pulse</span>
+        </div>
         <div className="text-sm text-white/60">Community signal + momentum.</div>
       </div>
 
       <div className="mb-4 flex w-full flex-wrap items-center gap-3 md:flex-nowrap md:justify-between">
-        <div className="rounded-xl bg-white/10 px-4 py-2 text-white text-sm ring-1 ring-white/10">
+        <div className="rounded-xl bg-white/10 px-4 py-2 text-sm text-white ring-1 ring-white/10">
           THIS MONTH REWARD POOL: {rewardPool} likes
         </div>
 
@@ -243,43 +270,33 @@ export default function PulsePage() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search track / artist / genre"
-            className="h-10 w-full md:w-[320px] rounded-xl bg-white/10 px-4 text-white placeholder:text-white/40 ring-1 ring-white/10"
+            className="h-10 w-full rounded-xl bg-white/10 px-4 text-white placeholder:text-white/40 ring-1 ring-white/10 md:w-[320px]"
           />
 
-          <select
+          <CustomSelect
             value={category}
-            onChange={(e) => setCategory(e.target.value as CategoryKey)}
-            className="h-10 min-w-[160px] rounded-xl bg-white/10 px-3 text-white ring-1 ring-white/10"
-          >
-            <option value="global">Category: Global</option>
-            <option value="new_rising">Category: New & Rising</option>
-            <option value="estonia">Category: Estonia</option>
-          </select>
+            onChange={(value) => setCategory(value as CategoryKey)}
+            options={categoryOptions}
+            className="min-w-[170px]"
+          />
 
-          <select
+          <CustomSelect
             value={genre}
-            onChange={(e) => setGenre(e.target.value)}
-            className="h-10 min-w-[150px] rounded-xl bg-white/10 px-3 text-white ring-1 ring-white/10"
-          >
-            {availableGenres.map((g) => (
-              <option key={g} value={g}>
-                {g === "All genres" ? "All genres" : g}
-              </option>
-            ))}
-          </select>
+            onChange={setGenre}
+            options={genreOptions}
+            className="min-w-[160px]"
+          />
 
-          <select
+          <CustomSelect
             value={sort}
-            onChange={(e) => setSort(e.target.value as SortKey)}
-            className="h-10 min-w-[170px] rounded-xl bg-white/10 px-3 text-white ring-1 ring-white/10"
-          >
-            <option value="plays_month">Sort: Plays (month)</option>
-            <option value="likes_month">Sort: Likes (month)</option>
-          </select>
+            onChange={(value) => setSort(value as SortKey)}
+            options={sortOptions}
+            className="min-w-[180px]"
+          />
         </div>
       </div>
 
-      <div className="rounded-2xl bg-white/10 ring-1 ring-white/10 overflow-hidden">
+      <div className="overflow-hidden rounded-2xl bg-white/10 ring-1 ring-white/10">
         <div className="grid grid-cols-12 gap-2 px-4 py-3 text-xs font-semibold tracking-widest text-white/60">
           <div className="col-span-7">TRACK</div>
           <div className="col-span-2 text-right">PLAYS</div>
@@ -300,10 +317,22 @@ export default function PulsePage() {
             const isCurrent = currentTrack?.id && String(currentTrack.id) === id;
 
             return (
-              <div key={id} className="border-t border-white/10 px-4 py-4">
-                <div className="grid grid-cols-12 gap-2 items-center">
-                  {/* TRACK with AVATAR */}
-                  <div className="col-span-7 flex items-center gap-3 min-w-0">
+              <div
+                key={id}
+                className={`relative border-t border-white/10 px-4 py-4 transition ${
+                  isCurrent
+                    ? "bg-gradient-to-r from-purple-500/10 via-fuchsia-500/10 to-cyan-500/10"
+                    : ""
+                }`}
+              >
+                {isCurrent ? (
+                  <div className="absolute bottom-2 left-0 top-2 w-1 rounded-r-full bg-gradient-to-b from-cyan-300 via-violet-400 to-fuchsia-400">
+                    <div className="absolute inset-0 animate-pulse rounded-r-full bg-white/20" />
+                  </div>
+                ) : null}
+
+                <div className="grid grid-cols-12 items-center gap-2">
+                  <div className="col-span-7 flex min-w-0 items-center gap-3">
                     <div className="w-6 text-white/40">{idx + 1}</div>
 
                     <img
@@ -314,12 +343,14 @@ export default function PulsePage() {
                     />
 
                     <div className="min-w-0">
-                      <div className="text-white font-semibold truncate">
+                      <div className="truncate font-semibold text-white">
                         {safeStr(t.title) || "Untitled"}
                       </div>
-                      <div className="text-sm text-white/60 truncate">
+                      <div className="truncate text-sm text-white/60">
                         <Link
-                          href={`/artists/${encodeURIComponent(safeStr(t.artist || "AI Artist"))}`}
+                          href={`/artists/${encodeURIComponent(
+                            safeStr(t.artist || "AI Artist")
+                          )}`}
                           className="hover:text-white"
                         >
                           {safeStr(t.artist || "AI Artist")}
@@ -330,25 +361,35 @@ export default function PulsePage() {
                     </div>
                   </div>
 
-                  <div className="col-span-2 text-right text-white/80 tabular-nums">{plays}</div>
+                  <div className="col-span-2 text-right tabular-nums text-white/80">
+                    {plays}
+                  </div>
 
-                  <div className="col-span-2 text-right text-white/80 tabular-nums flex items-center justify-end gap-3">
+                  <div className="col-span-2 flex items-center justify-end gap-3 text-right tabular-nums text-white/80">
                     <span>{likes}</span>
                     <button
                       onClick={() => toggleLike(id)}
-                      className="text-xl leading-none"
+                      className={`text-xl leading-none transition ${
+                        liked ? "text-red-500" : "text-cyan-300 hover:text-cyan-200"
+                      }`}
                       title={liked ? "Unlike" : "Like"}
                     >
-                      {liked ? "❤️" : "🤍"}
+                      ♥
                     </button>
                   </div>
 
                   <div className="col-span-1 flex justify-end">
                     <button
-                      onClick={() => playTrack(t, rows)}
+                      onClick={() => {
+                        if (isCurrent) {
+                          toggle();
+                        } else {
+                          playTrack(t, rows);
+                        }
+                      }}
                       className="rounded-xl bg-gradient-to-r from-cyan-400 to-purple-500 px-4 py-2 text-white"
                     >
-                      {isCurrent && isPlaying ? "Playing" : "Play"}
+                      {isCurrent ? (isPlaying ? "Pause" : "Play") : "Play"}
                     </button>
                   </div>
                 </div>

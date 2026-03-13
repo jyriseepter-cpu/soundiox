@@ -47,25 +47,29 @@ export default function HomeClient() {
       setLoading(false);
     }
 
-    loadTracks();
+    void loadTracks();
   }, []);
 
   return (
-    <main className="px-6 py-10">
+    <main className="px-6 pb-10">
       <div className="mx-auto max-w-6xl">
         <div className="grid grid-cols-1 gap-10 lg:grid-cols-[1.2fr_0.8fr]">
+          <div className="pt-4">
+            <div className="inline-flex flex-wrap items-center gap-3">
+              <span className="rounded-full border border-cyan-300/25 bg-cyan-400/12 px-4 py-2 text-sm font-semibold text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.12)]">
+                AI-only uploads
+              </span>
 
-          {/* LEFT */}
-          <div className="pt-8">
-            <div className="inline-flex items-center gap-3 rounded-full bg-white/10 px-4 py-2 text-sm text-white/80 ring-1 ring-white/10">
-              <span>AI-only music platform</span>
-              <span className="opacity-60">•</span>
-              <span>Charts</span>
-              <span className="opacity-60">•</span>
-              <span>Community</span>
+              <span className="rounded-full border border-violet-300/25 bg-violet-400/12 px-4 py-2 text-sm font-semibold text-violet-100 shadow-[0_0_18px_rgba(167,139,250,0.12)]">
+                New &amp; Rising
+              </span>
+
+              <span className="rounded-full border border-fuchsia-300/25 bg-fuchsia-400/12 px-4 py-2 text-sm font-semibold text-fuchsia-100 shadow-[0_0_18px_rgba(217,70,239,0.12)]">
+                Global charts
+              </span>
             </div>
 
-            <h1 className="mt-6 text-5xl font-semibold leading-[1.05] text-white md:text-6xl">
+            <h1 className="mt-6 text-5xl font-bold leading-[1.02] tracking-[-0.03em] text-white md:text-6xl">
               The new generation
               <br />
               of{" "}
@@ -77,60 +81,71 @@ export default function HomeClient() {
               here.
             </h1>
 
-            <p className="mt-6 max-w-xl text-white/75">
+            <p className="mt-6 max-w-xl text-base font-medium text-white/78">
               SoundioX is an AI-only social music platform where creators publish,
               listeners discover, and charts reward real engagement.
             </p>
 
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Link
-                href="/discover"
-                className="rounded-2xl bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500 px-6 py-3 font-semibold text-white ring-1 ring-white/10 hover:opacity-95"
+                href="/join-wave"
+                className="rounded-2xl bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500 px-6 py-3 font-bold text-white ring-1 ring-white/10 hover:opacity-95"
               >
                 Join the Wave
               </Link>
 
               <Link
-                href="/login"
-                className="rounded-2xl bg-white/10 px-6 py-3 font-semibold text-white ring-1 ring-white/10 hover:bg-white/15"
+                href="/founding-artists"
+                className="rounded-2xl bg-white/10 px-6 py-3 font-bold text-white ring-1 ring-white/10 hover:bg-white/15"
               >
                 Become a Founding Artist
               </Link>
             </div>
 
-            <div className="mt-6 flex flex-wrap items-center gap-6 text-sm text-white/70">
-              <div className="flex items-center gap-2">
-                <span className="inline-block h-2 w-2 rounded-full bg-white/60" />
-                AI-only uploads
+            <div className="mt-6 flex flex-wrap items-center gap-5 text-sm">
+              <div className="flex items-center gap-2 text-cyan-100">
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-cyan-400/18 text-xs font-bold">
+                  ✓
+                </span>
+                <span className="font-semibold">AI-only uploads</span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="inline-block h-2 w-2 rounded-full bg-white/60" />
-                New &amp; Rising
+
+              <div className="flex items-center gap-2 text-violet-100">
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-violet-400/18 text-xs font-bold">
+                  ⚡
+                </span>
+                <span className="font-semibold">New &amp; Rising</span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="inline-block h-2 w-2 rounded-full bg-white/60" />
-                Global charts
+
+              <div className="flex items-center gap-2 text-fuchsia-100">
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-fuchsia-400/18 text-xs font-bold">
+                  🌍
+                </span>
+                <span className="font-semibold">Global charts</span>
               </div>
             </div>
           </div>
 
-          {/* RIGHT: TOP TRACKS */}
-          <div className="lg:pt-10">
+          <div className="lg:pt-8">
             <div className="rounded-3xl bg-white/10 p-5 ring-1 ring-white/10 backdrop-blur">
               <div className="text-white">
-                <div className="text-lg font-semibold">Top Tracks</div>
-                <div className="text-sm text-white/70">Trending right now</div>
+                <div className="text-lg font-bold">Top Tracks</div>
+                <div className="text-sm font-medium text-white/70">
+                  Trending right now
+                </div>
               </div>
 
               <div className="mt-4 space-y-3">
                 {loading ? (
-                  <div className="text-sm text-white/70">Loading...</div>
+                  <div className="text-sm font-medium text-white/70">Loading...</div>
                 ) : error ? (
-                  <div className="text-sm text-red-400">
+                  <div className="text-sm font-medium text-red-400">
                     Error: {error}
                   </div>
                 ) : tracks.length === 0 ? (
-                  <div className="text-sm text-white/70">No tracks found.</div>
+                  <div className="text-sm font-medium text-white/70">
+                    No tracks found.
+                  </div>
                 ) : (
                   tracks.map((t) => (
                     <div
@@ -144,10 +159,10 @@ export default function HomeClient() {
                           className="h-10 w-10 rounded-xl object-cover ring-1 ring-white/10"
                         />
                         <div className="leading-tight">
-                          <div className="text-sm font-semibold text-white">
+                          <div className="text-sm font-bold text-white">
                             {pickTitle(t)}
                           </div>
-                          <div className="text-xs text-white/70">
+                          <div className="text-xs font-semibold text-white/72">
                             {pickArtist(t)}
                           </div>
                         </div>
@@ -155,7 +170,7 @@ export default function HomeClient() {
 
                       <Link
                         href="/discover"
-                        className="rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-white/15"
+                        className="rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-bold text-white ring-1 ring-white/10 hover:opacity-95"
                       >
                         Play
                       </Link>
@@ -168,10 +183,11 @@ export default function HomeClient() {
                 <div className="h-2 w-2/3 rounded-full bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500" />
               </div>
 
-              <div className="mt-2 text-xs text-white/60">Now playing</div>
+              <div className="mt-2 text-xs font-semibold text-white/70">
+                Ready to play
+              </div>
             </div>
           </div>
-
         </div>
       </div>
     </main>

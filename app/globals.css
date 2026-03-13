@@ -10,10 +10,60 @@ body {
   height: 100%;
 }
 
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Display",
+    "SF Pro Text",
+    "Helvetica Neue",
+    Helvetica,
+    Arial,
+    sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+strong,
+b {
+  font-weight: 700;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+select {
+  color: #ffffff;
+  background-color: rgba(125, 211, 252, 0.2);
+  border-color: rgba(125, 211, 252, 0.35);
+}
+
+select option {
+  background: #7dd3fc;
+  color: #ffffff;
+}
+
 @keyframes pulseNav {
   0% { transform: scale(1); }
   50% { transform: scale(1.06); }

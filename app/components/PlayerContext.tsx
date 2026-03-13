@@ -37,11 +37,13 @@ type PlayerContextValue = {
   currentTrack: Track | null;
   isPlaying: boolean;
 
-  currentTime: number; // seconds
-  duration: number; // seconds
+  currentTime: number;
+  duration: number;
   seek: (timeSeconds: number) => void;
 
   playTrack: (track: Track, allTracks?: Track[]) => Promise<void>;
+  setTrackOnly: (track: Track, allTracks?: Track[]) => void;
+
   play: () => Promise<void>;
   pause: () => void;
   toggle: () => Promise<void>;
@@ -55,11 +57,6 @@ function isAbsoluteUrl(u: string) {
   return /^https?:\/\//i.test(u);
 }
 
-/**
- * Accept absolute urls, or paths.
- * If it starts with "/", keep it as-is (app public path).
- * If it's "tracks/metal.mp3" etc, map to Supabase public storage.
- */
 function toAbsoluteUrl(raw: string) {
   const u = (raw || "").toString().trim();
   if (!u) return "";
@@ -80,6 +77,7 @@ function pickAudioSrc(t: Track) {
     (t as any).url ||
     (t as any).file_url ||
     "";
+
   return toAbsoluteUrl(raw);
 }
 
@@ -93,7 +91,6 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
 
-  // ✅ refs to avoid stale state inside event listeners
   const queueRef = useRef<Track[]>([]);
   const currentTrackRef = useRef<Track | null>(null);
 
@@ -105,16 +102,36 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     currentTrackRef.current = currentTrack;
   }, [currentTrack]);
 
-  // ✅ Atomic plays increment in DB (RPC)
   const incrementPlays = async (trackId: string) => {
     try {
       const { error } = await supabase.rpc("increment_track_plays", {
         track_id_input: trackId,
       });
-      if (error) console.error("increment_track_plays error:", error);
+
+      if (error) {
+        console.error("increment_track_plays error:", error);
+      }
     } catch (e) {
       console.error("Increment plays failed:", e);
     }
+  };
+
+  const loadTrack = (track: Track) => {
+    const a = audioRef.current;
+    if (!a) return false;
+
+    const src = pickAudioSrc(track);
+    if (!src) return false;
+
+    if (a.src !== src) {
+      a.src = src;
+    }
+
+    a.currentTime = 0;
+    setCurrentTime(0);
+    setDuration(0);
+
+    return true;
   };
 
   const loadAndPlay = async (track: Track) => {
@@ -122,18 +139,17 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (!a) return;
 
     const src = pickAudioSrc(track);
+    if (!src) return;
 
-    setCurrentTime(0);
-    setDuration(0);
+    const sameSrc = a.src === src;
 
-    // if same src, just play (do NOT count as new play)
-    if (a.src && src && a.src === src) {
-      await a.play();
-      return;
+    if (!sameSrc) {
+      a.src = src;
     }
 
-    a.src = src;
     a.currentTime = 0;
+    setCurrentTime(0);
+    setDuration(0);
 
     try {
       await a.play();
@@ -143,7 +159,6 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // ✅ stable next/prev using refs
   const goRelative = async (delta: number) => {
     const q = queueRef.current;
     const cur = currentTrackRef.current;
@@ -151,9 +166,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (!q || q.length === 0) return;
 
     const idx =
-      cur == null
-        ? -1
-        : q.findIndex((t) => String(t.id) === String(cur.id));
+      cur == null ? -1 : q.findIndex((t) => String(t.id) === String(cur.id));
 
     let nextIdx = idx >= 0 ? idx + delta : 0;
 
@@ -164,14 +177,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (!nextTrack) return;
 
     setCurrentTrack(nextTrack);
-    currentTrackRef.current = nextTrack; // keep ref in sync immediately
-    await loadAndPlay(nextTrack);
+    currentTrackRef.current = nextTrack;
 
-    // ✅ count play for next/prev/autoplay
+    await loadAndPlay(nextTrack);
     void incrementPlays(String(nextTrack.id));
   };
 
-  // create audio element once + listeners
   useEffect(() => {
     if (audioRef.current) return;
 
@@ -190,7 +201,6 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       setDuration(Number.isFinite(a.duration) ? a.duration : 0);
     };
     const onEnded = async () => {
-      // ✅ auto-next using refs (not stale state)
       await goRelative(+1);
     };
 
@@ -211,8 +221,22 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       a.pause();
       audioRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const setTrackOnly = (track: Track, allTracks?: Track[]) => {
+    if (Array.isArray(allTracks) && allTracks.length) {
+      setQueue(allTracks);
+      queueRef.current = allTracks;
+    } else if (!queueRef.current.length) {
+      setQueue([track]);
+      queueRef.current = [track];
+    }
+
+    setCurrentTrack(track);
+    currentTrackRef.current = track;
+
+    loadTrack(track);
+  };
 
   const playTrack = async (track: Track, allTracks?: Track[]) => {
     if (Array.isArray(allTracks) && allTracks.length) {
@@ -225,16 +249,22 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
     setCurrentTrack(track);
     currentTrackRef.current = track;
-    await loadAndPlay(track);
 
-    // ✅ count play ONLY when starting a (new) track via playTrack
-    // (loadAndPlay does not count when it's the same src)
+    await loadAndPlay(track);
     void incrementPlays(String(track.id));
   };
 
   const play = async () => {
     const a = audioRef.current;
     if (!a) return;
+
+    if (!currentTrackRef.current && queueRef.current.length > 0) {
+      const first = queueRef.current[0];
+      setCurrentTrack(first);
+      currentTrackRef.current = first;
+      loadTrack(first);
+    }
+
     await a.play();
   };
 
@@ -248,8 +278,18 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const a = audioRef.current;
     if (!a) return;
 
-    if (a.paused) await a.play();
-    else a.pause();
+    if (!currentTrackRef.current && queueRef.current.length > 0) {
+      const first = queueRef.current[0];
+      setCurrentTrack(first);
+      currentTrackRef.current = first;
+      loadTrack(first);
+    }
+
+    if (a.paused) {
+      await a.play();
+    } else {
+      a.pause();
+    }
   };
 
   const next = async () => {
@@ -279,6 +319,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       duration,
       seek,
       playTrack,
+      setTrackOnly,
       play,
       pause,
       toggle,
@@ -295,6 +336,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
 export function usePlayer() {
   const ctx = useContext(PlayerContext);
-  if (!ctx) throw new Error("usePlayer must be used within PlayerProvider");
+  if (!ctx) {
+    throw new Error("usePlayer must be used within PlayerProvider");
+  }
   return ctx;
 }

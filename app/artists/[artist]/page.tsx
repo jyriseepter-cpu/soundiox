@@ -6,34 +6,35 @@ import Image from "next/image";
 import { supabase } from "@/lib/supabaseClient";
 import { usePlayer } from "../../components/PlayerContext";
 
-type ArtistRow = {
+type ProfileArtistRow = {
   id: string;
-  name: string;
-  slug: string;
+  display_name: string | null;
+  slug: string | null;
   bio: string | null;
   avatar_url: string | null;
-  genre: string | null;
   country: string | null;
-  website: string | null;
-  donate_enabled: boolean | null;
+  plan: string | null;
+  is_pro: boolean | null;
+  is_founding: boolean | null;
   created_at?: string | null;
 };
 
 type TrackRow = {
   id: string;
   title: string;
-  artist: string;
+  artist: string | null;
   genre: string | null;
   audio_url: string;
   artwork_url: string | null;
   created_at: string | null;
   plays_all_time: number | null;
   plays_this_month: number | null;
+  user_id: string | null;
 };
 
 type TrackLikeMonthlyRow = {
   track_id: string;
-  month: string; // yyyy-mm-dd
+  month: string;
   likes: number;
 };
 
@@ -64,24 +65,23 @@ function monthStartISO(d = new Date()) {
 export default function ArtistPage() {
   const router = useRouter();
   const params = useParams();
-
-  // NB: ära tee slugile “space” vms — loeme URL-st ja otsime artists.slug
   const slug = decodeURIComponent(String(params?.artist || "")).toLowerCase();
 
   const { playTrack } = usePlayer();
 
   const [loading, setLoading] = useState(true);
-  const [artist, setArtist] = useState<ArtistRow | null>(null);
+  const [artist, setArtist] = useState<ProfileArtistRow | null>(null);
   const [tracks, setTracks] = useState<TrackRow[]>([]);
   const [likesMonth, setLikesMonth] = useState<number>(0);
   const [likesAllTime, setLikesAllTime] = useState<number>(0);
-
   const [donateLoading, setDonateLoading] = useState<number | null>(null);
+  const [showDonateMenu, setShowDonateMenu] = useState(false);
 
   const playsMonth = useMemo(
     () => tracks.reduce((sum, t) => sum + (t.plays_this_month || 0), 0),
     [tracks]
   );
+
   const playsAllTime = useMemo(
     () => tracks.reduce((sum, t) => sum + (t.plays_all_time || 0), 0),
     [tracks]
@@ -115,9 +115,25 @@ export default function ArtistPage() {
     return sorted[0];
   }, [tracks]);
 
+  const genreSummary = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    for (const track of tracks) {
+      const g = (track.genre || "").trim();
+      if (!g) continue;
+      counts.set(g, (counts.get(g) || 0) + 1);
+    }
+
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([name]) => name);
+  }, [tracks]);
+
   async function handleDonate(artistSlug: string, amountCents: number) {
     try {
       setDonateLoading(amountCents);
+
       const res = await fetch("/api/stripe/donate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -125,15 +141,18 @@ export default function ArtistPage() {
       });
 
       const data = await res.json();
+
       if (!res.ok) {
         alert(data?.error || "Donate failed");
         return;
       }
+
       if (data?.url) window.location.href = data.url;
     } catch (e: any) {
       alert(e?.message || "Donate failed");
     } finally {
       setDonateLoading(null);
+      setShowDonateMenu(false);
     }
   }
 
@@ -143,21 +162,22 @@ export default function ArtistPage() {
     async function load() {
       setLoading(true);
 
-      // 1) Artist by slug
       const { data: artistData, error: artistErr } = await supabase
-        .from("artists")
-        .select("id,name,slug,bio,avatar_url,genre,country,website,donate_enabled,created_at")
+        .from("profiles")
+        .select(
+          "id, display_name, slug, bio, avatar_url, country, plan, is_pro, is_founding, created_at"
+        )
         .eq("slug", slug)
+        .eq("role", "artist")
         .maybeSingle();
 
-      if (artistErr) console.error(artistErr);
+      if (artistErr) console.error("artist profile load error:", artistErr);
       if (cancelled) return;
 
-      const a = (artistData as ArtistRow) || null;
+      const a = (artistData as ProfileArtistRow) || null;
       setArtist(a);
 
-      // 2) Tracks by artist name
-      if (!a?.name) {
+      if (!a?.id) {
         setTracks([]);
         setLikesMonth(0);
         setLikesAllTime(0);
@@ -167,12 +187,14 @@ export default function ArtistPage() {
 
       const { data: trackData, error: trackErr } = await supabase
         .from("tracks")
-        .select("id,title,artist,genre,audio_url,artwork_url,created_at,plays_all_time,plays_this_month")
-        .eq("artist", a.name)
+        .select(
+          "id,title,artist,genre,audio_url,artwork_url,created_at,plays_all_time,plays_this_month,user_id"
+        )
+        .eq("user_id", a.id)
         .eq("is_published", true)
         .order("created_at", { ascending: false });
 
-      if (trackErr) console.error(trackErr);
+      if (trackErr) console.error("artist tracks load error:", trackErr);
       if (cancelled) return;
 
       const t = ((trackData as TrackRow[]) || []).filter(Boolean);
@@ -186,15 +208,15 @@ export default function ArtistPage() {
         return;
       }
 
-      // 3) Likes this month
       const monthStart = monthStartISO(new Date());
+
       const { data: monthRows, error: monthErr } = await supabase
         .from("track_likes_monthly")
         .select("track_id,month,likes")
         .eq("month", monthStart)
         .in("track_id", trackIds);
 
-      if (monthErr) console.error(monthErr);
+      if (monthErr) console.error("monthly likes load error:", monthErr);
       if (cancelled) return;
 
       const lm = ((monthRows as TrackLikeMonthlyRow[]) || []).reduce(
@@ -203,13 +225,12 @@ export default function ArtistPage() {
       );
       setLikesMonth(lm);
 
-      // 4) Likes all-time
       const { data: allRows, error: allErr } = await supabase
         .from("track_likes_all_time")
         .select("track_id,likes")
         .in("track_id", trackIds);
 
-      if (allErr) console.error(allErr);
+      if (allErr) console.error("all time likes load error:", allErr);
       if (cancelled) return;
 
       const la = ((allRows as TrackLikeAllTimeRow[]) || []).reduce(
@@ -221,178 +242,235 @@ export default function ArtistPage() {
       setLoading(false);
     }
 
-    load();
+    void load();
+
     return () => {
       cancelled = true;
     };
   }, [slug]);
 
-  const donateEnabled = artist?.donate_enabled ?? true;
+  const donateEnabled = true;
+  const isFounding = Boolean(artist?.is_founding);
+  const isPro = Boolean(artist?.is_pro);
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 pb-28 pt-8">
-      {/* Top header card */}
-      <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-[0_0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-xl">
+      <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 shadow-[0_0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-xl">
         <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
           <div className="flex gap-4">
-            <div className="relative h-14 w-14 overflow-hidden rounded-2xl border border-white/10 bg-white/5">
-              {artist?.avatar_url ? (
-                <Image
-                  src={artist.avatar_url}
-                  alt={artist.name || "Artist"}
-                  fill
-                  className="object-cover"
-                  sizes="56px"
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-white/50">
-                  🎵
+            {isFounding ? (
+              <div className="rounded-[22px] bg-gradient-to-r from-cyan-400 to-fuchsia-500 p-[2px] shadow-[0_0_28px_rgba(56,189,248,0.18)]">
+                <div className="relative h-[72px] w-[72px] overflow-hidden rounded-[20px] bg-white/5">
+                  {artist?.avatar_url ? (
+                    <Image
+                      src={artist.avatar_url}
+                      alt={artist.display_name || "Artist"}
+                      fill
+                      className="object-cover"
+                      sizes="72px"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-2xl text-white/50">
+                      🎵
+                    </div>
+                  )}
+
+                  <div className="absolute bottom-1.5 right-1.5 rounded-full border border-black/20 bg-black/55 px-1.5 py-[2px] text-[10px] font-semibold text-cyan-200 backdrop-blur">
+                    ★
+                  </div>
                 </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="relative h-[72px] w-[72px] overflow-hidden rounded-[20px] border border-white/10 bg-white/5">
+                {artist?.avatar_url ? (
+                  <Image
+                    src={artist.avatar_url}
+                    alt={artist.display_name || "Artist"}
+                    fill
+                    className="object-cover"
+                    sizes="72px"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-2xl text-white/50">
+                    🎵
+                  </div>
+                )}
+              </div>
+            )}
 
             <div>
-              <h1 className="text-3xl font-semibold text-white">
-                {artist?.name || "Artist"}
-              </h1>
-              <div className="mt-1 text-sm text-white/70">
-                Genre: <span className="text-white/90">{artist?.genre || "—"}</span> •{" "}
-                Plays (month): <span className="text-white/90">{playsMonth}</span> •{" "}
-                All time: <span className="text-white/90">{playsAllTime}</span> •{" "}
-                Reward pool: <span className="text-white/90">{likesMonth} likes</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-3xl font-semibold tracking-tight text-white">
+                  {artist?.display_name || "Artist"}
+                </h1>
+
+                {isFounding ? (
+                  <span className="rounded-full border border-cyan-300/30 bg-cyan-400/10 px-3 py-1 text-xs font-medium text-cyan-200">
+                    Founding Artist
+                  </span>
+                ) : null}
+
+                {isPro ? (
+                  <span className="rounded-full border border-fuchsia-300/30 bg-fuchsia-400/10 px-3 py-1 text-xs font-medium text-fuchsia-200">
+                    Artist Pro
+                  </span>
+                ) : null}
               </div>
-              {artist?.bio ? (
-                <p className="mt-2 max-w-2xl text-sm text-white/70">{artist.bio}</p>
+
+              <div className="mt-2 text-sm text-white/70">
+                Plays (month): <span className="text-white/90">{playsMonth}</span> • All time:{" "}
+                <span className="text-white/90">{playsAllTime}</span> • Reward pool:{" "}
+                <span className="text-white/90">{likesMonth} likes</span>
+              </div>
+
+              {genreSummary.length > 0 ? (
+                <div className="mt-2 text-sm text-white/60">
+                  Genres: <span className="text-white/85">{genreSummary.join(" • ")}</span>
+                </div>
               ) : null}
 
-              <div className="mt-3 flex flex-wrap gap-2">
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/80">
-                  AI-only
-                </span>
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/80">
-                  New & Rising
-                </span>
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/80">
-                  Top Plays (Month)
-                </span>
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/80">
-                  You liked
-                </span>
+              {artist?.bio ? (
+                <p className="mt-3 max-w-2xl text-sm text-white/70">{artist.bio}</p>
+              ) : null}
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {artist?.country ? (
+                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/80">
+                    {artist.country}
+                  </span>
+                ) : null}
               </div>
             </div>
           </div>
 
-          {/* Actions (Back samal real tieridega) */}
-          {donateEnabled ? (
-            <div className="flex flex-col items-end gap-2">
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <button
-                  onClick={() => handleDonate(slug, 300)}
-                  disabled={donateLoading !== null}
-                  className="h-10 rounded-xl bg-white/10 px-4 text-sm font-medium text-white hover:bg-white/15 disabled:opacity-60"
-                  title="Donate €3"
-                >
-                  {donateLoading === 300 ? "…" : "€3"}
-                </button>
+          <div className="flex flex-col items-end gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {donateEnabled ? (
+                <div className="relative">
+                  <button
+                    onClick={() => setShowDonateMenu((prev) => !prev)}
+                    className="h-10 rounded-xl bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-4 text-sm font-semibold text-black hover:opacity-95"
+                  >
+                    Support artist
+                  </button>
 
-                <button
-                  onClick={() => handleDonate(slug, 500)}
-                  disabled={donateLoading !== null}
-                  className="h-10 rounded-xl bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-4 text-sm font-semibold text-black hover:opacity-95 disabled:opacity-60"
-                  title="Donate €5"
-                >
-                  {donateLoading === 500 ? "…" : "Donate €5"}
-                </button>
+                  {showDonateMenu ? (
+                    <div className="absolute right-0 top-12 z-30 min-w-[190px] rounded-2xl border border-white/10 bg-[#0c1018]/95 p-2 shadow-[0_12px_40px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+                      <button
+                        onClick={() => handleDonate(slug, 300)}
+                        disabled={donateLoading !== null}
+                        className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-white hover:bg-white/10 disabled:opacity-60"
+                      >
+                        <span>Support with €3</span>
+                        <span>{donateLoading === 300 ? "…" : ""}</span>
+                      </button>
 
-                <button
-                  onClick={() => handleDonate(slug, 1000)}
-                  disabled={donateLoading !== null}
-                  className="h-10 rounded-xl bg-white/10 px-4 text-sm font-medium text-white hover:bg-white/15 disabled:opacity-60"
-                  title="Donate €10"
-                >
-                  {donateLoading === 1000 ? "…" : "€10"}
-                </button>
+                      <button
+                        onClick={() => handleDonate(slug, 500)}
+                        disabled={donateLoading !== null}
+                        className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-white hover:bg-white/10 disabled:opacity-60"
+                      >
+                        <span>Support with €5</span>
+                        <span>{donateLoading === 500 ? "…" : ""}</span>
+                      </button>
 
-                <button
-                  onClick={() => handleDonate(slug, 2000)}
-                  disabled={donateLoading !== null}
-                  className="h-10 rounded-xl bg-white/10 px-4 text-sm font-medium text-white hover:bg-white/15 disabled:opacity-60"
-                  title="Donate €20"
-                >
-                  {donateLoading === 2000 ? "…" : "€20"}
-                </button>
+                      <button
+                        onClick={() => handleDonate(slug, 1000)}
+                        disabled={donateLoading !== null}
+                        className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-white hover:bg-white/10 disabled:opacity-60"
+                      >
+                        <span>Support with €10</span>
+                        <span>{donateLoading === 1000 ? "…" : ""}</span>
+                      </button>
 
-                <button
-                  onClick={() => router.back()}
-                  className="h-10 rounded-xl bg-white/10 px-4 text-sm font-medium text-white hover:bg-white/15"
-                >
-                  Back
-                </button>
-              </div>
+                      <button
+                        onClick={() => handleDonate(slug, 2000)}
+                        disabled={donateLoading !== null}
+                        className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-white hover:bg-white/10 disabled:opacity-60"
+                      >
+                        <span>Support with €20</span>
+                        <span>{donateLoading === 2000 ? "…" : ""}</span>
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
 
-              <div className="text-xs text-white/60">70% goes directly to the creator</div>
+              <button
+                onClick={() => router.push("/artists")}
+                className="h-10 rounded-xl bg-white/10 px-4 text-sm font-medium text-white hover:bg-white/15"
+              >
+                Back
+              </button>
             </div>
-          ) : (
-            <button
-              onClick={() => router.back()}
-              className="h-10 rounded-xl bg-white/10 px-4 text-sm font-medium text-white hover:bg-white/15"
-            >
-              Back
-            </button>
-          )}
+
+            {donateEnabled ? (
+              <div className="text-xs text-white/60">70% goes directly to the creator</div>
+            ) : null}
+          </div>
         </div>
       </div>
 
-      {/* HISTORY */}
       <div className="mt-6">
-        <div className="mb-2 text-xs font-semibold tracking-wider text-white/60">HISTORY</div>
+        <div className="mb-3 text-xs font-semibold tracking-[0.18em] text-white/55">
+          CAREER STATS
+        </div>
 
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
             <div className="text-xs text-white/60">Joined</div>
-            <div className="mt-1 text-lg font-semibold text-white">
+            <div className="mt-2 text-2xl font-semibold text-white">
               {formatDateShort(artist?.created_at)}
             </div>
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
+            <div className="text-xs text-white/60">Tracks</div>
+            <div className="mt-2 text-2xl font-semibold text-white">{tracks.length}</div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
+            <div className="text-xs text-white/60">All-time plays</div>
+            <div className="mt-2 text-2xl font-semibold text-white">{playsAllTime}</div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
+            <div className="text-xs text-white/60">Reward pool</div>
+            <div className="mt-2 text-2xl font-semibold text-white">{likesMonth} likes</div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
             <div className="text-xs text-white/60">First release</div>
-            <div className="mt-1 text-lg font-semibold text-white">
+            <div className="mt-2 text-lg font-semibold text-white">
               {formatDateShort(firstRelease?.created_at)}
             </div>
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
             <div className="text-xs text-white/60">Latest release</div>
-            <div className="mt-1 text-lg font-semibold text-white">
+            <div className="mt-2 text-lg font-semibold text-white">
               {formatDateShort(latestRelease?.created_at)}
             </div>
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
-            <div className="text-xs text-white/60">Total tracks</div>
-            <div className="mt-1 text-lg font-semibold text-white">{tracks.length}</div>
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
-            <div className="text-xs text-white/60">Most played (all time)</div>
-            <div className="mt-1 text-lg font-semibold text-white">
+            <div className="text-xs text-white/60">Top track</div>
+            <div className="mt-2 text-lg font-semibold text-white">
               {mostPlayedAllTime?.title || "—"}
             </div>
-            <div className="text-xs text-white/60">
+            <div className="mt-1 text-xs text-white/60">
               {(mostPlayedAllTime?.plays_all_time || 0) + " plays"}
             </div>
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
             <div className="text-xs text-white/60">Likes</div>
-            <div className="mt-1 text-lg font-semibold text-white">{likesAllTime} all-time</div>
-            <div className="text-xs text-white/60">{likesMonth} this month</div>
+            <div className="mt-2 text-lg font-semibold text-white">{likesAllTime} all-time</div>
+            <div className="mt-1 text-xs text-white/60">{likesMonth} this month</div>
           </div>
         </div>
       </div>
 
-      {/* TRACKS */}
       <div className="mt-6 rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
         <div className="mb-3 flex items-center justify-between">
           <div className="text-sm font-semibold text-white">Tracks</div>
@@ -432,7 +510,7 @@ export default function ArtistPage() {
                   <div className="min-w-0">
                     <div className="truncate text-sm font-semibold text-white">{t.title}</div>
                     <div className="truncate text-xs text-white/60">
-                      {t.genre || artist?.genre || "—"} • {formatDateShort(t.created_at)}
+                      {t.genre || "—"} • {formatDateShort(t.created_at)}
                     </div>
                   </div>
                 </div>
@@ -456,7 +534,6 @@ export default function ArtistPage() {
         )}
       </div>
 
-      {/* TIMELINE */}
       <div className="mt-6 rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
         <div className="mb-3 text-sm font-semibold text-white">Timeline</div>
 

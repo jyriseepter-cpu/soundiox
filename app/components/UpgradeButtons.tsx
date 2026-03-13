@@ -4,15 +4,14 @@ import { useState } from "react";
 
 type Tier =
   | "premium_monthly"
-  | "premium_yearly"
-  | "artist_pro_monthly"
-  | "artist_pro_yearly";
+  | "artist_pro_monthly";
 
 type Props = {
   email?: string | null;
+  userId?: string | null;
 };
 
-export default function UpgradeButtons({ email }: Props) {
+export default function UpgradeButtons({ email, userId }: Props) {
   const [loading, setLoading] = useState<Tier | null>(null);
 
   async function startCheckout(tier: Tier) {
@@ -22,10 +21,14 @@ export default function UpgradeButtons({ email }: Props) {
       const res = await fetch("/api/stripe/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tier, email: email || undefined }),
+        body: JSON.stringify({
+          tier,
+          email: email || undefined,
+          userId: userId || undefined,
+        }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
 
       if (!res.ok) {
         alert(data?.error || "Checkout failed");
@@ -62,7 +65,7 @@ export default function UpgradeButtons({ email }: Props) {
       >
         {loading === "premium_monthly"
           ? "Loading..."
-          : "Upgrade to Premium (€5.99 / month)"}
+          : "Upgrade to Premium"}
       </button>
 
       <button
@@ -73,7 +76,7 @@ export default function UpgradeButtons({ email }: Props) {
       >
         {loading === "artist_pro_monthly"
           ? "Loading..."
-          : "Become Artist Pro (€14.99 / month)"}
+          : "Become Artist Pro"}
       </button>
     </div>
   );

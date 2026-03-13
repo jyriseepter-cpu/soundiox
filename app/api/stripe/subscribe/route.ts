@@ -14,11 +14,29 @@ function getAppUrl() {
   return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 }
 
+function normalizeTier(input: unknown): "premium" | "artist_pro" | null {
+  const value = String(input || "").trim().toLowerCase();
+
+  if (value === "premium" || value === "premium_monthly" || value === "premium_yearly") {
+    return "premium";
+  }
+
+  if (
+    value === "artist_pro" ||
+    value === "artist_pro_monthly" ||
+    value === "artist_pro_yearly"
+  ) {
+    return "artist_pro";
+  }
+
+  return null;
+}
+
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const tier = String(body?.tier || "").toLowerCase();
+    const body = await req.json().catch(() => ({}));
 
+    const normalizedTier = normalizeTier(body?.tier ?? body?.plan);
     const premiumPriceId = process.env.STRIPE_PREMIUM_PRICE_ID;
     const proPriceId = process.env.STRIPE_ARTIST_PRO_PRICE_ID;
 
@@ -29,28 +47,43 @@ export async function POST(req: Request) {
       );
     }
 
-    const priceId =
-      tier === "premium" ? premiumPriceId : tier === "artist_pro" ? proPriceId : null;
-
-    if (!priceId) {
+    if (!normalizedTier) {
       return NextResponse.json(
-        { error: "Invalid tier. Use 'premium' or 'artist_pro'." },
+        {
+          error:
+            "Invalid tier/plan. Use premium, artist_pro, premium_monthly, or artist_pro_monthly.",
+        },
         { status: 400 }
       );
     }
 
+    const priceId =
+      normalizedTier === "premium" ? premiumPriceId : proPriceId;
+
     const appUrl = getAppUrl();
-    const customerEmail = body?.email ? String(body.email) : undefined;
+    const customerEmail = body?.email ? String(body.email).trim() : undefined;
+    const userId = body?.userId ? String(body.userId).trim() : undefined;
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${appUrl}/account?checkout=success&tier=${tier}`,
-      cancel_url: `${appUrl}/account?checkout=cancel&tier=${tier}`,
-      customer_email: customerEmail,
+      success_url: `${appUrl}/account?checkout=success&tier=${normalizedTier}`,
+      cancel_url: `${appUrl}/account?checkout=cancel&tier=${normalizedTier}`,
+      customer_email: customerEmail || undefined,
       allow_promotion_codes: true,
       billing_address_collection: "auto",
+      metadata: {
+        tier: normalizedTier,
+        userId: userId || "",
+      },
     });
+
+    if (!session.url) {
+      return NextResponse.json(
+        { error: "Stripe session created but session.url is empty" },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({ url: session.url });
   } catch (err: any) {
