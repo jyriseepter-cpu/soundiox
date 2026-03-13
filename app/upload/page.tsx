@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import CustomSelect from "@/app/components/CustomSelect";
 
 const GENRES = [
   "Pop",
@@ -155,18 +156,17 @@ export default function UploadPage() {
         />
 
         <label className="mb-2 block text-sm text-white/70">Genre</label>
-        <select
-          className="mb-4 w-full rounded-xl bg-white/10 p-3 text-white ring-1 ring-white/10 outline-none"
-          value={genre}
-          onChange={(e) => setGenre(e.target.value)}
-        >
-          <option value="">Choose genre</option>
-          {GENRES.map((item) => (
-            <option key={item} value={item} className="bg-[#10131c] text-white">
-              {item}
-            </option>
-          ))}
-        </select>
+        <div className="mb-4">
+          <CustomSelect
+            value={genre}
+            onChange={(value) => setGenre(value)}
+            options={[
+              { value: "", label: "Choose genre" },
+              ...GENRES.map((item) => ({ value: item, label: item })),
+            ]}
+            className="w-full"
+          />
+        </div>
 
         <div className="mb-4">
           <label className="mb-2 block text-sm text-white/70">Audio file (mp3/wav)</label>
