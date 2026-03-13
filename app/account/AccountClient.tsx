@@ -1,480 +1,725 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import type { Track } from "@/app/components/PlayerContext";
+import CustomSelect from "@/app/components/CustomSelect";
 
-type Playlist = {
-  id: string;
-  name: string;
-  created_at: string;
-  user_id: string;
-};
+type ProfileRole = "listener" | "artist";
 
-type FeaturedArtist = {
+type ProfileRow = {
   id: string;
+  role: string | null;
   display_name: string | null;
   bio: string | null;
   country: string | null;
   avatar_url: string | null;
   slug: string | null;
-  role?: string | null;
+  plan: string | null;
   is_pro: boolean | null;
   is_founding: boolean | null;
-  like_count_month: number | null;
+  created_at?: string | null;
 };
 
-type Props = {
-  artistName: string;
-  genre: string;
-  selectedTitle: string;
-  artworkSrc: string;
-
-  tracks: Track[];
-  onSelectTrack: (t: Track) => void;
-  onPlayClick: (t: Track) => void;
-
-  isPlaying: boolean;
-  currentTrackId: string | null;
-
-  onUpgradePlan: (plan: "premium" | "artist_pro") => Promise<void>;
-  selectedTrack: Track | null;
+type InviteRow = {
+  id: string;
+  token: string;
+  email: string | null;
+  role: string | null;
+  is_founding: boolean | null;
+  used: boolean | null;
+  created_at: string | null;
 };
 
-const glassBox = "rounded-2xl bg-white/8 ring-1 ring-white/10 p-3";
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+}
 
-const playlistInputClass =
-  "h-10 rounded-xl px-3 text-sm font-medium text-white placeholder:text-white/40 ring-1 ring-white/10 " +
-  "bg-gradient-to-r from-cyan-500/35 via-sky-500/25 to-fuchsia-500/30 backdrop-blur outline-none";
+function getAvatarUrl(value: string | null | undefined) {
+  if (!value) return "";
+  if (value.startsWith("http://") || value.startsWith("https://")) return value;
+  if (value.startsWith("/")) return value;
+  return value;
+}
 
-const playlistSelectClass =
-  "h-10 rounded-xl px-3 text-sm font-semibold text-white ring-1 ring-cyan-200/40 " +
-  "bg-gradient-to-r from-cyan-400 to-sky-400 backdrop-blur outline-none";
+export default function AccountClient() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const inviteHandledRef = useRef(false);
 
-const createBtnClass =
-  "h-10 rounded-xl px-4 text-sm font-bold text-white ring-1 ring-white/15 " +
-  "bg-gradient-to-r from-purple-600 to-fuchsia-500 hover:opacity-95 disabled:opacity-50";
+  const selectedPlan = searchParams.get("plan");
+  const checkoutStatus = searchParams.get("checkout");
+  const welcome = searchParams.get("welcome");
+  const inviteToken = searchParams.get("invite");
 
-const addBtnClass =
-  "h-10 rounded-xl px-4 text-sm font-bold text-white ring-1 ring-cyan-200/20 " +
-  "bg-cyan-400 hover:bg-cyan-300 disabled:opacity-40";
+  const hasFoundingInvite = welcome === "founding" && !!inviteToken;
 
-const playBtnClass =
-  "h-9 rounded-xl px-4 text-sm font-bold text-white ring-1 ring-white/15 " +
-  "bg-gradient-to-r from-teal-500/70 to-fuchsia-500/70 hover:from-teal-500/85 hover:to-fuchsia-500/85";
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [claimingInvite, setClaimingInvite] = useState(false);
 
-export default function ArtistPanel(props: Props) {
-  const {
-    artistName,
-    genre,
-    selectedTitle,
-    artworkSrc,
-    tracks,
-    onPlayClick,
-    isPlaying,
-    currentTrackId,
-    onUpgradePlan,
-    selectedTrack,
-  } = props;
+  const [userId, setUserId] = useState<string>("");
+  const [email, setEmail] = useState<string>("");
 
-  const [user, setUser] = useState<any>(null);
-  const [playlists, setPlaylists] = useState<Playlist[]>([]);
-  const [newPlaylistName, setNewPlaylistName] = useState("");
-  const [selectedPlaylistId, setSelectedPlaylistId] = useState("");
-  const [upgradeLoading, setUpgradeLoading] = useState<"premium" | "artist_pro" | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [role, setRole] = useState<ProfileRole>("artist");
+  const [displayName, setDisplayName] = useState("");
+  const [bio, setBio] = useState("");
+  const [country, setCountry] = useState("");
+  const [slug, setSlug] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState("");
+  const [plan, setPlan] = useState("free");
+  const [isPro, setIsPro] = useState(false);
+  const [isFounding, setIsFounding] = useState(false);
 
-  const [featuredArtists, setFeaturedArtists] = useState<FeaturedArtist[]>([]);
-  const [featuredLoading, setFeaturedLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
-  const canUsePlaylists = !!user;
+  const profileUrl = useMemo(() => {
+    if (!slug) return "";
+    return `/artists/${slug}`;
+  }, [slug]);
 
-  useEffect(() => {
-    const loadUser = async () => {
-      const { data } = await supabase.auth.getUser();
-      setUser(data.user ?? null);
-    };
-    void loadUser();
-  }, []);
+  async function loadProfile(user: any, options?: { skipCreate?: boolean }) {
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select(
+        "id, role, display_name, bio, country, avatar_url, slug, plan, is_pro, is_founding, created_at"
+      )
+      .eq("id", user.id)
+      .maybeSingle<ProfileRow>();
 
-  const fetchPlaylists = async () => {
-    if (!user?.id) return;
-
-    const { data } = await supabase
-      .from("playlists")
-      .select("id,name,created_at,user_id")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
-
-    const list = (data ?? []) as Playlist[];
-    setPlaylists(list);
-
-    if (!selectedPlaylistId && list[0]?.id) {
-      setSelectedPlaylistId(list[0].id);
+    if (profileError) {
+      throw profileError;
     }
-  };
 
-  useEffect(() => {
-    if (!user?.id) return;
-    void fetchPlaylists();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
+    const fallbackName =
+      user.user_metadata?.full_name ||
+      user.user_metadata?.name ||
+      user.email?.split("@")[0] ||
+      "AI Artist";
 
-  useEffect(() => {
-    let ignore = false;
+    const nextDisplayName = profile?.display_name || fallbackName;
+    const nextSlug =
+      profile?.slug ||
+      slugify(nextDisplayName) ||
+      slugify(user.email?.split("@")[0] || "artist");
 
-    async function fetchFeaturedArtists() {
-      try {
-        setFeaturedLoading(true);
+    setRole((profile?.role as ProfileRole) || "artist");
+    setDisplayName(nextDisplayName);
+    setBio(profile?.bio || "");
+    setCountry(profile?.country || "");
+    setSlug(nextSlug);
+    setAvatarUrl(profile?.avatar_url || "");
+    setPlan(profile?.plan || "free");
+    setIsPro(Boolean(profile?.is_pro));
+    setIsFounding(Boolean(profile?.is_founding));
 
-        const { data, error } = await supabase
-          .from("profiles")
-          .select(
-            "id, display_name, bio, country, avatar_url, slug, role, is_pro, is_founding, like_count_month"
-          )
-          .eq("role", "artist")
-          .order("is_founding", { ascending: false })
-          .order("like_count_month", { ascending: false })
-          .order("created_at", { ascending: false })
-          .limit(4);
+    if (!profile && !options?.skipCreate) {
+      const insertPayload = {
+        id: user.id,
+        role: "artist",
+        display_name: nextDisplayName,
+        bio: "",
+        country: "",
+        avatar_url: "",
+        slug: nextSlug,
+        plan: "free",
+        is_pro: false,
+        is_founding: false,
+      };
 
-        if (error) {
-          console.error("Featured artists load error:", error.message);
-          if (!ignore) setFeaturedArtists([]);
-          return;
-        }
+      const { error: insertError } = await supabase
+        .from("profiles")
+        .upsert(insertPayload, { onConflict: "id" });
 
-        if (!ignore) {
-          setFeaturedArtists((data as FeaturedArtist[]) ?? []);
-        }
-      } catch (error) {
-        console.error("Featured artists unexpected error:", error);
-        if (!ignore) setFeaturedArtists([]);
-      } finally {
-        if (!ignore) setFeaturedLoading(false);
+      if (insertError) {
+        throw insertError;
       }
-    }
 
-    void fetchFeaturedArtists();
-
-    return () => {
-      ignore = true;
-    };
-  }, []);
-
-  const showToast = (text: string) => {
-    setToast(text);
-    window.setTimeout(() => setToast(null), 2500);
-  };
-
-  const createPlaylist = async () => {
-    if (!user) {
-      showToast("Please log in first");
-      return;
-    }
-
-    const name = newPlaylistName.trim();
-    if (!name) {
-      showToast("Enter playlist name");
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from("playlists")
-      .insert([{ name, user_id: user.id }])
-      .select("id,name,created_at,user_id")
-      .single();
-
-    if (error) {
-      console.error(error);
-      showToast("Create failed");
-      return;
-    }
-
-    setNewPlaylistName("");
-    await fetchPlaylists();
-
-    if (data?.id) setSelectedPlaylistId(data.id);
-
-    showToast("Playlist created ✓");
-  };
-
-  const addSelectedTrackToPlaylist = async () => {
-    if (!user) {
-      showToast("Please log in first");
-      return;
-    }
-
-    if (!selectedTrack?.id) {
-      showToast("Select a track first");
-      return;
-    }
-
-    if (!selectedPlaylistId) {
-      showToast("Select a playlist first");
-      return;
-    }
-
-    const { error } = await supabase.from("playlist_tracks").insert([
-      {
-        playlist_id: selectedPlaylistId,
-        track_id: selectedTrack.id,
-      },
-    ]);
-
-    if (error) {
-      showToast("Track is already in playlist");
-      return;
-    }
-
-    showToast("Added to playlist ✓");
-  };
-
-  const topTracks = useMemo(() => tracks.slice(0, 8), [tracks]);
-
-  async function handleUpgrade(plan: "premium" | "artist_pro") {
-    try {
-      setUpgradeLoading(plan);
-      await onUpgradePlan(plan);
-    } finally {
-      setUpgradeLoading(null);
+      setRole("artist");
+      setDisplayName(nextDisplayName);
+      setBio("");
+      setCountry("");
+      setSlug(nextSlug);
+      setAvatarUrl("");
+      setPlan("free");
+      setIsPro(false);
+      setIsFounding(false);
     }
   }
 
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadAccount() {
+      setLoading(true);
+      setError("");
+      setMessage("");
+
+      try {
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
+
+        if (userError) throw userError;
+
+        if (!user) {
+          router.replace("/login");
+          return;
+        }
+
+        if (!mounted) return;
+
+        setUserId(user.id);
+        setEmail(user.email ?? "");
+
+        await loadProfile(user, { skipCreate: hasFoundingInvite });
+      } catch (err: any) {
+        setError(err?.message || "Account page failed to load.");
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadAccount();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session?.user) {
+        router.replace("/login");
+        return;
+      }
+
+      setUserId(session.user.id);
+      setEmail(session.user.email ?? "");
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [router, hasFoundingInvite]);
+
+  useEffect(() => {
+    if (!selectedPlan) return;
+
+    if (selectedPlan === "premium") {
+      setMessage("Premium plan selected. Complete checkout to activate it.");
+    } else if (selectedPlan === "artist-pro") {
+      setMessage("Artist plan selected. Complete checkout to activate it.");
+    }
+  }, [selectedPlan]);
+
+  useEffect(() => {
+    if (!checkoutStatus) return;
+
+    if (checkoutStatus === "success") {
+      setMessage("Checkout completed successfully.");
+      setError("");
+    }
+
+    if (checkoutStatus === "cancel") {
+      setError("Checkout was cancelled.");
+    }
+  }, [checkoutStatus]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function claimFoundingInvite() {
+      if (!userId) return;
+      if (!hasFoundingInvite) return;
+      if (!inviteToken) return;
+      if (inviteHandledRef.current) return;
+
+      inviteHandledRef.current = true;
+      setClaimingInvite(true);
+      setError("");
+
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (!user) {
+          throw new Error("Please log in first.");
+        }
+
+        const { data: invite, error: inviteError } = await supabase
+          .from("invites")
+          .select("id, token, email, role, is_founding, used, created_at")
+          .eq("token", inviteToken)
+          .maybeSingle<InviteRow>();
+
+        if (inviteError) throw inviteError;
+
+        if (!invite) {
+          throw new Error("Invite not found.");
+        }
+
+        if (invite.used) {
+          throw new Error("This invite has already been used.");
+        }
+
+        if (invite.email && user.email && invite.email !== user.email) {
+          throw new Error("This invite belongs to a different email address.");
+        }
+
+        const cleanDisplayName =
+          user.user_metadata?.full_name ||
+          user.user_metadata?.name ||
+          user.email?.split("@")[0] ||
+          "AI Artist";
+
+        const cleanSlug = slugify(
+          user.email?.split("@")[0] || cleanDisplayName || "artist"
+        );
+
+        const updates = {
+          id: user.id,
+          role: "artist" as ProfileRole,
+          is_founding: Boolean(invite.is_founding),
+          display_name: cleanDisplayName,
+          slug: cleanSlug,
+          plan: "free",
+          is_pro: false,
+        };
+
+        const { error: profileUpdateError } = await supabase
+          .from("profiles")
+          .upsert(updates, { onConflict: "id" });
+
+        if (profileUpdateError) {
+          throw profileUpdateError;
+        }
+
+        const { error: inviteUpdateError } = await supabase
+          .from("invites")
+          .update({ used: true })
+          .eq("token", inviteToken)
+          .eq("used", false);
+
+        if (inviteUpdateError) {
+          throw inviteUpdateError;
+        }
+
+        if (!mounted) return;
+
+        await loadProfile(user);
+
+        setIsFounding(Boolean(invite.is_founding));
+        setRole("artist");
+        setDisplayName(cleanDisplayName);
+        setSlug(cleanSlug);
+        setMessage("Welcome, Founding Artist.");
+
+        router.replace("/account");
+      } catch (err: any) {
+        if (!mounted) return;
+        setError(err?.message || "Founding invite claim failed.");
+      } finally {
+        if (mounted) {
+          setClaimingInvite(false);
+        }
+      }
+    }
+
+    void claimFoundingInvite();
+
+    return () => {
+      mounted = false;
+    };
+  }, [userId, hasFoundingInvite, inviteToken, router]);
+
+  async function handleSave() {
+    if (!userId) return;
+
+    setSaving(true);
+    setMessage("");
+    setError("");
+
+    try {
+      const cleanDisplayName = displayName.trim();
+      const cleanBio = bio.trim();
+      const cleanCountry = country.trim();
+      const cleanSlug = slugify(slug || displayName || "artist");
+
+      if (!cleanDisplayName) {
+        throw new Error("Display name is required.");
+      }
+
+      const { data: existingSlug, error: slugError } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("slug", cleanSlug)
+        .neq("id", userId)
+        .maybeSingle();
+
+      if (slugError) throw slugError;
+
+      if (existingSlug) {
+        throw new Error("That profile URL is already taken.");
+      }
+
+      const payload = {
+        id: userId,
+        role,
+        display_name: cleanDisplayName,
+        bio: cleanBio,
+        country: cleanCountry,
+        avatar_url: avatarUrl || null,
+        slug: cleanSlug,
+      };
+
+      const { error: saveError } = await supabase
+        .from("profiles")
+        .upsert(payload, { onConflict: "id" });
+
+      if (saveError) throw saveError;
+
+      setSlug(cleanSlug);
+      setMessage("Profile saved.");
+    } catch (err: any) {
+      setError(err?.message || "Saving failed.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleAvatarChange(file: File | null) {
+    if (!file || !userId) return;
+
+    setUploadingAvatar(true);
+    setMessage("");
+    setError("");
+
+    try {
+      const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+      const path = `${userId}/${Date.now()}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(path, file, {
+          cacheControl: "3600",
+          upsert: true,
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+      const publicUrl = data?.publicUrl || "";
+
+      if (!publicUrl) {
+        throw new Error("Could not create avatar URL.");
+      }
+
+      setAvatarUrl(publicUrl);
+
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .upsert(
+          {
+            id: userId,
+            avatar_url: publicUrl,
+          },
+          { onConflict: "id" }
+        );
+
+      if (updateError) throw updateError;
+
+      setMessage("Avatar uploaded.");
+    } catch (err: any) {
+      setError(err?.message || "Avatar upload failed.");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }
+
+  async function handleLogout() {
+    setError("");
+    setMessage("");
+
+    await supabase.auth.signOut();
+    router.replace("/login");
+  }
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-[#07090f] px-6 py-10 text-white">
+        <div className="mx-auto max-w-5xl">
+          <div className="rounded-3xl border border-white/10 bg-white/5 p-8 backdrop-blur-xl">
+            <p className="text-sm text-white/70">Loading account...</p>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   return (
-    <>
-      {toast && (
-        <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-black/80 px-4 py-2 text-sm font-semibold text-white shadow-lg backdrop-blur">
-          {toast}
-        </div>
-      )}
-
-      <div className="space-y-4">
-        <div className="flex items-center gap-3">
-          <img
-            src={artworkSrc || "/logo-new.png"}
-            alt="art"
-            className="h-12 w-12 rounded-xl object-cover ring-1 ring-white/10"
-          />
-          <div>
-            <div className="text-base font-bold text-white">{artistName}</div>
-            <div className="text-sm font-semibold text-white/65">Genre: {genre}</div>
-          </div>
-        </div>
-
-        <div className={glassBox}>
-          <div className="mb-2 text-xs font-bold tracking-widest text-white/60">
-            TRACKS
-          </div>
-
-          <div className="space-y-2">
-            {topTracks.map((t) => {
-              const isCurrent =
-                currentTrackId != null && String(currentTrackId) === String(t.id);
-
-              return (
-                <div
-                  key={String(t.id)}
-                  className="flex items-center justify-between rounded-xl bg-white/8 px-3 py-2"
-                >
-                  <div className="truncate text-sm font-bold text-white/95">
-                    {(t.title ?? (t as any).name ?? "Untitled").toString()}
+    <main className="min-h-screen bg-[#07090f] px-6 py-10 text-white">
+      <div className="mx-auto max-w-5xl space-y-6">
+        <section className="overflow-hidden rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(45,212,191,0.16),transparent_35%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.16),transparent_35%),rgba(255,255,255,0.04)] p-6 shadow-[0_20px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+          <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-4">
+              <div className="relative h-20 w-20 overflow-hidden rounded-2xl border border-white/15 bg-white/10">
+                {avatarUrl ? (
+                  <Image
+                    src={getAvatarUrl(avatarUrl)}
+                    alt="Avatar"
+                    fill
+                    className="object-cover"
+                    sizes="80px"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-2xl font-semibold text-white/70">
+                    {(displayName || "A").charAt(0).toUpperCase()}
                   </div>
+                )}
 
-                  <button onClick={() => onPlayClick(t)} className={playBtnClass}>
-                    {isCurrent && isPlaying ? "Playing" : "Play"}
+                {isFounding ? (
+                  <div className="pointer-events-none absolute inset-0 rounded-2xl ring-2 ring-cyan-300/70" />
+                ) : null}
+              </div>
+
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-2xl font-semibold tracking-tight">
+                    {displayName || "Your account"}
+                  </h1>
+
+                  {isFounding ? (
+                    <span className="rounded-full border border-cyan-300/30 bg-cyan-400/10 px-3 py-1 text-xs font-medium text-cyan-200">
+                      Founding Artist
+                    </span>
+                  ) : null}
+
+                  {isPro ? (
+                    <span className="rounded-full border border-fuchsia-300/30 bg-fuchsia-400/10 px-3 py-1 text-xs font-medium text-fuchsia-200">
+                      Artist Pro
+                    </span>
+                  ) : null}
+                </div>
+
+                <p className="mt-1 text-sm text-white/65">{email}</p>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="rounded-full border border-white/15 bg-white/8 px-4 py-2 text-sm text-white transition hover:bg-white/12"
+                  >
+                    {uploadingAvatar ? "Uploading..." : "Upload avatar"}
+                  </button>
+
+                  {profileUrl ? (
+                    <Link
+                      href={profileUrl}
+                      className="rounded-full border border-white/15 bg-white/8 px-4 py-2 text-sm text-white transition hover:bg-white/12"
+                    >
+                      View public profile
+                    </Link>
+                  ) : null}
+
+                  <Link
+                    href="/upload"
+                    className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-4 py-2 text-sm text-cyan-100 transition hover:bg-cyan-400/15"
+                  >
+                    Upload track
+                  </Link>
+
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="rounded-full border border-white/15 bg-white/8 px-4 py-2 text-sm text-white transition hover:bg-white/12"
+                  >
+                    Log out
                   </button>
                 </div>
-              );
-            })}
-          </div>
-        </div>
 
-        <div className="space-y-2">
-          <button
-            onClick={() => handleUpgrade("premium")}
-            disabled={upgradeLoading !== null}
-            className="h-10 w-full rounded-xl bg-yellow-400 font-bold text-black hover:bg-yellow-300 disabled:opacity-60"
-          >
-            {upgradeLoading === "premium" ? "Opening..." : "Upgrade to Premium"}
-          </button>
-
-          <button
-            onClick={() => handleUpgrade("artist_pro")}
-            disabled={upgradeLoading !== null}
-            className="h-10 w-full rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-500 font-bold text-white hover:opacity-95 disabled:opacity-60"
-          >
-            {upgradeLoading === "artist_pro" ? "Opening..." : "Become Artist"}
-          </button>
-        </div>
-
-        <div className={glassBox}>
-          <div className="mb-2 text-xs font-bold tracking-widest text-white/60">
-            PLAYLISTS
-          </div>
-
-          {!canUsePlaylists ? (
-            <div className="text-sm font-semibold text-white/60">
-              Log in to create playlists.
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <div className="flex gap-2">
                 <input
-                  value={newPlaylistName}
-                  onChange={(e) => setNewPlaylistName(e.target.value)}
-                  placeholder="New playlist..."
-                  className={`flex-1 ${playlistInputClass}`}
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => handleAvatarChange(e.target.files?.[0] || null)}
                 />
-                <button onClick={createPlaylist} className={createBtnClass}>
-                  Create
-                </button>
-              </div>
-
-              <div className="flex gap-2">
-                <select
-                  value={selectedPlaylistId}
-                  onChange={(e) => setSelectedPlaylistId(e.target.value)}
-                  className={`flex-1 ${playlistSelectClass}`}
-                >
-                  <option value="" disabled>
-                    Select playlist...
-                  </option>
-                  {playlists.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-
-                <button onClick={addSelectedTrackToPlaylist} className={addBtnClass}>
-                  Add
-                </button>
-              </div>
-
-              <div className="text-xs font-semibold text-white/45">
-                Selected track:{" "}
-                <span className="text-white/75">
-                  {selectedTrack ? selectedTitle : "—"}
-                </span>
               </div>
             </div>
-          )}
-        </div>
 
-        <div className={glassBox}>
-          <div className="mb-2 flex items-center justify-between">
-            <div className="text-xs font-bold tracking-widest text-white/60">
-              FEATURED ARTISTS
+            <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/75">
+              <div>
+                <span className="text-white/45">Plan:</span>{" "}
+                <span className="font-medium text-white">{plan}</span>
+              </div>
+              <div className="mt-1">
+                <span className="text-white/45">Role:</span>{" "}
+                <span className="font-medium text-white">{role}</span>
+              </div>
             </div>
+          </div>
+        </section>
 
-            <Link
-              href="/artists"
-              className="text-xs font-bold text-cyan-300 hover:text-cyan-200"
-            >
-              View all
-            </Link>
+        {claimingInvite ? (
+          <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-200">
+            Activating Founding Artist invite...
+          </div>
+        ) : null}
+
+        {message ? (
+          <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">
+            {message}
+          </div>
+        ) : null}
+
+        {error ? (
+          <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+            {error}
+          </div>
+        ) : null}
+
+        <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+          <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+            <h2 className="text-lg font-semibold text-white">Profile settings</h2>
+            <p className="mt-1 text-sm text-white/60">
+              Edit your public artist profile.
+            </p>
+
+            <div className="mt-6 space-y-5">
+              <div>
+                <label className="mb-2 block text-sm text-white/75">
+                  Display name
+                </label>
+                <input
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="AI Artist"
+                  className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm text-white/75">Role</label>
+                <CustomSelect
+                  value={role}
+                  onChange={(value) => setRole(value as ProfileRole)}
+                  options={[
+                    { value: "artist", label: "Artist" },
+                    { value: "listener", label: "Listener" },
+                  ]}
+                  className="w-full"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm text-white/75">Country</label>
+                <input
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                  placeholder="Estonia"
+                  className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm text-white/75">
+                  Public profile URL
+                </label>
+                <div className="flex items-center rounded-2xl border border-white/10 bg-white/6 px-4">
+                  <span className="mr-2 text-sm text-white/35">/artists/</span>
+                  <input
+                    value={slug}
+                    onChange={(e) => setSlug(slugify(e.target.value))}
+                    placeholder="ai-artist"
+                    className="h-12 w-full bg-transparent text-white outline-none placeholder:text-white/30"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm text-white/75">Bio</label>
+                <textarea
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  placeholder="Tell listeners who you are..."
+                  rows={6}
+                  className="w-full rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="inline-flex h-12 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {saving ? "Saving..." : "Save profile"}
+              </button>
+            </div>
           </div>
 
-          {featuredLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-3 rounded-xl bg-white/8 px-3 py-2"
-                >
-                  <div className="h-10 w-10 animate-pulse rounded-full bg-white/10" />
-                  <div className="min-w-0 flex-1">
-                    <div className="h-3 w-24 animate-pulse rounded bg-white/10" />
-                    <div className="mt-2 h-3 w-32 animate-pulse rounded bg-white/5" />
+          <div className="space-y-6">
+            <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+              <h2 className="text-lg font-semibold text-white">Status</h2>
+
+              <div className="mt-5 space-y-3 text-sm text-white/75">
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="text-white/45">Founding</div>
+                  <div className="mt-1 font-medium text-white">
+                    {isFounding ? "Active" : "Not active"}
                   </div>
                 </div>
-              ))}
-            </div>
-          ) : featuredArtists.length === 0 ? (
-            <div className="text-sm font-semibold text-white/60">
-              No featured artists yet.
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {featuredArtists.map((artist) => {
-                const href = artist.slug ? `/artists/${artist.slug}` : `/artists/${artist.id}`;
 
-                const initials =
-                  (artist.display_name || "AI")
-                    .split(" ")
-                    .map((part) => part[0])
-                    .join("")
-                    .slice(0, 2)
-                    .toUpperCase() || "AI";
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="text-white/45">Pro access</div>
+                  <div className="mt-1 font-medium text-white">
+                    {isPro ? "Enabled" : "Free plan"}
+                  </div>
+                </div>
 
-                const isArtistRole = artist.role === "artist";
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="text-white/45">Profile link</div>
+                  <div className="mt-1 break-all font-medium text-white">
+                    {profileUrl || "Create a slug to activate"}
+                  </div>
+                </div>
+              </div>
+            </section>
 
-                return (
-                  <Link
-                    key={artist.id}
-                    href={href}
-                    className="block rounded-xl bg-white/8 px-3 py-2 transition hover:bg-white/12"
-                  >
-                    <div className="flex items-center gap-3">
-                      {artist.avatar_url ? (
-                        <img
-                          src={artist.avatar_url}
-                          alt={artist.display_name || "Artist"}
-                          className={`h-10 w-10 rounded-full object-cover ${
-                            artist.is_founding
-                              ? "ring-2 ring-amber-400/80"
-                              : "ring-1 ring-white/10"
-                          }`}
-                        />
-                      ) : (
-                        <div
-                          className={`flex h-10 w-10 items-center justify-center rounded-full text-xs font-bold text-white ${
-                            artist.is_founding
-                              ? "bg-gradient-to-br from-amber-400/35 to-orange-500/25 ring-2 ring-amber-400/80"
-                              : "bg-gradient-to-br from-teal-500/25 to-fuchsia-500/25 ring-1 ring-white/10"
-                          }`}
-                        >
-                          {initials}
-                        </div>
-                      )}
+            <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+              <h2 className="text-lg font-semibold text-white">Upload track</h2>
+              <p className="mt-2 text-sm text-white/65">
+                Publish a new song to your artist page and SoundioX discover feed.
+              </p>
 
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <div className="truncate text-sm font-bold text-white">
-                            {artist.display_name || "Unnamed artist"}
-                          </div>
+              <div className="mt-5 space-y-3">
+                <Link
+                  href="/upload"
+                  className="inline-flex h-12 w-full items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:scale-[1.01]"
+                >
+                  Open upload page
+                </Link>
 
-                          {artist.is_founding ? (
-                            <span className="rounded-full bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-200 ring-1 ring-amber-300/20">
-                              Founding
-                            </span>
-                          ) : null}
-
-                          {isArtistRole ? (
-                            <span className="rounded-full bg-fuchsia-400/15 px-1.5 py-0.5 text-[10px] font-bold text-fuchsia-200 ring-1 ring-fuchsia-300/20">
-                              Artist
-                            </span>
-                          ) : null}
-                        </div>
-
-                        <div className="truncate text-xs font-semibold text-white/55">
-                          {artist.bio?.trim()
-                            ? artist.bio
-                            : artist.country?.trim()
-                            ? artist.country
-                            : `Pulse likes: ${artist.like_count_month ?? 0}`}
-                        </div>
-                      </div>
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                <p className="text-xs leading-6 text-white/45">
+                  Upload audio, cover art, title and genre to publish a new track.
+                </p>
+              </div>
+            </section>
+          </div>
+        </section>
       </div>
-    </>
+    </main>
   );
 }
