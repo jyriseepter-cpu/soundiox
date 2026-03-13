@@ -473,14 +473,15 @@ export default function AccountClient() {
 
               <div>
                 <label className="mb-2 block text-sm text-white/75">Role</label>
-                <select
+                <CustomSelect
                   value={role}
-                  onChange={(e) => setRole(e.target.value as ProfileRole)}
-                  className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-white outline-none transition focus:border-cyan-300/40"
-                >
-                  <option value="artist">Artist</option>
-                  <option value="listener">Listener</option>
-                </select>
+                  onChange={(value) => setRole(value as ProfileRole)}
+                  options={[
+                    { value: "artist", label: "Artist" },
+                    { value: "listener", label: "Listener" },
+                  ]}
+                  className="w-full"
+                />
               </div>
 
               <div>
