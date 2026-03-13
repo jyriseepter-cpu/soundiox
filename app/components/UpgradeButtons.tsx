@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-type Plan = "premium" | "artist_pro";
+type Tier = "premium_monthly" | "artist_pro_monthly";
 
 type Props = {
   email?: string | null;
@@ -10,31 +10,31 @@ type Props = {
 };
 
 export default function UpgradeButtons({ email, userId }: Props) {
-  const [loading, setLoading] = useState<Plan | null>(null);
+  const [loading, setLoading] = useState<Tier | null>(null);
 
-  async function startCheckout(plan: Plan) {
+  async function startCheckout(tier: Tier) {
     try {
-      if (!email || !userId) {
-        alert("Please log in again before starting checkout.");
-        return;
-      }
+      setLoading(tier);
 
-      setLoading(plan);
-
-      const res = await fetch("/api/stripe/checkout", {
+      const res = await fetch("/api/stripe/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          plan,
-          email,
-          userId,
+          tier,
+          email: email || undefined,
+          userId: userId || undefined,
         }),
       });
 
       const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        alert(data?.message || data?.error || "Checkout failed");
+        alert(
+          data?.message ||
+            data?.error ||
+            JSON.stringify(data) ||
+            "Stripe checkout failed"
+        );
         return;
       }
 
@@ -43,7 +43,12 @@ export default function UpgradeButtons({ email, userId }: Props) {
         return;
       }
 
-      alert("Checkout URL missing");
+      alert(
+        data?.message ||
+          data?.error ||
+          JSON.stringify(data) ||
+          "Checkout URL missing"
+      );
     } catch (e: any) {
       alert(e?.message || "Checkout failed");
     } finally {
@@ -55,27 +60,27 @@ export default function UpgradeButtons({ email, userId }: Props) {
     "h-10 rounded-xl px-4 text-sm font-semibold text-white transition disabled:opacity-60";
   const premiumBtn =
     "bg-gradient-to-r from-yellow-300 via-amber-400 to-yellow-500 hover:opacity-95";
-  const artistBtn =
+  const proBtn =
     "bg-gradient-to-r from-fuchsia-500 via-purple-500 to-pink-500 hover:opacity-95";
 
   return (
     <div className="space-y-3">
       <button
         type="button"
-        onClick={() => startCheckout("premium")}
+        onClick={() => startCheckout("premium_monthly")}
         disabled={loading !== null}
         className={`${baseBtn} ${premiumBtn} w-full`}
       >
-        {loading === "premium" ? "Opening..." : "Upgrade to Premium"}
+        {loading === "premium_monthly" ? "Loading..." : "Upgrade to Premium"}
       </button>
 
       <button
         type="button"
-        onClick={() => startCheckout("artist_pro")}
+        onClick={() => startCheckout("artist_pro_monthly")}
         disabled={loading !== null}
-        className={`${baseBtn} ${artistBtn} w-full`}
+        className={`${baseBtn} ${proBtn} w-full`}
       >
-        {loading === "artist_pro" ? "Opening..." : "Become Artist"}
+        {loading === "artist_pro_monthly" ? "Loading..." : "Become Artist"}
       </button>
     </div>
   );
