@@ -43,20 +43,25 @@ type Props = {
 
 const glassBox = "rounded-2xl bg-white/8 ring-1 ring-white/10 p-3";
 
-const inputClass =
-  "h-9 rounded-xl px-3 text-sm font-medium text-white placeholder:text-white/40 ring-1 ring-white/10 " +
-  "bg-gradient-to-r from-teal-500/20 via-sky-500/15 to-fuchsia-500/20 backdrop-blur";
+const playlistInputClass =
+  "h-10 rounded-xl px-3 text-sm font-medium text-white placeholder:text-white/40 ring-1 ring-white/10 " +
+  "bg-gradient-to-r from-cyan-500/35 via-sky-500/25 to-fuchsia-500/30 backdrop-blur outline-none";
 
-const selectClass =
-  "h-9 rounded-xl px-3 text-sm font-medium text-white ring-1 ring-white/10 " +
-  "bg-gradient-to-r from-teal-500/20 via-sky-500/15 to-fuchsia-500/20 backdrop-blur";
+const playlistSelectClass =
+  "h-10 rounded-xl px-3 text-sm font-medium text-white ring-1 ring-cyan-300/25 " +
+  "bg-cyan-400/85 backdrop-blur outline-none";
 
-const btnGradient =
+const createBtnClass =
+  "h-10 rounded-xl px-4 text-sm font-bold text-white ring-1 ring-white/15 " +
+  "bg-gradient-to-r from-purple-600 to-fuchsia-500 hover:opacity-95 disabled:opacity-50";
+
+const addBtnClass =
+  "h-10 rounded-xl px-4 text-sm font-bold text-white ring-1 ring-cyan-200/20 " +
+  "bg-cyan-400 hover:bg-cyan-300 disabled:opacity-40";
+
+const playBtnClass =
   "h-9 rounded-xl px-4 text-sm font-bold text-white ring-1 ring-white/15 " +
   "bg-gradient-to-r from-teal-500/70 to-fuchsia-500/70 hover:from-teal-500/85 hover:to-fuchsia-500/85";
-
-const btnGlass =
-  "h-9 rounded-xl px-4 text-sm font-bold text-white ring-1 ring-white/12 bg-white/10 hover:bg-white/15";
 
 export default function ArtistPanel(props: Props) {
   const {
@@ -248,7 +253,7 @@ export default function ArtistPanel(props: Props) {
                   {(t.title ?? (t as any).name ?? "Untitled").toString()}
                 </div>
 
-                <button onClick={() => onPlayClick(t)} className={btnGradient}>
+                <button onClick={() => onPlayClick(t)} className={playBtnClass}>
                   {isCurrent && isPlaying ? "Playing" : "Play"}
                 </button>
               </div>
@@ -291,9 +296,9 @@ export default function ArtistPanel(props: Props) {
                 value={newPlaylistName}
                 onChange={(e) => setNewPlaylistName(e.target.value)}
                 placeholder="New playlist..."
-                className={`flex-1 ${inputClass}`}
+                className={`flex-1 ${playlistInputClass}`}
               />
-              <button onClick={createPlaylist} className={btnGradient}>
+              <button onClick={createPlaylist} className={createBtnClass}>
                 Create
               </button>
             </div>
@@ -302,7 +307,7 @@ export default function ArtistPanel(props: Props) {
               <select
                 value={selectedPlaylistId}
                 onChange={(e) => setSelectedPlaylistId(e.target.value)}
-                className={`flex-1 ${selectClass}`}
+                className={`flex-1 ${playlistSelectClass}`}
               >
                 <option value="" disabled>
                   Select playlist...
@@ -314,7 +319,7 @@ export default function ArtistPanel(props: Props) {
                 ))}
               </select>
 
-              <button onClick={addSelectedTrackToPlaylist} className={btnGlass}>
+              <button onClick={addSelectedTrackToPlaylist} className={addBtnClass}>
                 Add
               </button>
             </div>
