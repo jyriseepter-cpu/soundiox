@@ -23,17 +23,6 @@ type ProfileRow = {
   created_at?: string | null;
 };
 
-const GENRES = [
-  "Pop",
-  "Rock",
-  "Electronic",
-  "Hip-Hop / Rap",
-  "R&B / Soul",
-  "Classical / Cine",
-  "Country / Folk",
-  "Metal",
-];
-
 function slugify(value: string) {
   return value
     .toLowerCase()
@@ -50,13 +39,21 @@ function getAvatarUrl(value: string | null | undefined) {
   return value;
 }
 
+const GENRES = [
+  "Pop",
+  "Classical / Cine",
+  "Hip-Hop / Rap",
+  "R&B / Soul",
+  "Metal",
+  "Electronic",
+  "Country / Folk",
+  "Rock",
+];
+
 export default function AccountClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
-
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const audioInputRef = useRef<HTMLInputElement | null>(null);
-  const artInputRef = useRef<HTMLInputElement | null>(null);
 
   const selectedPlan = searchParams.get("plan");
   const checkoutStatus = searchParams.get("checkout");
@@ -64,7 +61,6 @@ export default function AccountClient() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
-  const [uploadingTrack, setUploadingTrack] = useState(false);
 
   const [userId, setUserId] = useState<string>("");
   const [email, setEmail] = useState<string>("");
@@ -78,11 +74,6 @@ export default function AccountClient() {
   const [plan, setPlan] = useState("free");
   const [isPro, setIsPro] = useState(false);
   const [isFounding, setIsFounding] = useState(false);
-
-  const [trackTitle, setTrackTitle] = useState("");
-  const [trackGenre, setTrackGenre] = useState("");
-  const [audioFile, setAudioFile] = useState<File | null>(null);
-  const [artFile, setArtFile] = useState<File | null>(null);
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -187,7 +178,7 @@ export default function AccountClient() {
       }
     }
 
-    void loadAccount();
+    loadAccount();
 
     const {
       data: { subscription },
@@ -342,110 +333,6 @@ export default function AccountClient() {
     }
   }
 
-  async function handleTrackUpload() {
-    setMessage("");
-    setError("");
-
-    if (!trackTitle.trim()) {
-      setError("Please enter a title.");
-      return;
-    }
-
-    if (!trackGenre.trim()) {
-      setError("Please choose a genre.");
-      return;
-    }
-
-    if (!audioFile) {
-      setError("Please choose an audio file.");
-      return;
-    }
-
-    if (!artFile) {
-      setError("Please choose an artwork image.");
-      return;
-    }
-
-    setUploadingTrack(true);
-
-    try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError) throw userError;
-
-      if (!user) {
-        throw new Error("Please log in first.");
-      }
-
-      const ts = Date.now();
-      const safeAudioName = audioFile.name.replace(/\s+/g, "_");
-      const safeArtName = artFile.name.replace(/\s+/g, "_");
-
-      const audioPath = `${user.id}/${ts}-${safeAudioName}`;
-      const artPath = `${user.id}/${ts}-${safeArtName}`;
-
-      const { error: upAudioError } = await supabase.storage
-        .from("tracks")
-        .upload(audioPath, audioFile, {
-          upsert: false,
-        });
-
-      if (upAudioError) {
-        throw upAudioError;
-      }
-
-      const { error: upArtError } = await supabase.storage
-        .from("art")
-        .upload(artPath, artFile, {
-          upsert: false,
-        });
-
-      if (upArtError) {
-        throw upArtError;
-      }
-
-      const audioUrl = supabase.storage.from("tracks").getPublicUrl(audioPath).data.publicUrl;
-      const artworkUrl = supabase.storage.from("art").getPublicUrl(artPath).data.publicUrl;
-
-      const displayArtist =
-        displayName.trim() ||
-        user.user_metadata?.full_name ||
-        user.user_metadata?.name ||
-        user.email?.split("@")[0] ||
-        "AI Artist";
-
-      const { error: insertError } = await supabase.from("tracks").insert({
-        title: trackTitle.trim(),
-        genre: trackGenre.trim(),
-        artist: displayArtist,
-        audio_url: audioUrl,
-        artwork_url: artworkUrl,
-        user_id: user.id,
-        is_published: true,
-      });
-
-      if (insertError) {
-        throw insertError;
-      }
-
-      setMessage("Track uploaded successfully.");
-      setTrackTitle("");
-      setTrackGenre("");
-      setAudioFile(null);
-      setArtFile(null);
-
-      if (audioInputRef.current) audioInputRef.current.value = "";
-      if (artInputRef.current) artInputRef.current.value = "";
-    } catch (err: any) {
-      setError(err?.message || "Track upload failed.");
-    } finally {
-      setUploadingTrack(false);
-    }
-  }
-
   async function handleLogout() {
     setError("");
     setMessage("");
@@ -457,7 +344,7 @@ export default function AccountClient() {
   if (loading) {
     return (
       <main className="min-h-screen bg-[#07090f] px-6 py-10 text-white">
-        <div className="mx-auto max-w-6xl">
+        <div className="mx-auto max-w-5xl">
           <div className="rounded-3xl border border-white/10 bg-white/5 p-8 backdrop-blur-xl">
             <p className="text-sm text-white/70">Loading account...</p>
           </div>
@@ -468,7 +355,7 @@ export default function AccountClient() {
 
   return (
     <main className="min-h-screen bg-[#07090f] px-6 py-10 text-white">
-      <div className="mx-auto max-w-6xl space-y-6">
+      <div className="mx-auto max-w-5xl space-y-6">
         <section className="overflow-hidden rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(45,212,191,0.16),transparent_35%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.16),transparent_35%),rgba(255,255,255,0.04)] p-6 shadow-[0_20px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl">
           <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-4">
@@ -575,160 +462,84 @@ export default function AccountClient() {
           </div>
         ) : null}
 
-        <section className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-          <div className="space-y-6">
-            <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-              <h2 className="text-lg font-semibold text-white">Profile settings</h2>
-              <p className="mt-1 text-sm text-white/60">
-                Edit your public artist profile.
-              </p>
+        <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+          <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+            <h2 className="text-lg font-semibold text-white">Profile settings</h2>
+            <p className="mt-1 text-sm text-white/60">
+              Edit your public artist profile.
+            </p>
 
-              <div className="mt-6 space-y-5">
-                <div>
-                  <label className="mb-2 block text-sm text-white/75">
-                    Display name
-                  </label>
-                  <input
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="AI Artist"
-                    className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm text-white/75">Role</label>
-                  <CustomSelect
-                    value={role}
-                    onChange={(value) => setRole(value as ProfileRole)}
-                    options={[
-                      { value: "artist", label: "Artist" },
-                      { value: "listener", label: "Listener" },
-                    ]}
-                    className="w-full"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm text-white/75">Country</label>
-                  <input
-                    value={country}
-                    onChange={(e) => setCountry(e.target.value)}
-                    placeholder="Estonia"
-                    className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm text-white/75">
-                    Public profile URL
-                  </label>
-                  <div className="flex items-center rounded-2xl border border-white/10 bg-white/6 px-4">
-                    <span className="mr-2 text-sm text-white/35">/artists/</span>
-                    <input
-                      value={slug}
-                      onChange={(e) => setSlug(slugify(e.target.value))}
-                      placeholder="ai-artist"
-                      className="h-12 w-full bg-transparent text-white outline-none placeholder:text-white/30"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm text-white/75">Bio</label>
-                  <textarea
-                    value={bio}
-                    onChange={(e) => setBio(e.target.value)}
-                    placeholder="Tell listeners who you are..."
-                    rows={6}
-                    className="w-full rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
-                  />
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="inline-flex h-12 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {saving ? "Saving..." : "Save profile"}
-                </button>
+            <div className="mt-6 space-y-5">
+              <div>
+                <label className="mb-2 block text-sm text-white/75">
+                  Display name
+                </label>
+                <input
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="AI Artist"
+                  className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
+                />
               </div>
-            </section>
 
-            <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-              <h2 className="text-2xl font-bold text-white">Upload Track</h2>
-              <p className="mt-2 text-sm text-white/60">
-                Every track must have its own genre so it can appear correctly in charts,
-                playlists and search.
-              </p>
-
-              <div className="mt-6 space-y-5">
-                <div>
-                  <label className="mb-2 block text-sm text-white/75">Title</label>
-                  <input
-                    className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
-                    placeholder="Track title"
-                    value={trackTitle}
-                    onChange={(e) => setTrackTitle(e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm text-white/75">Genre</label>
-                  <CustomSelect
-                    value={trackGenre}
-                    onChange={setTrackGenre}
-                    options={[
-                      { value: "", label: "Choose genre" },
-                      ...GENRES.map((item) => ({ value: item, label: item })),
-                    ]}
-                    className="w-full"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm text-white/75">Audio file (mp3/wav)</label>
-                  <input
-                    ref={audioInputRef}
-                    type="file"
-                    accept="audio/*"
-                    onChange={(e) => setAudioFile(e.target.files?.[0] ?? null)}
-                    className="block w-full text-sm text-white/70 file:mr-4 file:rounded-xl file:border-0 file:bg-white/10 file:px-4 file:py-2 file:text-white"
-                  />
-                  {audioFile ? (
-                    <p className="mt-2 text-xs text-white/50">{audioFile.name}</p>
-                  ) : null}
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm text-white/75">Artwork (jpg/png)</label>
-                  <input
-                    ref={artInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => setArtFile(e.target.files?.[0] ?? null)}
-                    className="block w-full text-sm text-white/70 file:mr-4 file:rounded-xl file:border-0 file:bg-white/10 file:px-4 file:py-2 file:text-white"
-                  />
-                  {artFile ? (
-                    <p className="mt-2 text-xs text-white/50">{artFile.name}</p>
-                  ) : null}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleTrackUpload}
-                  disabled={uploadingTrack}
-                  className="inline-flex h-12 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {uploadingTrack ? "Uploading..." : "Upload track"}
-                </button>
-
-                <p className="text-xs text-white/50">
-                  Buckets must exist and be public: <b>tracks</b>, <b>art</b>, <b>avatars</b>.
-                </p>
+              <div>
+                <label className="mb-2 block text-sm text-white/75">Role</label>
+                <CustomSelect
+                  value={role}
+                  onChange={(value) => setRole(value as ProfileRole)}
+                  options={[
+                    { value: "artist", label: "Artist" },
+                    { value: "listener", label: "Listener" },
+                  ]}
+                  className="w-full"
+                />
               </div>
-            </section>
+
+              <div>
+                <label className="mb-2 block text-sm text-white/75">Country</label>
+                <input
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                  placeholder="Estonia"
+                  className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm text-white/75">
+                  Public profile URL
+                </label>
+                <div className="flex items-center rounded-2xl border border-white/10 bg-white/6 px-4">
+                  <span className="mr-2 text-sm text-white/35">/artists/</span>
+                  <input
+                    value={slug}
+                    onChange={(e) => setSlug(slugify(e.target.value))}
+                    placeholder="ai-artist"
+                    className="h-12 w-full bg-transparent text-white outline-none placeholder:text-white/30"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm text-white/75">Bio</label>
+                <textarea
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  placeholder="Tell listeners who you are..."
+                  rows={6}
+                  className="w-full rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="inline-flex h-12 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {saving ? "Saving..." : "Save profile"}
+              </button>
+            </div>
           </div>
 
           <div className="space-y-6">
@@ -756,15 +567,6 @@ export default function AccountClient() {
                     {profileUrl || "Create a slug to activate"}
                   </div>
                 </div>
-              </div>
-            </section>
-
-            <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-              <h2 className="text-lg font-semibold text-white">Next steps</h2>
-              <div className="mt-4 space-y-3 text-sm text-white/70">
-                <p>• Upload your avatar and complete your artist profile.</p>
-                <p>• Add bio, country and public profile URL.</p>
-                <p>• Then continue to upload tracks and build your page.</p>
               </div>
             </section>
           </div>
