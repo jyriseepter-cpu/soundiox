@@ -89,9 +89,9 @@ export default function PlaylistsPanel(props: Props) {
         .eq("user_id", userId)
         .order("created_at", { ascending: false });
 
-      const list = (data ?? []) as Playlist;
+        const list = (data ?? []) as Playlist[];
 
-      setPlaylists(data ?? []);
+        setPlaylists(list);
 
       if (!selectedPlaylistId && data && data.length > 0) {
         const firstId = data[0].id;
