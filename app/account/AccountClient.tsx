@@ -60,6 +60,8 @@ export default function AccountClient() {
   const welcome = searchParams.get("welcome");
   const inviteToken = searchParams.get("invite");
 
+  const hasFoundingInvite = welcome === "founding" && !!inviteToken;
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -86,7 +88,7 @@ export default function AccountClient() {
     return `/artists/${slug}`;
   }, [slug]);
 
-  async function loadProfile(user: any) {
+  async function loadProfile(user: any, options?: { skipCreate?: boolean }) {
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select(
@@ -121,7 +123,7 @@ export default function AccountClient() {
     setIsPro(Boolean(profile?.is_pro));
     setIsFounding(Boolean(profile?.is_founding));
 
-    if (!profile) {
+    if (!profile && !options?.skipCreate) {
       const insertPayload = {
         id: user.id,
         role: "artist",
@@ -142,6 +144,16 @@ export default function AccountClient() {
       if (insertError) {
         throw insertError;
       }
+
+      setRole("artist");
+      setDisplayName(nextDisplayName);
+      setBio("");
+      setCountry("");
+      setSlug(nextSlug);
+      setAvatarUrl("");
+      setPlan("free");
+      setIsPro(false);
+      setIsFounding(false);
     }
   }
 
@@ -159,9 +171,7 @@ export default function AccountClient() {
           error: userError,
         } = await supabase.auth.getUser();
 
-        if (userError) {
-          throw userError;
-        }
+        if (userError) throw userError;
 
         if (!user) {
           router.replace("/login");
@@ -173,7 +183,7 @@ export default function AccountClient() {
         setUserId(user.id);
         setEmail(user.email ?? "");
 
-        await loadProfile(user);
+        await loadProfile(user, { skipCreate: hasFoundingInvite });
       } catch (err: any) {
         setError(err?.message || "Account page failed to load.");
       } finally {
@@ -201,7 +211,7 @@ export default function AccountClient() {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [router]);
+  }, [router, hasFoundingInvite]);
 
   useEffect(() => {
     if (!selectedPlan) return;
@@ -231,7 +241,7 @@ export default function AccountClient() {
 
     async function claimFoundingInvite() {
       if (!userId) return;
-      if (welcome !== "founding") return;
+      if (!hasFoundingInvite) return;
       if (!inviteToken) return;
       if (inviteHandledRef.current) return;
 
@@ -254,9 +264,7 @@ export default function AccountClient() {
           .eq("token", inviteToken)
           .maybeSingle<InviteRow>();
 
-        if (inviteError) {
-          throw inviteError;
-        }
+        if (inviteError) throw inviteError;
 
         if (!invite) {
           throw new Error("Invite not found.");
@@ -271,21 +279,23 @@ export default function AccountClient() {
         }
 
         const cleanDisplayName =
-          displayName.trim() ||
           user.user_metadata?.full_name ||
           user.user_metadata?.name ||
           user.email?.split("@")[0] ||
           "AI Artist";
 
-        const cleanSlug =
-          slugify(slug || cleanDisplayName || user.email?.split("@")[0] || "artist");
+        const cleanSlug = slugify(
+          user.email?.split("@")[0] || cleanDisplayName || "artist"
+        );
 
         const updates = {
-          id: userId,
-          role: (invite.role === "artist" ? "artist" : "artist") as ProfileRole,
+          id: user.id,
+          role: "artist" as ProfileRole,
           is_founding: Boolean(invite.is_founding),
           display_name: cleanDisplayName,
           slug: cleanSlug,
+          plan: "free",
+          is_pro: false,
         };
 
         const { error: profileUpdateError } = await supabase
@@ -308,13 +318,13 @@ export default function AccountClient() {
 
         if (!mounted) return;
 
+        await loadProfile(user);
+
         setIsFounding(Boolean(invite.is_founding));
         setRole("artist");
         setDisplayName(cleanDisplayName);
         setSlug(cleanSlug);
         setMessage("Welcome, Founding Artist.");
-
-        await loadProfile(user);
 
         router.replace("/account");
       } catch (err: any) {
@@ -332,7 +342,7 @@ export default function AccountClient() {
     return () => {
       mounted = false;
     };
-  }, [userId, welcome, inviteToken, router, displayName, slug]);
+  }, [userId, hasFoundingInvite, inviteToken, router]);
 
   async function handleSave() {
     if (!userId) return;
@@ -358,9 +368,7 @@ export default function AccountClient() {
         .neq("id", userId)
         .maybeSingle();
 
-      if (slugError) {
-        throw slugError;
-      }
+      if (slugError) throw slugError;
 
       if (existingSlug) {
         throw new Error("That profile URL is already taken.");
@@ -380,9 +388,7 @@ export default function AccountClient() {
         .from("profiles")
         .upsert(payload, { onConflict: "id" });
 
-      if (saveError) {
-        throw saveError;
-      }
+      if (saveError) throw saveError;
 
       setSlug(cleanSlug);
       setMessage("Profile saved.");
@@ -411,9 +417,7 @@ export default function AccountClient() {
           upsert: true,
         });
 
-      if (uploadError) {
-        throw uploadError;
-      }
+      if (uploadError) throw uploadError;
 
       const { data } = supabase.storage.from("avatars").getPublicUrl(path);
       const publicUrl = data?.publicUrl || "";
@@ -434,9 +438,7 @@ export default function AccountClient() {
           { onConflict: "id" }
         );
 
-      if (updateError) {
-        throw updateError;
-      }
+      if (updateError) throw updateError;
 
       setMessage("Avatar uploaded.");
     } catch (err: any) {
