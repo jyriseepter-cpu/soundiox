@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import ArtistPanel from "@/app/components/ArtistPanel";
 import TrackCard from "@/app/components/TrackCard";
@@ -63,7 +63,6 @@ function sleep(ms: number) {
 
 export default function DiscoverPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { playTrack, currentTrack, isPlaying } = usePlayer();
 
   const [tracks, setTracks] = useState<TrackRow[]>([]);
@@ -76,13 +75,18 @@ export default function DiscoverPage() {
 
   const [selectedTrack, setSelectedTrack] = useState<TrackRow | null>(null);
   const [claimingInvite, setClaimingInvite] = useState(false);
+  const [hasOAuthCode, setHasOAuthCode] = useState(false);
 
   const nowPlayingId = (currentTrack as any)?.id ?? null;
 
   const claimStartedRef = useRef(false);
   const authReadyRef = useRef(false);
 
-  const hasOAuthCode = !!searchParams.get("code");
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    setHasOAuthCode(!!params.get("code"));
+  }, []);
 
   useEffect(() => {
     let alive = true;
