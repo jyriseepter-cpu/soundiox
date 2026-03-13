@@ -356,7 +356,7 @@ export default function DiscoverPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          tier: plan,
+          plan,
           email: user.email || undefined,
           userId: user.id,
         }),
@@ -366,7 +366,12 @@ export default function DiscoverPage() {
 
       if (!res.ok) {
         setUpgradeLoading(null);
-        alert(payload?.error || "Checkout failed");
+        alert(
+          payload?.message ||
+            payload?.error ||
+            JSON.stringify(payload) ||
+            "Stripe checkout failed"
+        );
         return;
       }
 
@@ -376,7 +381,12 @@ export default function DiscoverPage() {
       }
 
       setUpgradeLoading(null);
-      alert("Checkout URL missing");
+      alert(
+        payload?.message ||
+          payload?.error ||
+          JSON.stringify(payload) ||
+          "Checkout URL missing"
+      );
     } catch (error: any) {
       console.warn("Upgrade checkout warning:", error?.message || error);
       setUpgradeLoading(null);
