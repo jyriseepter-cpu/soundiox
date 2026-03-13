@@ -12,13 +12,6 @@ const GENRES = [
   "Classical / Cine",
   "Country / Folk",
   "Metal",
-  "Ambient",
-  "House",
-  "Techno",
-  "Drum & Bass",
-  "Lo-fi",
-  "Jazz",
-  "Other",
 ];
 
 export default function UploadPage() {
