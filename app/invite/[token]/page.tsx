@@ -42,9 +42,7 @@ export default function InvitePage() {
           .eq("token", token)
           .maybeSingle<InviteRow>();
 
-        if (error) {
-          throw error;
-        }
+        if (error) throw error;
 
         if (!data) {
           if (mounted) {
@@ -62,7 +60,20 @@ export default function InvitePage() {
           return;
         }
 
-        router.replace(`/login?welcome=founding&invite=${encodeURIComponent(token)}`);
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (user) {
+          router.replace(
+            `/account?welcome=founding&invite=${encodeURIComponent(token)}`
+          );
+          return;
+        }
+
+        router.replace(
+          `/login?welcome=founding&invite=${encodeURIComponent(token)}`
+        );
       } catch (err: any) {
         if (mounted) {
           setError(err?.message || "Invite check failed.");

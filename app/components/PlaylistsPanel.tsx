@@ -12,15 +12,9 @@ type Playlist = {
 };
 
 type Props = {
-  // track, millele vajutati "Add" (Discover listist või mujalt)
   addNowTrack?: Track | null;
-  // parent annab signaali, et addNowTrack sai ära käsitletud
   onAddHandled?: () => void;
-
-  // kui parent tahab teada, milline playlist valitud (optional)
   onPlaylistSelected?: (playlistId: string) => void;
-
-  // kui parent tahab track selectionit näha (optional)
   onTrackSelected?: (t: Track | null) => void;
 };
 
@@ -38,6 +32,7 @@ export default function PlaylistsPanel(props: Props) {
   const [loadingPlaylists, setLoadingPlaylists] = useState(false);
 
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string>("");
+
   const selectedPlaylist = useMemo(
     () => playlists.find((p) => p.id === selectedPlaylistId) ?? null,
     [playlists, selectedPlaylistId]
@@ -51,7 +46,7 @@ export default function PlaylistsPanel(props: Props) {
 
   const [notice, setNotice] = useState<string>("");
 
-  // --- init user ---
+  // user init
   useEffect(() => {
     let alive = true;
 
@@ -72,15 +67,14 @@ export default function PlaylistsPanel(props: Props) {
     };
   }, []);
 
-  // --- fetch playlists when userId changes ---
   useEffect(() => {
     if (!userId) {
       setPlaylists([]);
       setSelectedPlaylistId("");
       return;
     }
+
     void fetchPlaylists();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
   async function fetchPlaylists() {
@@ -88,27 +82,19 @@ export default function PlaylistsPanel(props: Props) {
 
     try {
       setLoadingPlaylists(true);
-      setNotice("");
 
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from("playlists")
         .select("id,user_id,name,created_at")
         .eq("user_id", userId)
         .order("created_at", { ascending: false });
 
-      if (error) {
-        console.warn("fetchPlaylists warning:", error);
-        setPlaylists([]);
-        setSelectedPlaylistId("");
-        return;
-      }
+      const list = (data ?? []) as Playlist;
 
-      const list = (data ?? []) as Playlist[];
-      setPlaylists(list);
+      setPlaylists(data ?? []);
 
-      // auto-select first if none selected
-      if (!selectedPlaylistId && list.length > 0) {
-        const firstId = list[0].id;
+      if (!selectedPlaylistId && data && data.length > 0) {
+        const firstId = data[0].id;
         setSelectedPlaylistId(firstId);
         props.onPlaylistSelected?.(firstId);
       }
@@ -123,7 +109,6 @@ export default function PlaylistsPanel(props: Props) {
 
     try {
       setCreating(true);
-      setNotice("");
 
       const { data, error } = await supabase
         .from("playlists")
@@ -135,15 +120,14 @@ export default function PlaylistsPanel(props: Props) {
 
       setNewName("");
 
-      // prepend
       const created = data as Playlist;
+
       setPlaylists((prev) => [created, ...prev]);
 
-      // select it
       setSelectedPlaylistId(created.id);
+
       props.onPlaylistSelected?.(created.id);
-    } catch (e: any) {
-      console.error("createPlaylist error:", e);
+    } catch {
       setNotice("Could not create playlist.");
     } finally {
       setCreating(false);
@@ -163,33 +147,26 @@ export default function PlaylistsPanel(props: Props) {
 
     try {
       setAdding(true);
-      setNotice("");
 
       const trackId = (track as any).id as string | undefined;
+
       if (!trackId) {
         setNotice("This track has no id.");
         return;
       }
 
-      // 1) check duplicate (safe, works without relying on DB constraints)
-      const { data: exists, error: existsErr } = await supabase
+      const { data: exists } = await supabase
         .from("playlist_tracks")
         .select("id")
         .eq("playlist_id", selectedPlaylistId)
         .eq("track_id", trackId)
         .maybeSingle();
 
-      if (existsErr && existsErr.code !== "PGRST116") {
-        // PGRST116 = no rows found in some setups; ignore
-        throw existsErr;
-      }
-
       if (exists?.id) {
         setNotice("This track is already in that playlist.");
         return;
       }
 
-      // 2) insert
       const { error } = await supabase.from("playlist_tracks").insert({
         playlist_id: selectedPlaylistId,
         track_id: trackId,
@@ -198,36 +175,35 @@ export default function PlaylistsPanel(props: Props) {
       if (error) throw error;
 
       setNotice("Added ✅");
+
       setTimeout(() => setNotice(""), 1200);
-    } catch (e: any) {
-      console.error("addTrackToSelectedPlaylist error:", e);
+    } catch {
       setNotice("Could not add track.");
     } finally {
       setAdding(false);
     }
   }
 
-  // --- auto-add when parent sends addNowTrack ---
   useEffect(() => {
     const t = props.addNowTrack ?? null;
+
     if (!t) return;
 
-    // always set selection so UI reflects it
     setSelectedTrack(t);
+
     props.onTrackSelected?.(t);
 
-    // try add immediately (if playlist selected)
     void (async () => {
       await addTrackToSelectedPlaylist(t);
       props.onAddHandled?.();
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.addNowTrack]);
 
   return (
     <div className="rounded-2xl bg-white/8 p-3 ring-1 ring-white/10">
-      <div className="mb-2 flex items-center justify-between">
-        <div className="text-sm font-semibold text-white/90">PLAYLISTS</div>
+
+      <div className="text-sm font-semibold text-white/90 mb-2">
+        PLAYLISTS
       </div>
 
       <div className="flex gap-2">
@@ -235,25 +211,30 @@ export default function PlaylistsPanel(props: Props) {
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           placeholder="New playlist…"
-          className="h-10 w-full rounded-xl bg-white/10 px-3 text-sm text-white placeholder:text-white/40 ring-1 ring-white/10 focus:outline-none focus:ring-2 focus:ring-white/20"
+          className="h-10 w-full rounded-xl bg-white/10 px-3 text-sm text-white placeholder:text-white/40 ring-1 ring-white/10 focus:outline-none"
         />
+
         <button
           onClick={() => void createPlaylist()}
           disabled={creating || !newName.trim() || !userId}
-          className="h-10 rounded-xl bg-gradient-to-r from-emerald-400/80 to-fuchsia-500/80 px-4 text-sm font-semibold text-white shadow-sm disabled:opacity-40"
+          className="h-10 rounded-xl bg-gradient-to-r from-purple-500 to-fuchsia-500 px-4 text-sm font-semibold text-white disabled:opacity-40"
         >
           {creating ? "…" : "Create"}
         </button>
       </div>
 
-      <div className="mt-3">
-        <div className="text-xs text-white/60">Selected track:</div>
-        <div className="text-sm text-white/90">
-          {selectedTrack ? `${pickTitle(selectedTrack)} — ${pickArtist(selectedTrack)}` : "—"}
-        </div>
+      <div className="mt-3 text-xs text-white/60">
+        Selected track:
+      </div>
+
+      <div className="text-sm text-white/90">
+        {selectedTrack
+          ? `${pickTitle(selectedTrack)} — ${pickArtist(selectedTrack)}`
+          : "—"}
       </div>
 
       <div className="mt-3 flex gap-2">
+
         <select
           value={selectedPlaylistId}
           onChange={(e) => {
@@ -262,7 +243,7 @@ export default function PlaylistsPanel(props: Props) {
             setNotice("");
           }}
           disabled={loadingPlaylists || playlists.length === 0}
-          className="h-10 w-full rounded-xl bg-white/10 px-3 text-sm text-white ring-1 ring-white/10 focus:outline-none focus:ring-2 focus:ring-white/20"
+          className="h-10 w-full rounded-xl bg-cyan-500/80 px-3 text-sm text-white ring-1 ring-cyan-400 focus:outline-none"
         >
           {playlists.length === 0 ? (
             <option value="">No playlists</option>
@@ -276,26 +257,32 @@ export default function PlaylistsPanel(props: Props) {
         </select>
 
         <button
-          onClick={() => selectedTrack && void addTrackToSelectedPlaylist(selectedTrack)}
+          onClick={() =>
+            selectedTrack && void addTrackToSelectedPlaylist(selectedTrack)
+          }
           disabled={adding || !selectedTrack || !selectedPlaylistId}
-          className="h-10 rounded-xl bg-white/10 px-4 text-sm font-semibold text-white ring-1 ring-white/10 disabled:opacity-40"
+          className="h-10 rounded-xl bg-cyan-500 px-4 text-sm font-semibold text-white disabled:opacity-40"
         >
           {adding ? "…" : "Add"}
         </button>
       </div>
 
-      {notice ? (
+      {notice && (
         <div className="mt-2 text-xs text-white/70">
           {notice}
         </div>
-      ) : null}
+      )}
 
-      {selectedPlaylist ? (
+      {selectedPlaylist && (
         <div className="mt-3 rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
-          <div className="text-sm font-semibold text-white/90">{selectedPlaylist.name}</div>
-          <div className="text-xs text-white/50">Tip: click “Add” on a track to add instantly.</div>
+          <div className="text-sm font-semibold text-white/90">
+            {selectedPlaylist.name}
+          </div>
+          <div className="text-xs text-white/50">
+            Tip: click “Add” on a track to add instantly.
+          </div>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

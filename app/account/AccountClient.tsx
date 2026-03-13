@@ -86,6 +86,65 @@ export default function AccountClient() {
     return `/artists/${slug}`;
   }, [slug]);
 
+  async function loadProfile(user: any) {
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select(
+        "id, role, display_name, bio, country, avatar_url, slug, plan, is_pro, is_founding, created_at"
+      )
+      .eq("id", user.id)
+      .maybeSingle<ProfileRow>();
+
+    if (profileError) {
+      throw profileError;
+    }
+
+    const fallbackName =
+      user.user_metadata?.full_name ||
+      user.user_metadata?.name ||
+      user.email?.split("@")[0] ||
+      "AI Artist";
+
+    const nextDisplayName = profile?.display_name || fallbackName;
+    const nextSlug =
+      profile?.slug ||
+      slugify(nextDisplayName) ||
+      slugify(user.email?.split("@")[0] || "artist");
+
+    setRole((profile?.role as ProfileRole) || "artist");
+    setDisplayName(nextDisplayName);
+    setBio(profile?.bio || "");
+    setCountry(profile?.country || "");
+    setSlug(nextSlug);
+    setAvatarUrl(profile?.avatar_url || "");
+    setPlan(profile?.plan || "free");
+    setIsPro(Boolean(profile?.is_pro));
+    setIsFounding(Boolean(profile?.is_founding));
+
+    if (!profile) {
+      const insertPayload = {
+        id: user.id,
+        role: "artist",
+        display_name: nextDisplayName,
+        bio: "",
+        country: "",
+        avatar_url: "",
+        slug: nextSlug,
+        plan: "free",
+        is_pro: false,
+        is_founding: false,
+      };
+
+      const { error: insertError } = await supabase
+        .from("profiles")
+        .upsert(insertPayload, { onConflict: "id" });
+
+      if (insertError) {
+        throw insertError;
+      }
+    }
+  }
+
   useEffect(() => {
     let mounted = true;
 
@@ -114,64 +173,7 @@ export default function AccountClient() {
         setUserId(user.id);
         setEmail(user.email ?? "");
 
-        const { data: profile, error: profileError } = await supabase
-          .from("profiles")
-          .select(
-            "id, role, display_name, bio, country, avatar_url, slug, plan, is_pro, is_founding, created_at"
-          )
-          .eq("id", user.id)
-          .maybeSingle<ProfileRow>();
-
-        if (profileError) {
-          throw profileError;
-        }
-
-        if (!mounted) return;
-
-        const fallbackName =
-          user.user_metadata?.full_name ||
-          user.user_metadata?.name ||
-          user.email?.split("@")[0] ||
-          "AI Artist";
-
-        const nextDisplayName = profile?.display_name || fallbackName;
-        const nextSlug =
-          profile?.slug ||
-          slugify(nextDisplayName) ||
-          slugify(user.email?.split("@")[0] || "artist");
-
-        setRole((profile?.role as ProfileRole) || "artist");
-        setDisplayName(nextDisplayName);
-        setBio(profile?.bio || "");
-        setCountry(profile?.country || "");
-        setSlug(nextSlug);
-        setAvatarUrl(profile?.avatar_url || "");
-        setPlan(profile?.plan || "free");
-        setIsPro(Boolean(profile?.is_pro));
-        setIsFounding(Boolean(profile?.is_founding));
-
-        if (!profile) {
-          const insertPayload = {
-            id: user.id,
-            role: "artist",
-            display_name: nextDisplayName,
-            bio: "",
-            country: "",
-            avatar_url: "",
-            slug: nextSlug,
-            plan: "free",
-            is_pro: false,
-            is_founding: false,
-          };
-
-          const { error: insertError } = await supabase
-            .from("profiles")
-            .upsert(insertPayload, { onConflict: "id" });
-
-          if (insertError) {
-            throw insertError;
-          }
-        }
+        await loadProfile(user);
       } catch (err: any) {
         setError(err?.message || "Account page failed to load.");
       } finally {
@@ -207,7 +209,7 @@ export default function AccountClient() {
     if (selectedPlan === "premium") {
       setMessage("Premium plan selected. Complete checkout to activate it.");
     } else if (selectedPlan === "artist-pro") {
-      setMessage("Artist Pro selected. Complete checkout to activate it.");
+      setMessage("Artist plan selected. Complete checkout to activate it.");
     }
   }, [selectedPlan]);
 
@@ -238,6 +240,14 @@ export default function AccountClient() {
       setError("");
 
       try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (!user) {
+          throw new Error("Please log in first.");
+        }
+
         const { data: invite, error: inviteError } = await supabase
           .from("invites")
           .select("id, token, email, role, is_founding, used, created_at")
@@ -256,15 +266,27 @@ export default function AccountClient() {
           throw new Error("This invite has already been used.");
         }
 
-        const updates: Record<string, any> = {
-          id: userId,
-          is_founding: true,
-          role: "artist",
-        };
-
-        if (invite.role === "artist") {
-          updates.role = "artist";
+        if (invite.email && user.email && invite.email !== user.email) {
+          throw new Error("This invite belongs to a different email address.");
         }
+
+        const cleanDisplayName =
+          displayName.trim() ||
+          user.user_metadata?.full_name ||
+          user.user_metadata?.name ||
+          user.email?.split("@")[0] ||
+          "AI Artist";
+
+        const cleanSlug =
+          slugify(slug || cleanDisplayName || user.email?.split("@")[0] || "artist");
+
+        const updates = {
+          id: userId,
+          role: (invite.role === "artist" ? "artist" : "artist") as ProfileRole,
+          is_founding: Boolean(invite.is_founding),
+          display_name: cleanDisplayName,
+          slug: cleanSlug,
+        };
 
         const { error: profileUpdateError } = await supabase
           .from("profiles")
@@ -286,10 +308,15 @@ export default function AccountClient() {
 
         if (!mounted) return;
 
-        setIsFounding(true);
+        setIsFounding(Boolean(invite.is_founding));
         setRole("artist");
+        setDisplayName(cleanDisplayName);
+        setSlug(cleanSlug);
         setMessage("Welcome, Founding Artist.");
-        router.replace("/account?welcome=founding");
+
+        await loadProfile(user);
+
+        router.replace("/account");
       } catch (err: any) {
         if (!mounted) return;
         setError(err?.message || "Founding invite claim failed.");
@@ -305,7 +332,7 @@ export default function AccountClient() {
     return () => {
       mounted = false;
     };
-  }, [userId, welcome, inviteToken, router]);
+  }, [userId, welcome, inviteToken, router, displayName, slug]);
 
   async function handleSave() {
     if (!userId) return;
@@ -504,6 +531,13 @@ export default function AccountClient() {
                     </Link>
                   ) : null}
 
+                  <Link
+                    href="/upload"
+                    className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-4 py-2 text-sm text-cyan-100 transition hover:bg-cyan-400/15"
+                  >
+                    Upload track
+                  </Link>
+
                   <button
                     type="button"
                     onClick={handleLogout}
@@ -663,11 +697,22 @@ export default function AccountClient() {
             </section>
 
             <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-              <h2 className="text-lg font-semibold text-white">Next steps</h2>
-              <div className="mt-4 space-y-3 text-sm text-white/70">
-                <p>• Upload your avatar and complete your artist profile.</p>
-                <p>• Add bio, country and public profile URL.</p>
-                <p>• Then continue to upload tracks and build your page.</p>
+              <h2 className="text-lg font-semibold text-white">Upload track</h2>
+              <p className="mt-2 text-sm text-white/65">
+                Publish a new song to your artist page and SoundioX discover feed.
+              </p>
+
+              <div className="mt-5 space-y-3">
+                <Link
+                  href="/upload"
+                  className="inline-flex h-12 w-full items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:scale-[1.01]"
+                >
+                  Open upload page
+                </Link>
+
+                <p className="text-xs leading-6 text-white/45">
+                  Upload audio, cover art, title and genre to publish a new track.
+                </p>
               </div>
             </section>
           </div>
