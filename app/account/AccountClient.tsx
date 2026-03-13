@@ -32,13 +32,6 @@ const GENRES = [
   "Classical / Cine",
   "Country / Folk",
   "Metal",
-  "Ambient",
-  "House",
-  "Techno",
-  "Drum & Bass",
-  "Lo-fi",
-  "Jazz",
-  "Other",
 ];
 
 function slugify(value: string) {
