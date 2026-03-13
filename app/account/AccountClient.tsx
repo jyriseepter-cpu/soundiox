@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import CustomSelect from "@/app/components/CustomSelect";
 
 type ProfileRole = "listener" | "artist";
 
