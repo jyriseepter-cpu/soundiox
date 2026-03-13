@@ -23,6 +23,16 @@ type ProfileRow = {
   created_at?: string | null;
 };
 
+type InviteRow = {
+  id: string;
+  token: string;
+  email: string | null;
+  role: string | null;
+  is_founding: boolean | null;
+  used: boolean | null;
+  created_at: string | null;
+};
+
 function slugify(value: string) {
   return value
     .toLowerCase()
@@ -39,28 +49,21 @@ function getAvatarUrl(value: string | null | undefined) {
   return value;
 }
 
-const GENRES = [
-  "Pop",
-  "Classical / Cine",
-  "Hip-Hop / Rap",
-  "R&B / Soul",
-  "Metal",
-  "Electronic",
-  "Country / Folk",
-  "Rock",
-];
-
 export default function AccountClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const inviteHandledRef = useRef(false);
 
   const selectedPlan = searchParams.get("plan");
   const checkoutStatus = searchParams.get("checkout");
+  const welcome = searchParams.get("welcome");
+  const inviteToken = searchParams.get("invite");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [claimingInvite, setClaimingInvite] = useState(false);
 
   const [userId, setUserId] = useState<string>("");
   const [email, setEmail] = useState<string>("");
@@ -178,7 +181,7 @@ export default function AccountClient() {
       }
     }
 
-    loadAccount();
+    void loadAccount();
 
     const {
       data: { subscription },
@@ -220,6 +223,89 @@ export default function AccountClient() {
       setError("Checkout was cancelled.");
     }
   }, [checkoutStatus]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function claimFoundingInvite() {
+      if (!userId) return;
+      if (welcome !== "founding") return;
+      if (!inviteToken) return;
+      if (inviteHandledRef.current) return;
+
+      inviteHandledRef.current = true;
+      setClaimingInvite(true);
+      setError("");
+
+      try {
+        const { data: invite, error: inviteError } = await supabase
+          .from("invites")
+          .select("id, token, email, role, is_founding, used, created_at")
+          .eq("token", inviteToken)
+          .maybeSingle<InviteRow>();
+
+        if (inviteError) {
+          throw inviteError;
+        }
+
+        if (!invite) {
+          throw new Error("Invite not found.");
+        }
+
+        if (invite.used) {
+          throw new Error("This invite has already been used.");
+        }
+
+        const updates: Record<string, any> = {
+          id: userId,
+          is_founding: true,
+          role: "artist",
+        };
+
+        if (invite.role === "artist") {
+          updates.role = "artist";
+        }
+
+        const { error: profileUpdateError } = await supabase
+          .from("profiles")
+          .upsert(updates, { onConflict: "id" });
+
+        if (profileUpdateError) {
+          throw profileUpdateError;
+        }
+
+        const { error: inviteUpdateError } = await supabase
+          .from("invites")
+          .update({ used: true })
+          .eq("token", inviteToken)
+          .eq("used", false);
+
+        if (inviteUpdateError) {
+          throw inviteUpdateError;
+        }
+
+        if (!mounted) return;
+
+        setIsFounding(true);
+        setRole("artist");
+        setMessage("Welcome, Founding Artist.");
+        router.replace("/account?welcome=founding");
+      } catch (err: any) {
+        if (!mounted) return;
+        setError(err?.message || "Founding invite claim failed.");
+      } finally {
+        if (mounted) {
+          setClaimingInvite(false);
+        }
+      }
+    }
+
+    void claimFoundingInvite();
+
+    return () => {
+      mounted = false;
+    };
+  }, [userId, welcome, inviteToken, router]);
 
   async function handleSave() {
     if (!userId) return;
@@ -450,6 +536,12 @@ export default function AccountClient() {
           </div>
         </section>
 
+        {claimingInvite ? (
+          <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-200">
+            Activating Founding Artist invite...
+          </div>
+        ) : null}
+
         {message ? (
           <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">
             {message}
@@ -567,6 +659,15 @@ export default function AccountClient() {
                     {profileUrl || "Create a slug to activate"}
                   </div>
                 </div>
+              </div>
+            </section>
+
+            <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+              <h2 className="text-lg font-semibold text-white">Next steps</h2>
+              <div className="mt-4 space-y-3 text-sm text-white/70">
+                <p>• Upload your avatar and complete your artist profile.</p>
+                <p>• Add bio, country and public profile URL.</p>
+                <p>• Then continue to upload tracks and build your page.</p>
               </div>
             </section>
           </div>
