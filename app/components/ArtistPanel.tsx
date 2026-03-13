@@ -19,6 +19,7 @@ type FeaturedArtist = {
   country: string | null;
   avatar_url: string | null;
   slug: string | null;
+  role?: string | null;
   is_pro: boolean | null;
   is_founding: boolean | null;
   like_count_month: number | null;
@@ -130,7 +131,7 @@ export default function ArtistPanel(props: Props) {
         const { data, error } = await supabase
           .from("profiles")
           .select(
-            "id, display_name, bio, country, avatar_url, slug, is_pro, is_founding, like_count_month"
+            "id, display_name, bio, country, avatar_url, slug, role, is_pro, is_founding, like_count_month"
           )
           .eq("role", "artist")
           .order("is_founding", { ascending: false })
@@ -162,17 +163,20 @@ export default function ArtistPanel(props: Props) {
     };
   }, []);
 
+  const showToast = (text: string) => {
+    setToast(text);
+    window.setTimeout(() => setToast(null), 2500);
+  };
+
   const createPlaylist = async () => {
     if (!user) {
-      setToast("Please log in first");
-      setTimeout(() => setToast(null), 2500);
+      showToast("Please log in first");
       return;
     }
 
     const name = newPlaylistName.trim();
     if (!name) {
-      setToast("Enter playlist name");
-      setTimeout(() => setToast(null), 2500);
+      showToast("Enter playlist name");
       return;
     }
 
@@ -184,8 +188,7 @@ export default function ArtistPanel(props: Props) {
 
     if (error) {
       console.error(error);
-      setToast("Create failed");
-      setTimeout(() => setToast(null), 2500);
+      showToast("Create failed");
       return;
     }
 
@@ -194,26 +197,22 @@ export default function ArtistPanel(props: Props) {
 
     if (data?.id) setSelectedPlaylistId(data.id);
 
-    setToast("Playlist created ✓");
-    setTimeout(() => setToast(null), 2500);
+    showToast("Playlist created ✓");
   };
 
   const addSelectedTrackToPlaylist = async () => {
     if (!user) {
-      setToast("Please log in first");
-      setTimeout(() => setToast(null), 2500);
+      showToast("Please log in first");
       return;
     }
 
     if (!selectedTrack?.id) {
-      setToast("Select a track first");
-      setTimeout(() => setToast(null), 2500);
+      showToast("Select a track first");
       return;
     }
 
     if (!selectedPlaylistId) {
-      setToast("Select a playlist first");
-      setTimeout(() => setToast(null), 2500);
+      showToast("Select a playlist first");
       return;
     }
 
@@ -225,13 +224,11 @@ export default function ArtistPanel(props: Props) {
     ]);
 
     if (error) {
-      setToast("Track is already in playlist");
-      setTimeout(() => setToast(null), 2500);
+      showToast("Track is already in playlist");
       return;
     }
 
-    setToast("Added to playlist ✓");
-    setTimeout(() => setToast(null), 2500);
+    showToast("Added to playlist ✓");
   };
 
   const topTracks = useMemo(() => tracks.slice(0, 8), [tracks]);
@@ -412,6 +409,8 @@ export default function ArtistPanel(props: Props) {
                     .slice(0, 2)
                     .toUpperCase() || "AI";
 
+                const isArtistRole = artist.role === "artist";
+
                 return (
                   <Link
                     key={artist.id}
@@ -453,7 +452,7 @@ export default function ArtistPanel(props: Props) {
                             </span>
                           ) : null}
 
-                          {artist.is_pro ? (
+                          {isArtistRole ? (
                             <span className="rounded-full bg-fuchsia-400/15 px-1.5 py-0.5 text-[10px] font-bold text-fuchsia-200 ring-1 ring-fuchsia-300/20">
                               Artist
                             </span>
