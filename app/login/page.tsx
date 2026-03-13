@@ -1,20 +1,30 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function LoginPage() {
-  const searchParams = useSearchParams();
-  const welcome = searchParams.get("welcome");
-  const invite = searchParams.get("invite");
+  const [welcome, setWelcome] = useState<string | null>(null);
+  const [invite, setInvite] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    setWelcome(params.get("welcome"));
+    setInvite(params.get("invite"));
+  }, []);
 
   const handleLogin = async () => {
-    let redirectTo = `${window.location.origin}/account`;
+    const origin =
+      typeof window !== "undefined" ? window.location.origin : "";
+
+    let redirectTo = `${origin}/account`;
 
     if (welcome === "founding") {
       redirectTo = invite
-        ? `${window.location.origin}/account?welcome=founding&invite=${encodeURIComponent(invite)}`
-        : `${window.location.origin}/account?welcome=founding`;
+        ? `${origin}/account?welcome=founding&invite=${encodeURIComponent(invite)}`
+        : `${origin}/account?welcome=founding`;
     }
 
     await supabase.auth.signInWithOAuth({
