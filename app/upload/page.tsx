@@ -15,6 +15,11 @@ const GENRES = [
   "Metal",
 ];
 
+type ProfileRow = {
+  display_name: string | null;
+  role: string | null;
+};
+
 export default function UploadPage() {
   const [title, setTitle] = useState("");
   const [genre, setGenre] = useState("");
@@ -63,6 +68,18 @@ export default function UploadPage() {
         return;
       }
 
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("display_name, role")
+        .eq("id", user.id)
+        .maybeSingle<ProfileRow>();
+
+      if (profileError) throw profileError;
+
+      const artistName =
+        profile?.display_name?.trim() ||
+        "AI Artist";
+
       const ts = Date.now();
       const safeAudioName = audioFile.name.replace(/\s+/g, "_");
       const safeArtName = artFile.name.replace(/\s+/g, "_");
@@ -86,19 +103,16 @@ export default function UploadPage() {
 
       if (upArtError) throw upArtError;
 
-      const audioUrl = supabase.storage.from("tracks").getPublicUrl(audioPath).data.publicUrl;
-      const artworkUrl = supabase.storage.from("art").getPublicUrl(artPath).data.publicUrl;
+      const audioUrl =
+        supabase.storage.from("tracks").getPublicUrl(audioPath).data.publicUrl;
 
-      const displayArtist =
-        user.user_metadata?.full_name ||
-        user.user_metadata?.name ||
-        user.email?.split("@")[0] ||
-        "AI Artist";
+      const artworkUrl =
+        supabase.storage.from("art").getPublicUrl(artPath).data.publicUrl;
 
       const { error: insertError } = await supabase.from("tracks").insert({
         title: title.trim(),
         genre: genre.trim(),
-        artist: displayArtist,
+        artist: artistName,
         audio_url: audioUrl,
         artwork_url: artworkUrl,
         user_id: user.id,
@@ -113,8 +127,12 @@ export default function UploadPage() {
       setAudioFile(null);
       setArtFile(null);
 
-      const audioInput = document.getElementById("audio-upload") as HTMLInputElement | null;
-      const artInput = document.getElementById("art-upload") as HTMLInputElement | null;
+      const audioInput = document.getElementById(
+        "audio-upload"
+      ) as HTMLInputElement | null;
+      const artInput = document.getElementById(
+        "art-upload"
+      ) as HTMLInputElement | null;
 
       if (audioInput) audioInput.value = "";
       if (artInput) artInput.value = "";
@@ -159,17 +177,22 @@ export default function UploadPage() {
         <div className="mb-4">
           <CustomSelect
             value={genre}
-            onChange={(value) => setGenre(value)}
+            onChange={setGenre}
             options={[
               { value: "", label: "Choose genre" },
-              ...GENRES.map((item) => ({ value: item, label: item })),
+              ...GENRES.map((item) => ({
+                value: item,
+                label: item,
+              })),
             ]}
             className="w-full"
           />
         </div>
 
         <div className="mb-4">
-          <label className="mb-2 block text-sm text-white/70">Audio file (mp3/wav)</label>
+          <label className="mb-2 block text-sm text-white/70">
+            Audio file (mp3/wav)
+          </label>
           <input
             id="audio-upload"
             type="file"
@@ -180,7 +203,9 @@ export default function UploadPage() {
         </div>
 
         <div className="mb-6">
-          <label className="mb-2 block text-sm text-white/70">Artwork (jpg/png)</label>
+          <label className="mb-2 block text-sm text-white/70">
+            Artwork (jpg/png)
+          </label>
           <input
             id="art-upload"
             type="file"
