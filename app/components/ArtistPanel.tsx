@@ -4,6 +4,10 @@ import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import type { Track } from "@/app/components/PlayerContext";
+import {
+  normalizeArtistIdentity,
+  type ArtistIdentityProfile,
+} from "@/lib/artistIdentity";
 
 type Playlist = {
   id: string;
@@ -12,18 +16,7 @@ type Playlist = {
   user_id: string;
 };
 
-type FeaturedArtist = {
-  id: string;
-  display_name: string | null;
-  bio: string | null;
-  country: string | null;
-  avatar_url: string | null;
-  slug: string | null;
-  role?: string | null;
-  is_pro: boolean | null;
-  is_founding: boolean | null;
-  like_count_month: number | null;
-};
+type FeaturedArtist = ReturnType<typeof normalizeArtistIdentity>;
 
 type Props = {
   artistName: string;
@@ -146,7 +139,11 @@ export default function ArtistPanel(props: Props) {
         }
 
         if (!ignore) {
-          setFeaturedArtists((data as FeaturedArtist[]) ?? []);
+          const normalized = ((data ?? []) as ArtistIdentityProfile[])
+            .map(normalizeArtistIdentity)
+            .filter((artist) => artist.slug && artist.displayName);
+
+          setFeaturedArtists(normalized);
         }
       } catch (error) {
         console.error("Featured artists unexpected error:", error);
@@ -402,7 +399,7 @@ export default function ArtistPanel(props: Props) {
                 const href = artist.slug ? `/artists/${artist.slug}` : `/artists/${artist.id}`;
 
                 const initials =
-                  (artist.display_name || "AI")
+                  (artist.displayName || "AI")
                     .split(" ")
                     .map((part) => part[0])
                     .join("")
@@ -418,12 +415,12 @@ export default function ArtistPanel(props: Props) {
                     className="block rounded-xl bg-white/8 px-3 py-2 transition hover:bg-white/12"
                   >
                     <div className="flex items-center gap-3">
-                      {artist.avatar_url ? (
+                      {artist.avatarUrl ? (
                         <img
-                          src={artist.avatar_url}
-                          alt={artist.display_name || "Artist"}
+                          src={artist.avatarUrl}
+                          alt={artist.displayName || "Artist"}
                           className={`h-10 w-10 rounded-full object-cover ${
-                            artist.is_founding
+                            artist.isFounding
                               ? "ring-2 ring-amber-400/80"
                               : "ring-1 ring-white/10"
                           }`}
@@ -431,7 +428,7 @@ export default function ArtistPanel(props: Props) {
                       ) : (
                         <div
                           className={`flex h-10 w-10 items-center justify-center rounded-full text-xs font-bold text-white ${
-                            artist.is_founding
+                            artist.isFounding
                               ? "bg-gradient-to-br from-amber-400/35 to-orange-500/25 ring-2 ring-amber-400/80"
                               : "bg-gradient-to-br from-teal-500/25 to-fuchsia-500/25 ring-1 ring-white/10"
                           }`}
@@ -443,10 +440,10 @@ export default function ArtistPanel(props: Props) {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <div className="truncate text-sm font-bold text-white">
-                            {artist.display_name || "Unnamed artist"}
+                            {artist.displayName || "Unnamed artist"}
                           </div>
 
-                          {artist.is_founding ? (
+                          {artist.isFounding ? (
                             <span className="rounded-full bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-200 ring-1 ring-amber-300/20">
                               Founding
                             </span>
@@ -460,11 +457,11 @@ export default function ArtistPanel(props: Props) {
                         </div>
 
                         <div className="truncate text-xs font-semibold text-white/55">
-                          {artist.bio?.trim()
+                          {artist.bio
                             ? artist.bio
-                            : artist.country?.trim()
+                            : artist.country
                             ? artist.country
-                            : `Pulse likes: ${artist.like_count_month ?? 0}`}
+                            : `Pulse likes: ${artist.likeCountMonth ?? 0}`}
                         </div>
                       </div>
                     </div>

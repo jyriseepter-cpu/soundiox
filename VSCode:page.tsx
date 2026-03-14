@@ -7,13 +7,6 @@ import ArtistPanel from "@/app/components/ArtistPanel";
 import TrackCard from "@/app/components/TrackCard";
 import CustomSelect from "@/app/components/CustomSelect";
 import { usePlayer } from "@/app/components/PlayerContext";
-import {
-  createArtistIdentityMap,
-  enrichTracksWithArtistIdentity,
-  type ArtistIdentityProfile,
-  type NormalizedArtistIdentity,
-  type TrackWithResolvedArtist,
-} from "@/lib/artistIdentity";
 
 type TrackRow = {
   id: string;
@@ -29,15 +22,27 @@ type TrackRow = {
   user_id: string | null;
 };
 
-type ProfileMini = ArtistIdentityProfile;
-type DiscoverTrack = TrackWithResolvedArtist<TrackRow>;
+type ProfileMini = {
+  id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  is_founding: boolean | null;
+  is_pro: boolean | null;
+};
+
+type DiscoverTrack = TrackRow & {
+  displayArtist: string;
+  artistAvatarUrl: string | null;
+  is_founding?: boolean | null;
+  is_pro?: boolean | null;
+};
 
 function pickTitle(t: DiscoverTrack) {
   return (t.title ?? "Untitled").toString();
 }
 
 function pickArtist(t: DiscoverTrack) {
-  return t.artistDisplayName.toString();
+  return (t.displayArtist ?? t.artist ?? "AI Artist").toString();
 }
 
 function pickGenre(t: DiscoverTrack) {
@@ -46,6 +51,26 @@ function pickGenre(t: DiscoverTrack) {
 
 function getArtworkSrc(t: DiscoverTrack) {
   return (t.artwork_url ?? "/logo-new.png").toString();
+}
+
+function getCookieValue(name: string) {
+  if (typeof document === "undefined") return null;
+
+  const cookies = document.cookie ? document.cookie.split("; ") : [];
+
+  for (const cookie of cookies) {
+    const [key, ...rest] = cookie.split("=");
+    if (key === name) {
+      return decodeURIComponent(rest.join("="));
+    }
+  }
+
+  return null;
+}
+
+function deleteCookie(name: string) {
+  if (typeof document === "undefined") return;
+  document.cookie = `${name}=; path=/; max-age=0; samesite=lax`;
 }
 
 function sleep(ms: number) {
@@ -65,10 +90,12 @@ export default function DiscoverPage() {
   const [genre, setGenre] = useState("All genres");
 
   const [selectedTrack, setSelectedTrack] = useState<DiscoverTrack | null>(null);
+  const [claimingInvite, setClaimingInvite] = useState(false);
   const [hasOAuthCode, setHasOAuthCode] = useState(false);
 
   const nowPlayingId = (currentTrack as any)?.id ?? null;
 
+  const claimStartedRef = useRef(false);
   const authReadyRef = useRef(false);
 
   useEffect(() => {
@@ -106,22 +133,43 @@ export default function DiscoverPage() {
           )
         );
 
-        let profileMap = new Map<string, NormalizedArtistIdentity>();
+        let profileMap = new Map<string, ProfileMini>();
 
         if (profileIds.length > 0) {
           const { data: profiles, error: profilesError } = await supabase
             .from("profiles")
-            .select("id, display_name, slug, avatar_url, is_founding, is_pro")
+            .select("id, display_name, avatar_url, is_founding, is_pro")
             .in("id", profileIds);
 
           if (profilesError) {
             console.warn("discover profiles warning:", profilesError.message);
           } else {
-            profileMap = createArtistIdentityMap((profiles ?? []) as ProfileMini[]);
+            profileMap = new Map(
+              ((profiles ?? []) as ProfileMini[]).map((profile) => [profile.id, profile])
+            );
           }
         }
 
-        const merged = enrichTracksWithArtistIdentity(rawTracks, profileMap);
+        const merged: DiscoverTrack[] = rawTracks.map((track) => {
+          const profile =
+            track.user_id && profileMap.has(track.user_id)
+              ? profileMap.get(track.user_id) || null
+              : null;
+
+          const displayArtist =
+            profile?.display_name?.trim() ||
+            track.artist?.trim() ||
+            "AI Artist";
+
+          return {
+            ...track,
+            artist: displayArtist,
+            displayArtist,
+            artistAvatarUrl: profile?.avatar_url ?? null,
+            is_founding: profile?.is_founding ?? false,
+            is_pro: profile?.is_pro ?? false,
+          };
+        });
 
         setTracks(merged);
 
@@ -217,6 +265,96 @@ export default function DiscoverPage() {
   }, [hasOAuthCode, router]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function tryClaimFoundingInvite() {
+      if (claimStartedRef.current) return;
+
+      const inviteToken = getCookieValue("soundiox_invite_token");
+      if (!inviteToken) return;
+
+      let accessToken: string | null = null;
+      let userId: string | null = null;
+
+      for (let attempt = 0; attempt < 12; attempt++) {
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (sessionError) {
+          console.warn("discover invite getSession warning:", sessionError.message);
+        }
+
+        if (session?.access_token && session?.user?.id) {
+          accessToken = session.access_token;
+          userId = session.user.id;
+          break;
+        }
+
+        await sleep(500);
+      }
+
+      if (!accessToken || !userId) {
+        return;
+      }
+
+      claimStartedRef.current = true;
+      setClaimingInvite(true);
+
+      try {
+        const res = await fetch("/api/founding/claim", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ inviteToken }),
+        });
+
+        const data = await res.json().catch(() => null);
+
+        if (!res.ok) {
+          console.warn("discover founding claim warning:", data);
+          claimStartedRef.current = false;
+          return;
+        }
+
+        deleteCookie("soundiox_invite_token");
+
+        if (cancelled) return;
+
+        router.replace("/account?welcome=founding");
+      } catch (error: any) {
+        console.warn("discover founding claim unexpected warning:", error?.message || error);
+        claimStartedRef.current = false;
+      } finally {
+        if (!cancelled) {
+          setClaimingInvite(false);
+        }
+      }
+    }
+
+    const timer = window.setTimeout(() => {
+      void tryClaimFoundingInvite();
+    }, 1400);
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session?.user?.id) {
+        void tryClaimFoundingInvite();
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      subscription.unsubscribe();
+    };
+  }, [router]);
+
+  useEffect(() => {
     function resetUpgradeState() {
       setUpgradeLoading(null);
     }
@@ -258,7 +396,7 @@ export default function DiscoverPage() {
       if (!q) return true;
 
       const hay =
-        `${t.title ?? ""} ${t.artistDisplayName ?? ""} ${t.genre ?? ""}`.toLowerCase();
+        `${t.title ?? ""} ${t.displayArtist ?? ""} ${t.genre ?? ""}`.toLowerCase();
 
       return hay.includes(q);
     });
@@ -268,16 +406,10 @@ export default function DiscoverPage() {
     try {
       setUpgradeLoading(plan);
 
-      const {
-        data: { session },
-        error: sessionError,
-      } = await supabase.auth.getSession();
+      const { data } = await supabase.auth.getUser();
+      const user = data.user;
 
-      if (sessionError) {
-        throw sessionError;
-      }
-
-      if (!session?.access_token) {
+      if (!user) {
         setUpgradeLoading(null);
         router.push("/login");
         return;
@@ -287,10 +419,11 @@ export default function DiscoverPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           tier: plan,
+          email: user.email || undefined,
+          userId: user.id,
         }),
       });
 
@@ -298,12 +431,7 @@ export default function DiscoverPage() {
 
       if (!res.ok) {
         setUpgradeLoading(null);
-        alert(
-          payload?.message ||
-            payload?.error ||
-            JSON.stringify(payload) ||
-            "Stripe checkout failed"
-        );
+        alert(payload?.error || "Checkout failed");
         return;
       }
 
@@ -331,6 +459,12 @@ export default function DiscoverPage() {
       {authSettling ? (
         <div className="mb-4 rounded-2xl border border-cyan-300/20 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100">
           Signing you in...
+        </div>
+      ) : null}
+
+      {claimingInvite ? (
+        <div className="mb-4 rounded-2xl border border-amber-300/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+          Activating Founding Artist invite...
         </div>
       ) : null}
 

@@ -3,29 +3,39 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import {
+  createArtistIdentityMap,
+  enrichTracksWithArtistIdentity,
+  type ArtistIdentityProfile,
+  type NormalizedArtistIdentity,
+  type TrackWithResolvedArtist,
+} from "@/lib/artistIdentity";
 
 type TrackRow = {
   id: string;
   title: string | null;
   artist: string | null;
   artwork_url: string | null;
+  user_id: string | null;
 };
 
-function getArtworkSrc(t: TrackRow) {
+type HomeTrack = TrackWithResolvedArtist<TrackRow>;
+
+function getArtworkSrc(t: HomeTrack) {
   if (!t.artwork_url) return "/logo-new.png";
   return t.artwork_url;
 }
 
-function pickTitle(t: TrackRow) {
+function pickTitle(t: HomeTrack) {
   return (t.title ?? "Untitled").toString();
 }
 
-function pickArtist(t: TrackRow) {
-  return (t.artist ?? "AI Artist").toString();
+function pickArtist(t: HomeTrack) {
+  return t.artistDisplayName.toString();
 }
 
 export default function HomeClient() {
-  const [tracks, setTracks] = useState<TrackRow[]>([]);
+  const [tracks, setTracks] = useState<HomeTrack[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,7 +43,7 @@ export default function HomeClient() {
     async function loadTracks() {
       const { data, error } = await supabase
         .from("tracks")
-        .select("id,title,artist,artwork_url")
+        .select("id,title,artist,artwork_url,user_id")
         .eq("is_published", true)
         .order("created_at", { ascending: false })
         .limit(5);
@@ -41,7 +51,33 @@ export default function HomeClient() {
       if (error) {
         setError(error.message);
       } else {
-        setTracks((data ?? []) as TrackRow[]);
+        const rawTracks = (data ?? []) as TrackRow[];
+        const profileIds = Array.from(
+          new Set(
+            rawTracks
+              .map((track) => track.user_id)
+              .filter((id): id is string => typeof id === "string" && id.length > 0)
+          )
+        );
+
+        let profileMap = new Map<string, NormalizedArtistIdentity>();
+
+        if (profileIds.length > 0) {
+          const { data: profiles, error: profileError } = await supabase
+            .from("profiles")
+            .select("id, display_name, slug, avatar_url, is_founding, is_pro")
+            .in("id", profileIds);
+
+          if (profileError) {
+            setError(profileError.message);
+          } else {
+            profileMap = createArtistIdentityMap(
+              (profiles ?? []) as ArtistIdentityProfile[]
+            );
+          }
+        }
+
+        setTracks(enrichTracksWithArtistIdentity(rawTracks, profileMap));
       }
 
       setLoading(false);

@@ -22,9 +22,7 @@ export default function LoginPage() {
     const origin = window.location.origin;
 
     if (welcome === "founding") {
-      return invite
-        ? `${origin}/account?welcome=founding&invite=${encodeURIComponent(invite)}`
-        : `${origin}/account?welcome=founding`;
+      return `${origin}/account?welcome=founding`;
     }
 
     return `${origin}/account`;

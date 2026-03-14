@@ -1,28 +1,38 @@
 "use client";
 
 import { useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
 
 type Tier = "premium_monthly" | "artist_pro_monthly";
 
-type Props = {
-  email?: string | null;
-  userId?: string | null;
-};
-
-export default function UpgradeButtons({ email, userId }: Props) {
+export default function UpgradeButtons() {
   const [loading, setLoading] = useState<Tier | null>(null);
 
   async function startCheckout(tier: Tier) {
     try {
       setLoading(tier);
 
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        throw sessionError;
+      }
+
+      if (!session?.access_token) {
+        throw new Error("Please log in to start checkout.");
+      }
+
       const res = await fetch("/api/stripe/subscribe", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
         body: JSON.stringify({
           tier,
-          email: email || undefined,
-          userId: userId || undefined,
         }),
       });
 

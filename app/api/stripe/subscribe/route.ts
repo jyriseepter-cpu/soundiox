@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
 
 export const runtime = "nodejs";
@@ -6,6 +7,15 @@ export const runtime = "nodejs";
 function requiredEnv(name: string) {
   const v = process.env[name];
   return v && v.trim().length > 0 ? v.trim() : null;
+}
+
+function getBearerToken(header: string | null) {
+  if (!header) return null;
+
+  const prefix = "Bearer ";
+  if (!header.startsWith(prefix)) return null;
+
+  return header.slice(prefix.length).trim() || null;
 }
 
 function normalizePlan(input: unknown): "premium" | "artist_pro" | null {
@@ -29,26 +39,53 @@ function normalizePlan(input: unknown): "premium" | "artist_pro" | null {
 export async function POST(req: NextRequest) {
   try {
     const stripeSecretKey = requiredEnv("STRIPE_SECRET_KEY");
+    const supabaseUrl = requiredEnv("NEXT_PUBLIC_SUPABASE_URL");
+    const supabaseAnonKey = requiredEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
     if (!stripeSecretKey) {
       return NextResponse.json(
         { error: "Missing STRIPE_SECRET_KEY in server env" },
         { status: 500 }
       );
     }
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return NextResponse.json(
+        { error: "Missing Supabase auth environment variables" },
+        { status: 500 }
+      );
+    }
+
+    const accessToken = getBearerToken(req.headers.get("authorization"));
+
+    if (!accessToken) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     const stripe = new Stripe(stripeSecretKey);
+    const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    });
 
     const body = await req.json().catch(() => null);
 
     const plan = normalizePlan(body?.plan ?? body?.tier);
-    const userId = body?.userId as string | undefined;
-    const email = body?.email as string | undefined;
 
     if (!plan) {
       return NextResponse.json(
         { error: "Missing or invalid plan/tier" },
         { status: 400 }
       );
+    }
+
+    const {
+      data: { user },
+      error: userError,
+    } = await authClient.auth.getUser(accessToken);
+
+    if (userError || !user?.id || !user.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const premiumPriceId = requiredEnv("STRIPE_PREMIUM_PRICE_ID");
@@ -70,10 +107,10 @@ export async function POST(req: NextRequest) {
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       payment_method_types: ["card"],
-      customer_email: email,
+      customer_email: user.email,
       line_items: [{ price: priceId, quantity: 1 }],
       metadata: {
-        userId: userId || "",
+        userId: user.id,
         plan,
       },
       success_url: `${appUrl}/account?checkout=success&plan=${plan}`,

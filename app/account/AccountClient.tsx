@@ -23,16 +23,6 @@ type ProfileRow = {
   created_at?: string | null;
 };
 
-type InviteRow = {
-  id: string;
-  token: string;
-  email: string | null;
-  role: string | null;
-  is_founding: boolean | null;
-  used: boolean | null;
-  created_at: string | null;
-};
-
 function slugify(value: string) {
   return value
     .toLowerCase()
@@ -49,6 +39,31 @@ function getAvatarUrl(value: string | null | undefined) {
   return value;
 }
 
+function getCookieValue(name: string) {
+  if (typeof document === "undefined") return null;
+
+  const cookies = document.cookie ? document.cookie.split("; ") : [];
+
+  for (const cookie of cookies) {
+    const [key, ...rest] = cookie.split("=");
+    if (key === name) {
+      return decodeURIComponent(rest.join("="));
+    }
+  }
+
+  return null;
+}
+
+function setInviteCookie(token: string) {
+  if (typeof document === "undefined") return;
+  document.cookie = `soundiox_invite_token=${encodeURIComponent(token)}; path=/; max-age=3600; samesite=lax`;
+}
+
+function deleteInviteCookie() {
+  if (typeof document === "undefined") return;
+  document.cookie = "soundiox_invite_token=; path=/; max-age=0; samesite=lax";
+}
+
 export default function AccountClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -60,7 +75,7 @@ export default function AccountClient() {
   const welcome = searchParams.get("welcome");
   const inviteToken = searchParams.get("invite");
 
-  const hasFoundingInvite = welcome === "founding" && !!inviteToken;
+  const hasFoundingInvite = welcome === "founding";
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -240,10 +255,12 @@ export default function AccountClient() {
     let mounted = true;
 
     async function claimFoundingInvite() {
-      if (!userId) return;
       if (!hasFoundingInvite) return;
-      if (!inviteToken) return;
       if (inviteHandledRef.current) return;
+
+      const pendingInviteToken = (inviteToken || getCookieValue("soundiox_invite_token") || "").trim();
+
+      if (!pendingInviteToken) return;
 
       inviteHandledRef.current = true;
       setClaimingInvite(true);
@@ -251,84 +268,44 @@ export default function AccountClient() {
 
       try {
         const {
-          data: { user },
-        } = await supabase.auth.getUser();
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
 
-        if (!user) {
+        if (sessionError) {
+          throw sessionError;
+        }
+
+        if (!session?.user || !session.access_token) {
           throw new Error("Please log in first.");
         }
 
-        const { data: invite, error: inviteError } = await supabase
-          .from("invites")
-          .select("id, token, email, role, is_founding, used, created_at")
-          .eq("token", inviteToken)
-          .maybeSingle<InviteRow>();
+        setInviteCookie(pendingInviteToken);
 
-        if (inviteError) throw inviteError;
+        const res = await fetch("/api/founding/claim", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ inviteToken: pendingInviteToken }),
+        });
 
-        if (!invite) {
-          throw new Error("Invite not found.");
-        }
+        const data = await res.json().catch(() => null);
 
-        if (invite.used) {
-          throw new Error("This invite has already been used.");
-        }
-
-        if (invite.email && user.email && invite.email !== user.email) {
-          throw new Error("This invite belongs to a different email address.");
-        }
-
-        const cleanDisplayName =
-          user.user_metadata?.full_name ||
-          user.user_metadata?.name ||
-          user.email?.split("@")[0] ||
-          "AI Artist";
-
-        const cleanSlug = slugify(
-          user.email?.split("@")[0] || cleanDisplayName || "artist"
-        );
-
-        const updates = {
-          id: user.id,
-          role: "artist" as ProfileRole,
-          is_founding: Boolean(invite.is_founding),
-          display_name: cleanDisplayName,
-          slug: cleanSlug,
-          plan: "free",
-          is_pro: false,
-        };
-
-        const { error: profileUpdateError } = await supabase
-          .from("profiles")
-          .upsert(updates, { onConflict: "id" });
-
-        if (profileUpdateError) {
-          throw profileUpdateError;
-        }
-
-        const { error: inviteUpdateError } = await supabase
-          .from("invites")
-          .update({ used: true })
-          .eq("token", inviteToken)
-          .eq("used", false);
-
-        if (inviteUpdateError) {
-          throw inviteUpdateError;
+        if (!res.ok) {
+          throw new Error(data?.error || "Founding invite claim failed.");
         }
 
         if (!mounted) return;
 
-        await loadProfile(user);
-
-        setIsFounding(Boolean(invite.is_founding));
-        setRole("artist");
-        setDisplayName(cleanDisplayName);
-        setSlug(cleanSlug);
+        deleteInviteCookie();
+        await loadProfile(session.user);
         setMessage("Welcome, Founding Artist.");
-
-        router.replace("/account");
+        router.replace("/account?welcome=founding");
       } catch (err: any) {
         if (!mounted) return;
+        inviteHandledRef.current = false;
         setError(err?.message || "Founding invite claim failed.");
       } finally {
         if (mounted) {
@@ -342,7 +319,7 @@ export default function AccountClient() {
     return () => {
       mounted = false;
     };
-  }, [userId, hasFoundingInvite, inviteToken, router]);
+  }, [hasFoundingInvite, inviteToken, router]);
 
   async function handleSave() {
     if (!userId) return;

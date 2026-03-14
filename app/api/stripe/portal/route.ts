@@ -1,7 +1,17 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
 
 export const runtime = "nodejs";
+
+function getBearerToken(header: string | null) {
+  if (!header) return null;
+
+  const prefix = "Bearer ";
+  if (!header.startsWith(prefix)) return null;
+
+  return header.slice(prefix.length).trim() || null;
+}
 
 function getAppUrl() {
   return process.env.NEXT_PUBLIC_APP_URL || "https://soundiox.io";
@@ -9,36 +19,82 @@ function getAppUrl() {
 
 export async function POST(req: Request) {
   const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!stripeSecretKey) {
+  if (
+    !stripeSecretKey ||
+    !supabaseUrl ||
+    !supabaseAnonKey ||
+    !supabaseServiceRoleKey
+  ) {
     return NextResponse.json(
-      { error: "Missing STRIPE_SECRET_KEY in environment variables" },
+      { error: "Missing required environment variables" },
       { status: 500 }
     );
   }
 
+  const accessToken = getBearerToken(req.headers.get("authorization"));
+
+  if (!accessToken) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const stripe = new Stripe(stripeSecretKey);
+  const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+  const adminClient = createClient(supabaseUrl, supabaseServiceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
 
   try {
-    const body = await req.json().catch(() => ({}));
-    const email = body?.email ? String(body.email).trim() : "";
+    const {
+      data: { user },
+      error: userError,
+    } = await authClient.auth.getUser(accessToken);
 
-    if (!email) {
-      return NextResponse.json({ error: "Missing email" }, { status: 400 });
+    if (userError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { data: profile, error: profileError } = await adminClient
+      .from("profiles")
+      .select("stripe_customer_id")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (profileError) {
+      console.error("Portal profile lookup error:", profileError);
+      return NextResponse.json(
+        { error: "Failed to load billing profile" },
+        { status: 500 }
+      );
+    }
+
+    const stripeCustomerId =
+      typeof profile?.stripe_customer_id === "string"
+        ? profile.stripe_customer_id.trim()
+        : "";
+
+    if (!stripeCustomerId) {
+      return NextResponse.json(
+        { error: "No billing account found for this user" },
+        { status: 404 }
+      );
     }
 
     const appUrl = getAppUrl();
 
-    const customers = await stripe.customers.list({
-      email,
-      limit: 1,
-    });
-
-    const customer =
-      customers.data[0] || (await stripe.customers.create({ email }));
-
     const portalSession = await stripe.billingPortal.sessions.create({
-      customer: customer.id,
+      customer: stripeCustomerId,
       return_url: `${appUrl}/account`,
     });
 

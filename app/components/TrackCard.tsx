@@ -15,11 +15,17 @@ function getTitle(track: Track) {
 }
 
 function getArtist(track: Track) {
-  return (track.artist ?? "AI Artist").toString();
+  return (
+    track.artistDisplayName ??
+    track.displayArtist ??
+    track.artist ??
+    "AI Artist"
+  ).toString();
 }
 
 function getImage(track: Track) {
   return (
+    track.artistAvatarUrl ??
     track.avatar_url ??
     track.artwork_url ??
     track.image_url ??

@@ -48,23 +48,6 @@ function planFromPriceId(priceId: string | null): PlanValue | null {
   return null;
 }
 
-async function findUserIdByEmail(email: string): Promise<string | null> {
-  const cleanEmail = email.trim().toLowerCase();
-  if (!cleanEmail) return null;
-
-  const { data, error } = await supabase.auth.admin.listUsers();
-
-  if (error) {
-    throw error;
-  }
-
-  const match = data.users.find(
-    (user) => (user.email || "").trim().toLowerCase() === cleanEmail
-  );
-
-  return match?.id || null;
-}
-
 async function updateProfile(params: {
   userId: string;
   plan: PlanValue;
@@ -90,6 +73,20 @@ async function updateProfile(params: {
   }
 }
 
+async function getProfileByStripeCustomerId(stripeCustomerId: string) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("stripe_customer_id", stripeCustomerId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
 async function getSessionPriceId(sessionId: string): Promise<string | null> {
   const lineItems = await stripe.checkout.sessions.listLineItems(sessionId, {
     limit: 10,
@@ -110,7 +107,6 @@ async function getSessionPriceId(sessionId: string): Promise<string | null> {
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   const metadata = session.metadata || {};
   const sessionId = session.id;
-  const email = (session.customer_email || "").trim();
   const stripeCustomerId =
     typeof session.customer === "string"
       ? session.customer
@@ -131,19 +127,29 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     return;
   }
 
-  let userId = (metadata.userId || "").trim();
-
-  if (!userId && email) {
-    userId = (await findUserIdByEmail(email)) || "";
-  }
+  const userId = String(metadata.userId || "").trim();
 
   if (!userId) {
-    console.warn("Webhook: could not resolve user for checkout session", {
+    console.warn("Webhook: missing userId metadata for checkout session", {
       sessionId,
-      email,
       metadata,
     });
     return;
+  }
+
+  if (stripeCustomerId) {
+    const existingCustomerOwner =
+      await getProfileByStripeCustomerId(stripeCustomerId);
+
+    if (existingCustomerOwner?.id && existingCustomerOwner.id !== userId) {
+      console.error("Webhook: stripe customer already linked to another user", {
+        sessionId,
+        stripeCustomerId,
+        metadataUserId: userId,
+        existingUserId: existingCustomerOwner.id,
+      });
+      return;
+    }
   }
 
   await updateProfile({
