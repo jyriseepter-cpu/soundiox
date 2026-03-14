@@ -19,21 +19,37 @@ type TrackRow = {
   plays_all_time: number | null;
   plays_this_month: number | null;
   is_published: boolean | null;
+  user_id: string | null;
 };
 
-function pickTitle(t: TrackRow) {
+type ProfileMini = {
+  id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  is_founding: boolean | null;
+  is_pro: boolean | null;
+};
+
+type DiscoverTrack = TrackRow & {
+  displayArtist: string;
+  artistAvatarUrl: string | null;
+  is_founding?: boolean | null;
+  is_pro?: boolean | null;
+};
+
+function pickTitle(t: DiscoverTrack) {
   return (t.title ?? "Untitled").toString();
 }
 
-function pickArtist(t: TrackRow) {
-  return (t.artist ?? "AI Artist").toString();
+function pickArtist(t: DiscoverTrack) {
+  return (t.displayArtist ?? t.artist ?? "AI Artist").toString();
 }
 
-function pickGenre(t: TrackRow) {
+function pickGenre(t: DiscoverTrack) {
   return (t.genre ?? "-").toString();
 }
 
-function getArtworkSrc(t: TrackRow) {
+function getArtworkSrc(t: DiscoverTrack) {
   return (t.artwork_url ?? "/logo-new.png").toString();
 }
 
@@ -65,7 +81,7 @@ export default function DiscoverPage() {
   const router = useRouter();
   const { playTrack, currentTrack, isPlaying } = usePlayer();
 
-  const [tracks, setTracks] = useState<TrackRow[]>([]);
+  const [tracks, setTracks] = useState<DiscoverTrack[]>([]);
   const [loading, setLoading] = useState(true);
   const [authSettling, setAuthSettling] = useState(false);
   const [upgradeLoading, setUpgradeLoading] = useState<"premium" | "artist_pro" | null>(null);
@@ -73,7 +89,7 @@ export default function DiscoverPage() {
   const [search, setSearch] = useState("");
   const [genre, setGenre] = useState("All genres");
 
-  const [selectedTrack, setSelectedTrack] = useState<TrackRow | null>(null);
+  const [selectedTrack, setSelectedTrack] = useState<DiscoverTrack | null>(null);
   const [claimingInvite, setClaimingInvite] = useState(false);
   const [hasOAuthCode, setHasOAuthCode] = useState(false);
 
@@ -98,7 +114,7 @@ export default function DiscoverPage() {
         const { data, error } = await supabase
           .from("tracks")
           .select(
-            "id,title,artist,genre,audio_url,artwork_url,created_at,plays_all_time,plays_this_month,is_published"
+            "id,title,artist,genre,audio_url,artwork_url,created_at,plays_all_time,plays_this_month,is_published,user_id"
           )
           .eq("is_published", true)
           .order("created_at", { ascending: false });
@@ -107,11 +123,58 @@ export default function DiscoverPage() {
 
         if (!alive) return;
 
-        const list = (data ?? []) as TrackRow[];
-        setTracks(list);
+        const rawTracks = (data ?? []) as TrackRow[];
 
-        if (list.length > 0) {
-          setSelectedTrack((prev) => prev ?? list[0]);
+        const profileIds = Array.from(
+          new Set(
+            rawTracks
+              .map((t) => t.user_id)
+              .filter((id): id is string => typeof id === "string" && id.length > 0)
+          )
+        );
+
+        let profileMap = new Map<string, ProfileMini>();
+
+        if (profileIds.length > 0) {
+          const { data: profiles, error: profilesError } = await supabase
+            .from("profiles")
+            .select("id, display_name, avatar_url, is_founding, is_pro")
+            .in("id", profileIds);
+
+          if (profilesError) {
+            console.warn("discover profiles warning:", profilesError.message);
+          } else {
+            profileMap = new Map(
+              ((profiles ?? []) as ProfileMini[]).map((profile) => [profile.id, profile])
+            );
+          }
+        }
+
+        const merged: DiscoverTrack[] = rawTracks.map((track) => {
+          const profile =
+            track.user_id && profileMap.has(track.user_id)
+              ? profileMap.get(track.user_id) || null
+              : null;
+
+          const displayArtist =
+            profile?.display_name?.trim() ||
+            track.artist?.trim() ||
+            "AI Artist";
+
+          return {
+            ...track,
+            artist: displayArtist,
+            displayArtist,
+            artistAvatarUrl: profile?.avatar_url ?? null,
+            is_founding: profile?.is_founding ?? false,
+            is_pro: profile?.is_pro ?? false,
+          };
+        });
+
+        setTracks(merged);
+
+        if (merged.length > 0) {
+          setSelectedTrack((prev) => prev ?? merged[0]);
         }
       } catch (e: any) {
         console.warn("discover fetch tracks warning:", {
@@ -332,7 +395,9 @@ export default function DiscoverPage() {
 
       if (!q) return true;
 
-      const hay = `${t.title ?? ""} ${t.artist ?? ""} ${t.genre ?? ""}`.toLowerCase();
+      const hay =
+        `${t.title ?? ""} ${t.displayArtist ?? ""} ${t.genre ?? ""}`.toLowerCase();
+
       return hay.includes(q);
     });
   }, [tracks, search, genre]);
@@ -356,7 +421,7 @@ export default function DiscoverPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          plan,
+          tier: plan,
           email: user.email || undefined,
           userId: user.id,
         }),
@@ -366,12 +431,7 @@ export default function DiscoverPage() {
 
       if (!res.ok) {
         setUpgradeLoading(null);
-        alert(
-          payload?.message ||
-            payload?.error ||
-            JSON.stringify(payload) ||
-            "Stripe checkout failed"
-        );
+        alert(payload?.error || "Checkout failed");
         return;
       }
 
@@ -381,12 +441,7 @@ export default function DiscoverPage() {
       }
 
       setUpgradeLoading(null);
-      alert(
-        payload?.message ||
-          payload?.error ||
-          JSON.stringify(payload) ||
-          "Checkout URL missing"
-      );
+      alert("Checkout URL missing");
     } catch (error: any) {
       console.warn("Upgrade checkout warning:", error?.message || error);
       setUpgradeLoading(null);
@@ -461,7 +516,7 @@ export default function DiscoverPage() {
 
         <div className="rounded-2xl bg-white/8 p-3 ring-1 ring-white/10">
           <ArtistPanel
-            artistName={pickArtist(selectedTrack ?? ({} as any))}
+            artistName={selectedTrack ? pickArtist(selectedTrack) : "AI Artist"}
             genre={selectedTrack ? pickGenre(selectedTrack) : "-"}
             selectedTitle={selectedTrack ? pickTitle(selectedTrack) : "No track selected"}
             artworkSrc={selectedTrack ? getArtworkSrc(selectedTrack) : "/logo-new.png"}
