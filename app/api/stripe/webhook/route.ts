@@ -3,58 +3,80 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const premiumPriceId = process.env.STRIPE_PREMIUM_PRICE_ID;
-const artistProPriceId = process.env.STRIPE_ARTIST_PRO_PRICE_ID;
-
-if (!stripeSecretKey) {
-  throw new Error("Missing STRIPE_SECRET_KEY");
-}
-if (!webhookSecret) {
-  throw new Error("Missing STRIPE_WEBHOOK_SECRET");
-}
-if (!supabaseUrl) {
-  throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL");
-}
-if (!supabaseServiceRoleKey) {
-  throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
-}
-if (!premiumPriceId) {
-  throw new Error("Missing STRIPE_PREMIUM_PRICE_ID");
-}
-if (!artistProPriceId) {
-  throw new Error("Missing STRIPE_ARTIST_PRO_PRICE_ID");
-}
-
-const stripe = new Stripe(stripeSecretKey);
-const webhookSecretValue = webhookSecret;
-
-const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-});
-
 type PlanValue = "free" | "premium" | "artist_pro";
 
-function planFromPriceId(priceId: string | null): PlanValue | null {
+type WebhookContext = {
+  stripe: Stripe;
+  webhookSecret: string;
+  supabase: any;
+  premiumPriceId: string;
+  artistProPriceId: string;
+};
+
+function requiredEnv(name: string) {
+  const value = process.env[name];
+  return value && value.trim().length > 0 ? value.trim() : null;
+}
+
+function getWebhookContext(): WebhookContext {
+  const stripeSecretKey = requiredEnv("STRIPE_SECRET_KEY");
+  const webhookSecret = requiredEnv("STRIPE_WEBHOOK_SECRET");
+  const supabaseUrl = requiredEnv("NEXT_PUBLIC_SUPABASE_URL");
+  const supabaseServiceRoleKey = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const premiumPriceId = requiredEnv("STRIPE_PREMIUM_PRICE_ID");
+  const artistProPriceId = requiredEnv("STRIPE_ARTIST_PRO_PRICE_ID");
+
+  if (!stripeSecretKey) {
+    throw new Error("Missing STRIPE_SECRET_KEY");
+  }
+  if (!webhookSecret) {
+    throw new Error("Missing STRIPE_WEBHOOK_SECRET");
+  }
+  if (!supabaseUrl) {
+    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL");
+  }
+  if (!supabaseServiceRoleKey) {
+    throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
+  }
+  if (!premiumPriceId) {
+    throw new Error("Missing STRIPE_PREMIUM_PRICE_ID");
+  }
+  if (!artistProPriceId) {
+    throw new Error("Missing STRIPE_ARTIST_PRO_PRICE_ID");
+  }
+
+  return {
+    stripe: new Stripe(stripeSecretKey),
+    webhookSecret,
+    supabase: createClient(supabaseUrl, supabaseServiceRoleKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    }),
+    premiumPriceId,
+    artistProPriceId,
+  };
+}
+
+function planFromPriceId(
+  priceId: string | null,
+  context: WebhookContext
+): PlanValue | null {
   if (!priceId) return null;
-  if (priceId === premiumPriceId) return "premium";
-  if (priceId === artistProPriceId) return "artist_pro";
+  if (priceId === context.premiumPriceId) return "premium";
+  if (priceId === context.artistProPriceId) return "artist_pro";
   return null;
 }
 
 async function updateProfile(params: {
+  context: WebhookContext;
   userId: string;
   plan: PlanValue;
   stripeCustomerId?: string | null;
   stripeSubscriptionId?: string | null;
 }) {
-  const { userId, plan, stripeCustomerId, stripeSubscriptionId } = params;
+  const { context, userId, plan, stripeCustomerId, stripeSubscriptionId } = params;
 
   const payload = {
     id: userId,
@@ -64,7 +86,7 @@ async function updateProfile(params: {
     stripe_subscription_id: stripeSubscriptionId || null,
   };
 
-  const { error } = await supabase
+  const { error } = await context.supabase
     .from("profiles")
     .upsert(payload, { onConflict: "id" });
 
@@ -73,8 +95,11 @@ async function updateProfile(params: {
   }
 }
 
-async function getProfileByStripeCustomerId(stripeCustomerId: string) {
-  const { data, error } = await supabase
+async function getProfileByStripeCustomerId(
+  stripeCustomerId: string,
+  context: WebhookContext
+) {
+  const { data, error } = await context.supabase
     .from("profiles")
     .select("id")
     .eq("stripe_customer_id", stripeCustomerId)
@@ -87,8 +112,11 @@ async function getProfileByStripeCustomerId(stripeCustomerId: string) {
   return data;
 }
 
-async function getSessionPriceId(sessionId: string): Promise<string | null> {
-  const lineItems = await stripe.checkout.sessions.listLineItems(sessionId, {
+async function getSessionPriceId(
+  sessionId: string,
+  context: WebhookContext
+): Promise<string | null> {
+  const lineItems = await context.stripe.checkout.sessions.listLineItems(sessionId, {
     limit: 10,
   });
 
@@ -104,7 +132,10 @@ async function getSessionPriceId(sessionId: string): Promise<string | null> {
   return price.id || null;
 }
 
-async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
+async function handleCheckoutCompleted(
+  session: Stripe.Checkout.Session,
+  context: WebhookContext
+) {
   const metadata = session.metadata || {};
   const sessionId = session.id;
   const stripeCustomerId =
@@ -116,8 +147,8 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
       ? session.subscription
       : session.subscription?.id || null;
 
-  const priceId = await getSessionPriceId(sessionId);
-  const plan = planFromPriceId(priceId);
+  const priceId = await getSessionPriceId(sessionId, context);
+  const plan = planFromPriceId(priceId, context);
 
   if (!plan || plan === "free") {
     console.warn("Webhook: unknown or unsupported price id", {
@@ -139,7 +170,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
   if (stripeCustomerId) {
     const existingCustomerOwner =
-      await getProfileByStripeCustomerId(stripeCustomerId);
+      await getProfileByStripeCustomerId(stripeCustomerId, context);
 
     if (existingCustomerOwner?.id && existingCustomerOwner.id !== userId) {
       console.error("Webhook: stripe customer already linked to another user", {
@@ -153,6 +184,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   }
 
   await updateProfile({
+    context,
     userId,
     plan,
     stripeCustomerId,
@@ -168,7 +200,10 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   });
 }
 
-async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
+async function handleSubscriptionDeleted(
+  subscription: Stripe.Subscription,
+  context: WebhookContext
+) {
   const stripeCustomerId =
     typeof subscription.customer === "string"
       ? subscription.customer
@@ -179,7 +214,7 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
     return;
   }
 
-  const { data: profile, error } = await supabase
+  const { data: profile, error } = await context.supabase
     .from("profiles")
     .select("id")
     .eq("stripe_customer_id", stripeCustomerId)
@@ -197,6 +232,7 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
   }
 
   await updateProfile({
+    context,
     userId: profile.id,
     plan: "free",
     stripeCustomerId,
@@ -210,6 +246,15 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
 }
 
 export async function POST(req: Request) {
+  let context: WebhookContext;
+
+  try {
+    context = getWebhookContext();
+  } catch (err: any) {
+    console.error("Webhook env initialization failed:", err?.message || err);
+    return new Response("Webhook configuration error", { status: 500 });
+  }
+
   const sig = req.headers.get("stripe-signature");
 
   if (!sig) {
@@ -221,7 +266,7 @@ export async function POST(req: Request) {
   let event: Stripe.Event;
 
   try {
-    event = stripe.webhooks.constructEvent(body, sig, webhookSecretValue);
+    event = context.stripe.webhooks.constructEvent(body, sig, context.webhookSecret);
   } catch (err: any) {
     console.error("Webhook signature verification failed:", err?.message || err);
     return new Response("Webhook Error", { status: 400 });
@@ -231,13 +276,13 @@ export async function POST(req: Request) {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
-        await handleCheckoutCompleted(session);
+        await handleCheckoutCompleted(session, context);
         break;
       }
 
       case "customer.subscription.deleted": {
         const subscription = event.data.object as Stripe.Subscription;
-        await handleSubscriptionDeleted(subscription);
+        await handleSubscriptionDeleted(subscription, context);
         break;
       }
 
