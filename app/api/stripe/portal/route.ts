@@ -3,18 +3,22 @@ import Stripe from "stripe";
 
 export const runtime = "nodejs";
 
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-if (!stripeSecretKey) {
-  throw new Error("Missing STRIPE_SECRET_KEY in environment variables");
-}
-
-const stripe = new Stripe(stripeSecretKey);
-
 function getAppUrl() {
-  return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  return process.env.NEXT_PUBLIC_APP_URL || "https://soundiox.io";
 }
 
 export async function POST(req: Request) {
+  const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+
+  if (!stripeSecretKey) {
+    return NextResponse.json(
+      { error: "Missing STRIPE_SECRET_KEY in environment variables" },
+      { status: 500 }
+    );
+  }
+
+  const stripe = new Stripe(stripeSecretKey);
+
   try {
     const body = await req.json().catch(() => ({}));
     const email = body?.email ? String(body.email).trim() : "";
