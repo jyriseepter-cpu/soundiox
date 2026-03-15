@@ -116,17 +116,11 @@ export default function AccountClient() {
       throw profileError;
     }
 
-    const fallbackName =
-      user.user_metadata?.full_name ||
-      user.user_metadata?.name ||
-      user.email?.split("@")[0] ||
-      "AI Artist";
+    const defaultDisplayName = "AI Artist";
+    const defaultSlug = `artist-${String(user.id || "").slice(0, 8)}`;
 
-    const nextDisplayName = profile?.display_name || fallbackName;
-    const nextSlug =
-      profile?.slug ||
-      slugify(nextDisplayName) ||
-      slugify(user.email?.split("@")[0] || "artist");
+    const nextDisplayName = profile?.display_name || defaultDisplayName;
+    const nextSlug = profile?.slug || defaultSlug;
 
     setRole((profile?.role as ProfileRole) || "artist");
     setDisplayName(nextDisplayName);
