@@ -60,7 +60,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const stripe = new Stripe(stripeSecretKey);
+    console.log("SUBSCRIBE_ROUTE_MARKER_v1");
+
+    const key = process.env.STRIPE_SECRET_KEY;
+
+    console.log(
+      "STRIPE_SECRET_KEY_PREFIX:",
+      key ? key.slice(0, 7) : "MISSING_KEY"
+    );
+
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
     const authClient = createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         autoRefreshToken: false,
@@ -128,6 +137,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ url: session.url });
   } catch (err: any) {
+    console.error("SUBSCRIBE_ROUTE_ERROR_v1", err?.message || err);
     console.error("Stripe Checkout Error:", err?.message || err, err);
 
     return NextResponse.json(
