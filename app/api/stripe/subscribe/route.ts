@@ -38,12 +38,12 @@ function normalizePlan(input: unknown): "premium" | "artist_pro" | null {
 
 export async function POST(req: NextRequest) {
   try {
-    const stripeSecretKey = requiredEnv("STRIPE_SECRET_KEY");
+    const stripeSecretKey = requiredEnv("STRIPE_SECRET_KEY_LIVE");
     const supabaseUrl = requiredEnv("NEXT_PUBLIC_SUPABASE_URL");
     const supabaseAnonKey = requiredEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
     if (!stripeSecretKey) {
       return NextResponse.json(
-        { error: "Missing STRIPE_SECRET_KEY in server env" },
+        { error: "Missing STRIPE_SECRET_KEY_LIVE in server env" },
         { status: 500 }
       );
     }
@@ -60,16 +60,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    console.log("SUBSCRIBE_ROUTE_MARKER_v1");
-
-    const key = process.env.STRIPE_SECRET_KEY;
+    console.log("SUBSCRIBE_ROUTE_MARKER_v2");
 
     console.log(
-      "STRIPE_SECRET_KEY_PREFIX:",
-      key ? key.slice(0, 7) : "MISSING_KEY"
+      "STRIPE_SECRET_KEY_LIVE_PREFIX:",
+      process.env.STRIPE_SECRET_KEY_LIVE
+        ? process.env.STRIPE_SECRET_KEY_LIVE.slice(0, 7)
+        : "MISSING_KEY"
     );
 
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY_LIVE as string);
     const authClient = createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         autoRefreshToken: false,
