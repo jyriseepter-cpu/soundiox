@@ -1,5 +1,6 @@
 import "./globals.css";
 import type { Metadata } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import { PlayerProvider } from "@/app/components/PlayerContext";
 import PlayerBar from "@/app/components/PlayerBar";
 import Header from "@/app/components/Header";
@@ -20,7 +21,7 @@ export default function RootLayout({
     <html lang="en">
       <body className="bg-gradient-to-b from-black via-neutral-900 to-black text-white">
         <PlayerProvider>
-          <div className="min-h-screen flex flex-col pb-40">
+          <div className="min-h-screen flex flex-col">
             {/* HEADER */}
             <Header />
 
@@ -28,7 +29,7 @@ export default function RootLayout({
             <CookieBanner />
 
             {/* PAGE CONTENT */}
-            <main className="flex-1">{children}</main>
+            <main className="flex-1 player-safe-area">{children}</main>
 
             {/* FOOTER */}
             <SiteFooter />
@@ -37,6 +38,7 @@ export default function RootLayout({
           {/* PLAYER BAR */}
           <PlayerBar />
         </PlayerProvider>
+        <Analytics />
       </body>
     </html>
   );
