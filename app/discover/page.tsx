@@ -31,6 +31,11 @@ type TrackRow = {
 
 type ProfileMini = ArtistIdentityProfile;
 type DiscoverTrack = TrackWithResolvedArtist<TrackRow>;
+type ViewerProfile = {
+  role: string | null;
+  plan: string | null;
+  is_pro: boolean | null;
+};
 
 function pickTitle(t: DiscoverTrack) {
   return (t.title ?? "Untitled").toString();
@@ -66,6 +71,8 @@ export default function DiscoverPage() {
 
   const [selectedTrack, setSelectedTrack] = useState<DiscoverTrack | null>(null);
   const [hasOAuthCode, setHasOAuthCode] = useState(false);
+  const [viewerRole, setViewerRole] = useState<"listener" | "artist">("listener");
+  const [viewerHasPaidPlan, setViewerHasPaidPlan] = useState(false);
 
   const nowPlayingId = (currentTrack as any)?.id ?? null;
 
@@ -215,6 +222,65 @@ export default function DiscoverPage() {
       subscription.unsubscribe();
     };
   }, [hasOAuthCode, router]);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadViewerProfile() {
+      try {
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
+
+        if (userError) throw userError;
+
+        if (!user) {
+          if (!alive) return;
+          setViewerRole("listener");
+          setViewerHasPaidPlan(false);
+          return;
+        }
+
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("role, plan, is_pro")
+          .eq("id", user.id)
+          .maybeSingle<ViewerProfile>();
+
+        if (profileError) throw profileError;
+        if (!alive) return;
+
+        const nextRole: "listener" | "artist" =
+          profile?.role === "artist" ? "artist" : "listener";
+        const hasPaidPlan =
+          Boolean(profile?.is_pro) ||
+          profile?.plan === "premium" ||
+          profile?.plan === "artist_pro";
+
+        setViewerRole(nextRole);
+        setViewerHasPaidPlan(hasPaidPlan);
+      } catch (error) {
+        console.warn("discover viewer profile warning:", error);
+        if (!alive) return;
+        setViewerRole("listener");
+        setViewerHasPaidPlan(false);
+      }
+    }
+
+    void loadViewerProfile();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(() => {
+      void loadViewerProfile();
+    });
+
+    return () => {
+      alive = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     function resetUpgradeState() {
@@ -399,6 +465,8 @@ export default function DiscoverPage() {
             currentTrackId={nowPlayingId}
             selectedTrack={selectedTrack as any}
             onUpgradePlan={handleUpgradePlan}
+            viewerRole={viewerRole}
+            viewerHasPaidPlan={viewerHasPaidPlan}
           />
 
           {upgradeLoading ? (

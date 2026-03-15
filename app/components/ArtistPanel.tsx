@@ -33,6 +33,8 @@ type Props = {
 
   onUpgradePlan: (plan: "premium" | "artist_pro") => Promise<void>;
   selectedTrack: Track | null;
+  viewerRole: "listener" | "artist";
+  viewerHasPaidPlan: boolean;
 };
 
 const glassBox = "rounded-2xl bg-white/8 ring-1 ring-white/10 p-3";
@@ -69,6 +71,8 @@ export default function ArtistPanel(props: Props) {
     currentTrackId,
     onUpgradePlan,
     selectedTrack,
+    viewerRole,
+    viewerHasPaidPlan,
   } = props;
 
   const [user, setUser] = useState<any>(null);
@@ -239,6 +243,9 @@ export default function ArtistPanel(props: Props) {
     }
   }
 
+  const showPremiumUpgrade = viewerRole !== "artist" && !viewerHasPaidPlan;
+  const showBecomeArtist = viewerRole !== "artist";
+
   return (
     <>
       {toast && (
@@ -288,23 +295,29 @@ export default function ArtistPanel(props: Props) {
           </div>
         </div>
 
-        <div className="space-y-2">
-          <button
-            onClick={() => handleUpgrade("premium")}
-            disabled={upgradeLoading !== null}
-            className="h-10 w-full rounded-xl bg-yellow-400 font-bold text-black hover:bg-yellow-300 disabled:opacity-60"
-          >
-            {upgradeLoading === "premium" ? "Opening..." : "Upgrade to Premium"}
-          </button>
+        {showPremiumUpgrade || showBecomeArtist ? (
+          <div className="space-y-2">
+            {showPremiumUpgrade ? (
+              <button
+                onClick={() => handleUpgrade("premium")}
+                disabled={upgradeLoading !== null}
+                className="h-10 w-full rounded-xl bg-yellow-400 font-bold text-black hover:bg-yellow-300 disabled:opacity-60"
+              >
+                {upgradeLoading === "premium" ? "Opening..." : "Upgrade to Premium"}
+              </button>
+            ) : null}
 
-          <button
-            onClick={() => handleUpgrade("artist_pro")}
-            disabled={upgradeLoading !== null}
-            className="h-10 w-full rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-500 font-bold text-white hover:opacity-95 disabled:opacity-60"
-          >
-            {upgradeLoading === "artist_pro" ? "Opening..." : "Become Artist"}
-          </button>
-        </div>
+            {showBecomeArtist ? (
+              <button
+                onClick={() => handleUpgrade("artist_pro")}
+                disabled={upgradeLoading !== null}
+                className="h-10 w-full rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-500 font-bold text-white hover:opacity-95 disabled:opacity-60"
+              >
+                {upgradeLoading === "artist_pro" ? "Opening..." : "Become Artist"}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className={glassBox}>
           <div className="mb-2 text-xs font-bold tracking-widest text-white/60">
