@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import CustomSelect from "@/app/components/CustomSelect";
 
 type ProfileRole = "listener" | "artist";
 
@@ -85,7 +84,7 @@ export default function AccountClient() {
   const [userId, setUserId] = useState<string>("");
   const [email, setEmail] = useState<string>("");
 
-  const [role, setRole] = useState<ProfileRole>("artist");
+  const [role, setRole] = useState<ProfileRole>("listener");
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
   const [country, setCountry] = useState("");
@@ -97,6 +96,8 @@ export default function AccountClient() {
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const normalizedRole: ProfileRole = role === "artist" ? "artist" : "listener";
+  const canUploadTracks = normalizedRole === "artist";
 
   const profileUrl = useMemo(() => {
     if (!slug) return "";
@@ -122,7 +123,9 @@ export default function AccountClient() {
     const nextDisplayName = profile?.display_name || defaultDisplayName;
     const nextSlug = profile?.slug || defaultSlug;
 
-    setRole((profile?.role as ProfileRole) || "artist");
+    const nextRole: ProfileRole = profile?.role === "artist" ? "artist" : "listener";
+
+    setRole(nextRole);
     setDisplayName(nextDisplayName);
     setBio(profile?.bio || "");
     setCountry(profile?.country || "");
@@ -135,7 +138,7 @@ export default function AccountClient() {
     if (!profile && !options?.skipCreate) {
       const insertPayload = {
         id: user.id,
-        role: "artist",
+        role: "listener",
         display_name: nextDisplayName,
         bio: "",
         country: "",
@@ -154,7 +157,7 @@ export default function AccountClient() {
         throw insertError;
       }
 
-      setRole("artist");
+      setRole("listener");
       setDisplayName(nextDisplayName);
       setBio("");
       setCountry("");
@@ -347,7 +350,6 @@ export default function AccountClient() {
 
       const payload = {
         id: userId,
-        role,
         display_name: cleanDisplayName,
         bio: cleanBio,
         country: cleanCountry,
@@ -504,12 +506,14 @@ export default function AccountClient() {
                     </Link>
                   ) : null}
 
-                  <Link
-                    href="/upload"
-                    className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-4 py-2 text-sm text-cyan-100 transition hover:bg-cyan-400/15"
-                  >
-                    Upload track
-                  </Link>
+                  {canUploadTracks ? (
+                    <Link
+                      href="/upload"
+                      className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-4 py-2 text-sm text-cyan-100 transition hover:bg-cyan-400/15"
+                    >
+                      Upload track
+                    </Link>
+                  ) : null}
 
                   <button
                     type="button"
@@ -537,7 +541,7 @@ export default function AccountClient() {
               </div>
               <div className="mt-1">
                 <span className="text-white/45">Role:</span>{" "}
-                <span className="font-medium text-white">{role}</span>
+                <span className="font-medium text-white">{normalizedRole}</span>
               </div>
             </div>
           </div>
@@ -583,15 +587,9 @@ export default function AccountClient() {
 
               <div>
                 <label className="mb-2 block text-sm text-white/75">Role</label>
-                <CustomSelect
-                  value={role}
-                  onChange={(value) => setRole(value as ProfileRole)}
-                  options={[
-                    { value: "artist", label: "Artist" },
-                    { value: "listener", label: "Listener" },
-                  ]}
-                  className="w-full"
-                />
+                <div className="flex h-12 w-full items-center rounded-2xl border border-white/10 bg-white/6 px-4 text-white/75">
+                  {normalizedRole}
+                </div>
               </div>
 
               <div>
@@ -669,25 +667,27 @@ export default function AccountClient() {
               </div>
             </section>
 
-            <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-              <h2 className="text-lg font-semibold text-white">Upload track</h2>
-              <p className="mt-2 text-sm text-white/65">
-                Publish a new song to your artist page and SoundioX discover feed.
-              </p>
-
-              <div className="mt-5 space-y-3">
-                <Link
-                  href="/upload"
-                  className="inline-flex h-12 w-full items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:scale-[1.01]"
-                >
-                  Open upload page
-                </Link>
-
-                <p className="text-xs leading-6 text-white/45">
-                  Upload audio, cover art, title and genre to publish a new track.
+            {canUploadTracks ? (
+              <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+                <h2 className="text-lg font-semibold text-white">Upload track</h2>
+                <p className="mt-2 text-sm text-white/65">
+                  Publish a new song to your artist page and SoundioX discover feed.
                 </p>
-              </div>
-            </section>
+
+                <div className="mt-5 space-y-3">
+                  <Link
+                    href="/upload"
+                    className="inline-flex h-12 w-full items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:scale-[1.01]"
+                  >
+                    Open upload page
+                  </Link>
+
+                  <p className="text-xs leading-6 text-white/45">
+                    Upload audio, cover art, title and genre to publish a new track.
+                  </p>
+                </div>
+              </section>
+            ) : null}
           </div>
         </section>
       </div>
