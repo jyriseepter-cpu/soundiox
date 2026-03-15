@@ -23,11 +23,8 @@ export default function PlayerBar() {
   } = usePlayer() as any;
 
   const title = currentTrack?.title ?? "No track selected";
-  const artist = currentTrack?.artist ?? "AI Artist";
-
-  // 👇 Tõstame PlayerBari kindlalt Docki/footeri eest ära
-  // Kui ikka jääb liiga madalale, tõsta 90px -> 110px
-  const safeBottom = "calc(env(safe-area-inset-bottom) + 90px)";
+  const artist =
+    currentTrack?.artistDisplayName ?? currentTrack?.artist ?? "AI Artist";
 
   const progress =
     duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
@@ -41,12 +38,12 @@ export default function PlayerBar() {
   };
 
   return (
-    <div
-      className="fixed left-0 right-0 z-[60] px-4"
-      style={{ bottom: safeBottom }}
-    >
-      <div className="mx-auto max-w-6xl rounded-3xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur">
-        <div className="flex items-center gap-4">
+    <div className="fixed left-0 right-0 z-50 bottom-0 md:bottom-[5mm] border-t border-white/10 bg-[rgba(7,10,20,0.9)] shadow-[0_-8px_30px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+      <div
+        className="mx-auto max-w-6xl px-4 py-3"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}
+      >
+        <div className="flex items-center gap-3 md:gap-4">
           {/* LEFT: track meta */}
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-semibold text-white">
