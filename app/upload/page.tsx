@@ -21,10 +21,16 @@ type ProfileRow = {
   role: string | null;
 };
 
+function normalizeIsrc(value: string) {
+  const normalized = value.trim().toUpperCase().replace(/\s+/g, "");
+  return normalized || null;
+}
+
 export default function UploadPage() {
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [genre, setGenre] = useState("");
+  const [isrc, setIsrc] = useState("");
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [artFile, setArtFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -139,6 +145,7 @@ export default function UploadPage() {
       const artistName =
         profile?.display_name?.trim() ||
         "AI Artist";
+      const normalizedIsrc = normalizeIsrc(isrc);
 
       const ts = Date.now();
       const safeAudioName = audioFile.name.replace(/\s+/g, "_");
@@ -172,6 +179,7 @@ export default function UploadPage() {
       const { error: insertError } = await supabase.from("tracks").insert({
         title: title.trim(),
         genre: genre.trim(),
+        isrc: normalizedIsrc,
         artist: artistName,
         audio_url: audioUrl,
         artwork_url: artworkUrl,
@@ -184,6 +192,7 @@ export default function UploadPage() {
       setMessage("Track uploaded successfully.");
       setTitle("");
       setGenre("");
+      setIsrc("");
       setAudioFile(null);
       setArtFile(null);
 
@@ -270,6 +279,17 @@ export default function UploadPage() {
             className="w-full"
           />
         </div>
+
+        <label className="mb-2 block text-sm text-white/70">ISRC (optional)</label>
+        <input
+          className="w-full rounded-xl bg-white/10 p-3 text-white ring-1 ring-white/10 outline-none"
+          placeholder="EE-ABC-25-00001 or EEABC2500001"
+          value={isrc}
+          onChange={(e) => setIsrc(e.target.value)}
+        />
+        <p className="mb-4 mt-2 text-xs text-white/55">
+          Optional. Use your own ISRC code for rights management and release continuity.
+        </p>
 
         <div className="mb-4">
           <label className="mb-2 block text-sm text-white/70">
