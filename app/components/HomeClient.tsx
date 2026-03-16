@@ -65,7 +65,7 @@ export default function HomeClient() {
         if (profileIds.length > 0) {
           const { data: profiles, error: profileError } = await supabase
             .from("profiles")
-            .select("id, display_name, slug, avatar_url, is_founding, is_pro")
+            .select("id, display_name, slug, avatar_url, is_founding")
             .in("id", profileIds);
 
           if (profileError) {

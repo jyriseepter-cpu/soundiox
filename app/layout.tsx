@@ -32,7 +32,9 @@ export default function RootLayout({
             <main className="flex-1 player-safe-area">{children}</main>
 
             {/* FOOTER */}
-            <SiteFooter />
+            <div className="player-safe-area">
+              <SiteFooter />
+            </div>
           </div>
 
           {/* PLAYER BAR */}
