@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
-type PlanValue = "free" | "premium" | "artist_pro";
+type PlanValue = "free" | "premium" | "artist";
 
 type WebhookContext = {
   stripe: Stripe;
@@ -65,7 +65,7 @@ function planFromPriceId(
 ): PlanValue | null {
   if (!priceId) return null;
   if (priceId === context.premiumPriceId) return "premium";
-  if (priceId === context.artistProPriceId) return "artist_pro";
+  if (priceId === context.artistProPriceId) return "artist";
   return null;
 }
 
@@ -81,7 +81,8 @@ async function updateProfile(params: {
   const payload = {
     id: userId,
     plan,
-    is_pro: plan === "artist_pro",
+    role: plan === "artist" ? "artist" : undefined,
+    is_pro: plan === "premium",
     stripe_customer_id: stripeCustomerId || null,
     stripe_subscription_id: stripeSubscriptionId || null,
   };
@@ -216,7 +217,7 @@ async function handleSubscriptionDeleted(
 
   const { data: profile, error } = await context.supabase
     .from("profiles")
-    .select("id")
+    .select("id, role, is_founding")
     .eq("stripe_customer_id", stripeCustomerId)
     .maybeSingle();
 
@@ -238,6 +239,17 @@ async function handleSubscriptionDeleted(
     stripeCustomerId,
     stripeSubscriptionId: null,
   });
+
+  if (profile.role === "artist" && !profile.is_founding) {
+    const { error: roleResetError } = await context.supabase
+      .from("profiles")
+      .update({ role: "listener", is_pro: false })
+      .eq("id", profile.id);
+
+    if (roleResetError) {
+      throw roleResetError;
+    }
+  }
 
   console.log("customer.subscription.deleted synced profile", {
     userId: profile.id,

@@ -10,6 +10,7 @@ type ProfileRole = "listener" | "artist";
 
 type ProfileRow = {
   id: string;
+  email?: string | null;
   role: string | null;
   display_name: string | null;
   bio: string | null;
@@ -63,6 +64,12 @@ function deleteInviteCookie() {
   document.cookie = "soundiox_invite_token=; path=/; max-age=0; samesite=lax";
 }
 
+function normalizeProfilePlan(value: string | null | undefined) {
+  if (value === "artist") return "artist";
+  if (value === "premium") return "premium";
+  return "free";
+}
+
 export default function AccountClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -108,7 +115,7 @@ export default function AccountClient() {
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select(
-        "id, role, display_name, bio, country, avatar_url, slug, plan, is_pro, is_founding, created_at"
+        "id, email, role, display_name, bio, country, avatar_url, slug, plan, is_pro, is_founding, created_at"
       )
       .eq("id", user.id)
       .maybeSingle<ProfileRow>();
@@ -131,18 +138,19 @@ export default function AccountClient() {
     setCountry(profile?.country || "");
     setSlug(nextSlug);
     setAvatarUrl(profile?.avatar_url || "");
-    setPlan(profile?.plan || "free");
-    setIsPro(Boolean(profile?.is_pro));
+    setPlan(normalizeProfilePlan(profile?.plan));
+    setIsPro(profile?.plan === "premium" || Boolean(profile?.is_pro));
     setIsFounding(Boolean(profile?.is_founding));
 
     if (!profile && !options?.skipCreate) {
       const insertPayload = {
         id: user.id,
+        email: user.email ?? null,
         role: "listener",
         display_name: nextDisplayName,
-        bio: "",
-        country: "",
-        avatar_url: "",
+        bio: null,
+        country: null,
+        avatar_url: null,
         slug: nextSlug,
         plan: "free",
         is_pro: false,
@@ -230,7 +238,7 @@ export default function AccountClient() {
 
     if (selectedPlan === "premium") {
       setMessage("Premium plan selected. Complete checkout to activate it.");
-    } else if (selectedPlan === "artist-pro") {
+    } else if (selectedPlan === "artist" || selectedPlan === "artist-pro") {
       setMessage("Artist plan selected. Complete checkout to activate it.");
     }
   }, [selectedPlan]);
@@ -350,11 +358,12 @@ export default function AccountClient() {
 
       const payload = {
         id: userId,
+        email: email || null,
         display_name: cleanDisplayName,
-        bio: cleanBio,
-        country: cleanCountry,
+        bio: cleanBio || null,
+        country: cleanCountry || null,
         avatar_url: avatarUrl || null,
-        slug: cleanSlug,
+        slug: cleanSlug || null,
       };
 
       const { error: saveError } = await supabase
@@ -479,9 +488,9 @@ export default function AccountClient() {
                     </span>
                   ) : null}
 
-                  {isPro ? (
+                  {normalizedRole === "artist" && !isFounding ? (
                     <span className="rounded-full border border-fuchsia-300/30 bg-fuchsia-400/10 px-3 py-1 text-xs font-medium text-fuchsia-200">
-                      Artist Pro
+                      Artist
                     </span>
                   ) : null}
                 </div>
@@ -652,9 +661,13 @@ export default function AccountClient() {
                 </div>
 
                 <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <div className="text-white/45">Pro access</div>
+                  <div className="text-white/45">Account access</div>
                   <div className="mt-1 font-medium text-white">
-                    {isPro ? "Enabled" : "Free plan"}
+                    {plan === "premium"
+                      ? "Premium"
+                      : normalizedRole === "artist"
+                      ? "Artist"
+                      : "Free plan"}
                   </div>
                 </div>
 

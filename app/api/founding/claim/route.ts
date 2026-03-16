@@ -127,9 +127,10 @@ export async function POST(request: Request) {
     const { error: profileError } = await admin.from("profiles").upsert(
       {
         id: user.id,
+        email: user.email || null,
         role: "artist",
-        plan: "artist_pro",
-        is_pro: true,
+        plan: "artist",
+        is_pro: false,
         is_founding: true,
       },
       { onConflict: "id" }
@@ -166,8 +167,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       role: "artist",
-      plan: "artist_pro",
-      is_pro: true,
+      plan: "artist",
+      is_pro: false,
       is_founding: true,
     });
   } catch (error: any) {

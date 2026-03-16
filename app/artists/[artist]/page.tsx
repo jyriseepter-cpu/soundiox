@@ -8,6 +8,7 @@ import { usePlayer } from "../../components/PlayerContext";
 
 type ProfileArtistRow = {
   id: string;
+  role?: string | null;
   display_name: string | null;
   slug: string | null;
   bio: string | null;
@@ -251,7 +252,7 @@ export default function ArtistPage() {
 
   const donateEnabled = true;
   const isFounding = Boolean(artist?.is_founding);
-  const isPro = Boolean(artist?.is_pro);
+  const isArtist = artist?.plan === "artist" || artist?.role === "artist";
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 pb-28 pt-8">
@@ -310,9 +311,9 @@ export default function ArtistPage() {
                   </span>
                 ) : null}
 
-                {isPro ? (
+                {isArtist && !isFounding ? (
                   <span className="rounded-full border border-fuchsia-300/30 bg-fuchsia-400/10 px-3 py-1 text-xs font-medium text-fuchsia-200">
-                    Artist Pro
+                    Artist
                   </span>
                 ) : null}
               </div>

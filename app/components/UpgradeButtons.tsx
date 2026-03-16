@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
-type Tier = "premium_monthly" | "artist_pro_monthly";
+type Tier = "premium_monthly" | "artist_monthly";
 
 export default function UpgradeButtons() {
   const [loading, setLoading] = useState<Tier | null>(null);
@@ -86,11 +86,11 @@ export default function UpgradeButtons() {
 
       <button
         type="button"
-        onClick={() => startCheckout("artist_pro_monthly")}
+        onClick={() => startCheckout("artist_monthly")}
         disabled={loading !== null}
         className={`${baseBtn} ${proBtn} w-full`}
       >
-        {loading === "artist_pro_monthly" ? "Loading..." : "Become Artist"}
+        {loading === "artist_monthly" ? "Loading..." : "Become Artist"}
       </button>
     </div>
   );

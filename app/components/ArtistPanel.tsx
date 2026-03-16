@@ -31,7 +31,7 @@ type Props = {
   isPlaying: boolean;
   currentTrackId: string | null;
 
-  onUpgradePlan: (plan: "premium" | "artist_pro") => Promise<void>;
+  onUpgradePlan: (plan: "premium" | "artist") => Promise<void>;
   selectedTrack: Track | null;
   viewerRole: "listener" | "artist";
   viewerHasPaidPlan: boolean;
@@ -79,7 +79,7 @@ export default function ArtistPanel(props: Props) {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [newPlaylistName, setNewPlaylistName] = useState("");
   const [selectedPlaylistId, setSelectedPlaylistId] = useState("");
-  const [upgradeLoading, setUpgradeLoading] = useState<"premium" | "artist_pro" | null>(null);
+  const [upgradeLoading, setUpgradeLoading] = useState<"premium" | "artist" | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const [featuredArtists, setFeaturedArtists] = useState<FeaturedArtist[]>([]);
@@ -234,7 +234,7 @@ export default function ArtistPanel(props: Props) {
 
   const topTracks = useMemo(() => tracks.slice(0, 8), [tracks]);
 
-  async function handleUpgrade(plan: "premium" | "artist_pro") {
+  async function handleUpgrade(plan: "premium" | "artist") {
     try {
       setUpgradeLoading(plan);
       await onUpgradePlan(plan);
@@ -309,11 +309,11 @@ export default function ArtistPanel(props: Props) {
 
             {showBecomeArtist ? (
               <button
-                onClick={() => handleUpgrade("artist_pro")}
+                onClick={() => handleUpgrade("artist")}
                 disabled={upgradeLoading !== null}
                 className="h-10 w-full rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-500 font-bold text-white hover:opacity-95 disabled:opacity-60"
               >
-                {upgradeLoading === "artist_pro" ? "Opening..." : "Become Artist"}
+                {upgradeLoading === "artist" ? "Opening..." : "Become Artist"}
               </button>
             ) : null}
           </div>

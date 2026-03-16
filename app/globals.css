@@ -3,6 +3,13 @@
 :root {
   --background: #070a14;
   --foreground: #ffffff;
+  --player-bar-offset: calc(7rem + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 768px) {
+  :root {
+    --player-bar-offset: calc(6rem + env(safe-area-inset-bottom));
+  }
 }
 
 html,
@@ -29,6 +36,10 @@ body {
     sans-serif;
   font-weight: 600;
   letter-spacing: -0.01em;
+}
+
+.player-safe-area {
+  padding-bottom: var(--player-bar-offset);
 }
 
 button,

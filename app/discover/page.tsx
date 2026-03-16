@@ -64,7 +64,7 @@ export default function DiscoverPage() {
   const [tracks, setTracks] = useState<DiscoverTrack[]>([]);
   const [loading, setLoading] = useState(true);
   const [authSettling, setAuthSettling] = useState(false);
-  const [upgradeLoading, setUpgradeLoading] = useState<"premium" | "artist_pro" | null>(null);
+  const [upgradeLoading, setUpgradeLoading] = useState<"premium" | "artist" | null>(null);
 
   const [search, setSearch] = useState("");
   const [genre, setGenre] = useState("All genres");
@@ -255,8 +255,7 @@ export default function DiscoverPage() {
           profile?.role === "artist" ? "artist" : "listener";
         const hasPaidPlan =
           Boolean(profile?.is_pro) ||
-          profile?.plan === "premium" ||
-          profile?.plan === "artist_pro";
+          profile?.plan === "premium";
 
         setViewerRole(nextRole);
         setViewerHasPaidPlan(hasPaidPlan);
@@ -330,7 +329,7 @@ export default function DiscoverPage() {
     });
   }, [tracks, search, genre]);
 
-  async function handleUpgradePlan(plan: "premium" | "artist_pro") {
+  async function handleUpgradePlan(plan: "premium" | "artist") {
     try {
       setUpgradeLoading(plan);
 

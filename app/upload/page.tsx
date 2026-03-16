@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import CustomSelect from "@/app/components/CustomSelect";
 
@@ -21,6 +22,7 @@ type ProfileRow = {
 };
 
 export default function UploadPage() {
+  const router = useRouter();
   const [title, setTitle] = useState("");
   const [genre, setGenre] = useState("");
   const [audioFile, setAudioFile] = useState<File | null>(null);
@@ -28,10 +30,68 @@ export default function UploadPage() {
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [accessChecked, setAccessChecked] = useState(false);
+  const [canUpload, setCanUpload] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    async function checkAccess() {
+      try {
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
+
+        if (userError) throw userError;
+
+        if (!user) {
+          router.replace("/account");
+          return;
+        }
+
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .maybeSingle<ProfileRow>();
+
+        if (profileError) throw profileError;
+
+        if (profile?.role !== "artist") {
+          router.replace("/account");
+          return;
+        }
+
+        if (!active) return;
+
+        setCanUpload(true);
+      } catch (e: any) {
+        if (!active) return;
+        setError(e?.message ?? "Access check failed.");
+        router.replace("/account");
+      } finally {
+        if (active) {
+          setAccessChecked(true);
+        }
+      }
+    }
+
+    void checkAccess();
+
+    return () => {
+      active = false;
+    };
+  }, [router]);
 
   async function handleUpload() {
     setMessage("");
     setError("");
+
+    if (!canUpload) {
+      setError("Only artist accounts can upload tracks.");
+      return;
+    }
 
     if (!title.trim()) {
       setError("Please enter a title.");
@@ -142,6 +202,28 @@ export default function UploadPage() {
     } finally {
       setUploading(false);
     }
+  }
+
+  if (!accessChecked) {
+    return (
+      <main className="mx-auto max-w-xl px-6 pb-28 pt-8 text-white">
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+          <p className="text-sm text-white/70">Checking upload access...</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (!canUpload) {
+    return (
+      <main className="mx-auto max-w-xl px-6 pb-28 pt-8 text-white">
+        <div className="rounded-3xl border border-rose-400/20 bg-rose-400/10 p-6 backdrop-blur-xl">
+          <p className="text-sm text-rose-200">
+            Only artist accounts can access the upload page.
+          </p>
+        </div>
+      </main>
+    );
   }
 
   return (

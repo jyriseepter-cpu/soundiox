@@ -18,7 +18,7 @@ function getBearerToken(header: string | null) {
   return header.slice(prefix.length).trim() || null;
 }
 
-function normalizePlan(input: unknown): "premium" | "artist_pro" | null {
+function normalizePlan(input: unknown): "premium" | "artist" | null {
   const value = String(input || "").trim().toLowerCase();
 
   if (value === "premium" || value === "premium_monthly" || value === "premium_yearly") {
@@ -26,11 +26,14 @@ function normalizePlan(input: unknown): "premium" | "artist_pro" | null {
   }
 
   if (
+    value === "artist" ||
+    value === "artist_monthly" ||
+    value === "artist_yearly" ||
     value === "artist_pro" ||
     value === "artist_pro_monthly" ||
     value === "artist_pro_yearly"
   ) {
-    return "artist_pro";
+    return "artist";
   }
 
   return null;
@@ -102,7 +105,7 @@ export async function POST(req: NextRequest) {
 
     let priceId: string | null = null;
     if (plan === "premium") priceId = premiumPriceId;
-    if (plan === "artist_pro") priceId = artistProPriceId;
+    if (plan === "artist") priceId = artistProPriceId;
 
     if (!priceId) {
       return NextResponse.json(

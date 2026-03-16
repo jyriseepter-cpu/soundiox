@@ -44,6 +44,8 @@ function getArtworkSrc(t: any) {
 }
 
 export default function PulsePage() {
+  console.log("NEW PULSE BUILD");
+
   const router = useRouter();
   const { playTrack, currentTrack, isPlaying, toggle } = usePlayer();
 
@@ -83,17 +85,18 @@ export default function PulsePage() {
       const ids = safe.map((t: any) => t.id).filter(Boolean);
 
       if (ids.length > 0) {
-        const { data: lRows, error: lErr } = await supabase
-          .from("track_likes_monthly")
-          .select("track_id, month, likes")
+        const { data: likeRows, error: likeErr } = await supabase
+          .from("likes")
+          .select("track_id")
           .eq("month", month)
           .in("track_id", ids);
 
-        if (lErr) console.warn("Pulse likes view error:", lErr);
+        if (likeErr) console.warn("Pulse likes query error:", likeErr);
 
         const map = new Map<string, number>();
-        (lRows ?? []).forEach((r: any) => {
-          map.set(String(r.track_id), Number(r.likes ?? 0) || 0);
+        (likeRows ?? []).forEach((row: any) => {
+          const trackId = String(row.track_id);
+          map.set(trackId, (map.get(trackId) ?? 0) + 1);
         });
         setLikesMonth(map);
       } else {
