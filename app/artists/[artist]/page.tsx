@@ -44,6 +44,12 @@ type TrackLikeAllTimeRow = {
   likes: number;
 };
 
+type FollowRow = {
+  follower_id: string;
+  following_profile_id: string;
+  created_at?: string | null;
+};
+
 function formatDateShort(dateStr?: string | null) {
   if (!dateStr) return "—";
   const d = new Date(dateStr);
@@ -77,6 +83,10 @@ export default function ArtistPage() {
   const [likesAllTime, setLikesAllTime] = useState<number>(0);
   const [donateLoading, setDonateLoading] = useState<number | null>(null);
   const [showDonateMenu, setShowDonateMenu] = useState(false);
+  const [viewerId, setViewerId] = useState<string | null>(null);
+  const [followerCount, setFollowerCount] = useState(0);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
 
   const playsMonth = useMemo(
     () => tracks.reduce((sum, t) => sum + (t.plays_this_month || 0), 0),
@@ -157,11 +167,109 @@ export default function ArtistPage() {
     }
   }
 
+  async function loadFollowState(artistId: string, currentViewerId: string | null) {
+    const { count, error: countError } = await supabase
+      .from("follows")
+      .select("*", { count: "exact", head: true })
+      .eq("following_profile_id", artistId);
+
+    if (countError) {
+      console.error("artist follower count load error:", countError);
+    }
+
+    setFollowerCount(count || 0);
+
+    if (!currentViewerId || currentViewerId === artistId) {
+      setIsFollowing(false);
+      return;
+    }
+
+    const { data: followRow, error: followError } = await supabase
+      .from("follows")
+      .select("follower_id, following_profile_id")
+      .eq("follower_id", currentViewerId)
+      .eq("following_profile_id", artistId)
+      .maybeSingle<FollowRow>();
+
+    if (followError) {
+      console.error("artist follow state load error:", followError);
+      setIsFollowing(false);
+      return;
+    }
+
+    setIsFollowing(Boolean(followRow));
+  }
+
+  async function handleToggleFollow() {
+    if (!artist?.id) return;
+
+    if (!viewerId) {
+      router.push("/login");
+      return;
+    }
+
+    if (viewerId === artist.id) {
+      return;
+    }
+
+    setFollowLoading(true);
+
+    try {
+      if (isFollowing) {
+        const { error } = await supabase
+          .from("follows")
+          .delete()
+          .eq("follower_id", viewerId)
+          .eq("following_profile_id", artist.id);
+
+        if (error) throw error;
+
+        setIsFollowing(false);
+        setFollowerCount((prev) => Math.max(0, prev - 1));
+      } else {
+        const { error } = await supabase.from("follows").insert({
+          follower_id: viewerId,
+          following_profile_id: artist.id,
+        });
+
+        if (error) throw error;
+
+        const { error: notificationError } = await supabase
+          .from("notifications")
+          .insert({
+            user_id: artist.id,
+            type: "follow",
+            actor_id: viewerId,
+          });
+
+        if (notificationError) {
+          console.error("follow notification insert error:", notificationError);
+        }
+
+        setIsFollowing(true);
+        setFollowerCount((prev) => prev + 1);
+      }
+    } catch (error: any) {
+      console.error("artist follow toggle error:", error);
+      alert(error?.message || "Follow action failed");
+    } finally {
+      setFollowLoading(false);
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
       setLoading(true);
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!cancelled) {
+        setViewerId(user?.id ?? null);
+      }
 
       const { data: artistData, error: artistErr } = await supabase
         .from("profiles")
@@ -182,9 +290,13 @@ export default function ArtistPage() {
         setTracks([]);
         setLikesMonth(0);
         setLikesAllTime(0);
+        setFollowerCount(0);
+        setIsFollowing(false);
         setLoading(false);
         return;
       }
+
+      await loadFollowState(a.id, user?.id ?? null);
 
       const { data: trackData, error: trackErr } = await supabase
         .from("tracks")
@@ -253,6 +365,7 @@ export default function ArtistPage() {
   const donateEnabled = true;
   const isFounding = Boolean(artist?.is_founding);
   const isArtist = artist?.plan === "artist" || artist?.role === "artist";
+  const isOwnProfile = Boolean(viewerId && artist?.id && viewerId === artist.id);
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 pb-28 pt-8">
@@ -316,6 +429,10 @@ export default function ArtistPage() {
                     Artist
                   </span>
                 ) : null}
+
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-white/75">
+                  {followerCount} follower{followerCount === 1 ? "" : "s"}
+                </span>
               </div>
 
               <div className="mt-2 text-sm text-white/70">
@@ -346,6 +463,20 @@ export default function ArtistPage() {
 
           <div className="flex flex-col items-end gap-2">
             <div className="flex flex-wrap items-center justify-end gap-2">
+              {!isOwnProfile ? (
+                <button
+                  onClick={handleToggleFollow}
+                  disabled={followLoading || !artist?.id}
+                  className={`h-10 rounded-xl px-4 text-sm font-semibold transition ${
+                    isFollowing
+                      ? "bg-white/10 text-white hover:bg-white/15"
+                      : "bg-gradient-to-r from-cyan-400 to-fuchsia-500 text-black hover:opacity-95"
+                  } disabled:cursor-not-allowed disabled:opacity-60`}
+                >
+                  {followLoading ? "Saving..." : isFollowing ? "Following" : "Follow"}
+                </button>
+              ) : null}
+
               {donateEnabled ? (
                 <div className="relative">
                   <button
@@ -428,6 +559,11 @@ export default function ArtistPage() {
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
             <div className="text-xs text-white/60">Tracks</div>
             <div className="mt-2 text-2xl font-semibold text-white">{tracks.length}</div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
+            <div className="text-xs text-white/60">Followers</div>
+            <div className="mt-2 text-2xl font-semibold text-white">{followerCount}</div>
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
