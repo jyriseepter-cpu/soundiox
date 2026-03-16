@@ -92,17 +92,10 @@ export default function FoundingArtistsPage() {
               </p>
             </div>
   
-            <div className="mt-12 flex flex-wrap items-center gap-4 border-t border-white/10 pt-8">
-              <a
-                href="/login"
-                className="rounded-2xl bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500 px-7 py-3 text-sm font-semibold text-white ring-1 ring-white/10 hover:opacity-95"
-              >
-                Apply Through an Invite
-              </a>
-  
+            <div className="mt-12 flex justify-center border-t border-white/10 pt-8">
               <a
                 href="/join-wave"
-                className="rounded-2xl bg-white/10 px-7 py-3 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-white/15"
+                className="rounded-2xl bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500 px-7 py-3 text-sm font-semibold text-white ring-1 ring-white/10 hover:opacity-95"
               >
                 Read Join the Wave
               </a>
