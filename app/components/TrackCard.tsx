@@ -2,7 +2,9 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
 import { usePlayer } from "@/app/components/PlayerContext";
 import type { Track } from "@/app/components/PlayerContext";
 
@@ -63,6 +65,7 @@ export default function TrackCard({
   allTracks = [],
   onPlay,
 }: Props) {
+  const router = useRouter();
   const { currentTrack, isPlaying, playTrack, toggle } = usePlayer();
 
   const t = track as any;
@@ -73,6 +76,65 @@ export default function TrackCard({
     const raw = t.artistSlug;
     return typeof raw === "string" && raw.trim() ? raw.trim() : null;
   }, [t.artistSlug]);
+
+  const artistUserId = useMemo(() => {
+    const raw = t.user_id;
+    return typeof raw === "string" && raw.trim() ? raw.trim() : null;
+  }, [t.user_id]);
+
+  const [viewerId, setViewerId] = useState<string | null>(null);
+  const [followLoading, setFollowLoading] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadFollowState() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!alive) return;
+
+      const nextViewerId = user?.id ?? null;
+      setViewerId(nextViewerId);
+
+      if (!nextViewerId || !artistUserId || nextViewerId === artistUserId) {
+        setIsFollowing(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("follows")
+        .select("follower_id, following_profile_id")
+        .eq("follower_id", nextViewerId)
+        .eq("following_profile_id", artistUserId)
+        .maybeSingle();
+
+      if (!alive) return;
+
+      if (error) {
+        console.warn("TrackCard follow lookup warning:", error.message);
+        setIsFollowing(false);
+        return;
+      }
+
+      setIsFollowing(Boolean(data));
+    }
+
+    void loadFollowState();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(() => {
+      void loadFollowState();
+    });
+
+    return () => {
+      alive = false;
+      subscription.unsubscribe();
+    };
+  }, [artistUserId]);
 
   function handlePlayClick() {
     if (active) {
@@ -87,6 +149,66 @@ export default function TrackCard({
 
     playTrack(track, allTracks.length ? allTracks : [track]);
   }
+
+  async function handleFollowClick() {
+    if (!artistUserId) return;
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user?.id) {
+      router.push("/login");
+      return;
+    }
+
+    if (user.id === artistUserId) return;
+
+    try {
+      setFollowLoading(true);
+
+      if (isFollowing) {
+        const { error } = await supabase
+          .from("follows")
+          .delete()
+          .eq("follower_id", user.id)
+          .eq("following_profile_id", artistUserId);
+
+        if (error) throw error;
+
+        setIsFollowing(false);
+        return;
+      }
+
+      const { error } = await supabase.from("follows").insert({
+        follower_id: user.id,
+        following_profile_id: artistUserId,
+      });
+
+      if (error) throw error;
+
+      const { error: notificationError } = await supabase
+        .from("notifications")
+        .insert({
+          user_id: artistUserId,
+          type: "follow",
+          actor_id: user.id,
+        });
+
+      if (notificationError) {
+        console.error("TrackCard follow notification warning:", notificationError);
+      }
+
+      setIsFollowing(true);
+    } catch (error: any) {
+      console.warn("TrackCard follow toggle warning:", error?.message || error);
+    } finally {
+      setFollowLoading(false);
+    }
+  }
+
+  const showFollowButton =
+    Boolean(artistUserId) && Boolean(viewerId) && viewerId !== artistUserId;
 
   return (
     <div
@@ -140,6 +262,21 @@ export default function TrackCard({
       </div>
 
       <div className="ml-4 flex items-center gap-2">
+        {showFollowButton ? (
+          <button
+            type="button"
+            onClick={handleFollowClick}
+            disabled={followLoading}
+            className={`rounded-xl px-4 py-2 text-base font-semibold text-white transition ${
+              isFollowing
+                ? "bg-white/12 hover:bg-white/16"
+                : "bg-gradient-to-r from-cyan-300 to-cyan-400 hover:opacity-90"
+            } ${followLoading ? "opacity-70" : ""}`}
+          >
+            {followLoading ? "..." : isFollowing ? "Following" : "Follow"}
+          </button>
+        ) : null}
+
         <button
           type="button"
           className="rounded-xl bg-gradient-to-r from-cyan-300 to-cyan-400 px-4 py-2 text-base font-semibold text-white transition hover:opacity-90"
