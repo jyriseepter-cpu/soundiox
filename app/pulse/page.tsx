@@ -79,6 +79,8 @@ export default function PulsePage() {
   const [likesMonth, setLikesMonth] = useState<Map<string, number>>(new Map());
   const [likedSet, setLikedSet] = useState<Set<string>>(new Set());
   const [userId, setUserId] = useState<string | null>(null);
+  const [followingSet, setFollowingSet] = useState<Set<string>>(new Set());
+  const [followLoadingId, setFollowLoadingId] = useState<string | null>(null);
 
   const [sort, setSort] = useState<SortKey>("plays_month");
   const [category, setCategory] = useState<CategoryKey>("global");
@@ -196,6 +198,29 @@ export default function PulsePage() {
         setLikedSet(set);
       } else {
         setLikedSet(new Set());
+      }
+
+      if (userId && artistIds.length > 0) {
+        const { data: followRows, error: followErr } = await supabase
+          .from("follows")
+          .select("following_profile_id")
+          .eq("follower_id", userId)
+          .in("following_profile_id", artistIds);
+
+        if (followErr) {
+          console.warn("Pulse follows query error:", followErr);
+          setFollowingSet(new Set());
+        } else {
+          const set = new Set<string>();
+          (followRows ?? []).forEach((row: { following_profile_id: string }) => {
+            if (row?.following_profile_id) {
+              set.add(String(row.following_profile_id));
+            }
+          });
+          setFollowingSet(set);
+        }
+      } else {
+        setFollowingSet(new Set());
       }
 
       setLoading(false);
@@ -325,6 +350,65 @@ export default function PulsePage() {
     });
   };
 
+  const toggleFollow = async (artistId: string | null) => {
+    if (!artistId) return;
+
+    if (!userId) {
+      router.push("/login");
+      return;
+    }
+
+    if (userId === artistId) return;
+
+    const isFollowing = followingSet.has(artistId);
+    setFollowLoadingId(artistId);
+
+    try {
+      if (isFollowing) {
+        const { error } = await supabase
+          .from("follows")
+          .delete()
+          .eq("follower_id", userId)
+          .eq("following_profile_id", artistId);
+
+        if (error) throw error;
+
+        setFollowingSet((prev) => {
+          const set = new Set(prev);
+          set.delete(artistId);
+          return set;
+        });
+
+        return;
+      }
+
+      const { error } = await supabase.from("follows").insert({
+        follower_id: userId,
+        following_profile_id: artistId,
+      });
+
+      if (error) throw error;
+
+      const { error: notificationError } = await supabase
+        .from("notifications")
+        .insert({
+          user_id: artistId,
+          type: "follow",
+          actor_id: userId,
+        });
+
+      if (notificationError) {
+        console.error("Pulse follow notification warning:", notificationError);
+      }
+
+      setFollowingSet((prev) => new Set(prev).add(artistId));
+    } catch (error: any) {
+      console.warn("Pulse follow toggle warning:", error?.message || error);
+    } finally {
+      setFollowLoadingId(null);
+    }
+  };
+
   const categoryOptions = [
     { value: "global", label: "Category: Global" },
     { value: "new_rising", label: "Category: New & Rising" },
@@ -391,10 +475,10 @@ export default function PulsePage() {
 
       <div className="overflow-hidden rounded-2xl bg-white/10 ring-1 ring-white/10">
         <div className="grid grid-cols-12 gap-2 px-4 py-3 text-xs font-semibold tracking-widest text-white/60">
-          <div className="col-span-6">TRACK</div>
+          <div className="col-span-5">TRACK</div>
           <div className="col-span-2 text-right">PLAYS</div>
           <div className="col-span-2 text-right">LIKES</div>
-          <div className="col-span-2 text-right">ACTION</div>
+          <div className="col-span-3 text-right">ACTION</div>
         </div>
 
         {loading ? (
@@ -408,6 +492,11 @@ export default function PulsePage() {
             const likes = likesMonth.get(id) ?? 0;
             const plays = Number(t.plays_this_month ?? 0) || 0;
             const isCurrent = currentTrack?.id && String((currentTrack as any).id) === id;
+            const artistId = t.user_id;
+            const showFollowButton =
+              Boolean(userId) && Boolean(artistId) && userId !== artistId;
+            const isFollowing = artistId ? followingSet.has(artistId) : false;
+            const followLoading = followLoadingId === artistId;
 
             return (
               <div
@@ -425,7 +514,7 @@ export default function PulsePage() {
                 ) : null}
 
                 <div className="grid grid-cols-12 items-center gap-2">
-                  <div className="col-span-6 flex min-w-0 items-center gap-3">
+                  <div className="col-span-5 flex min-w-0 items-center gap-3">
                     <div className="w-6 text-white/40">{idx + 1}</div>
 
                     <img
@@ -474,7 +563,21 @@ export default function PulsePage() {
                     </button>
                   </div>
 
-                  <div className="col-span-2 flex justify-end gap-2">
+                  <div className="col-span-3 flex justify-end gap-2">
+                    {showFollowButton ? (
+                      <button
+                        onClick={() => toggleFollow(artistId)}
+                        disabled={followLoading}
+                        className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${
+                          isFollowing
+                            ? "bg-white/12 hover:bg-white/16"
+                            : "bg-gradient-to-r from-cyan-300 to-cyan-400 hover:opacity-90"
+                        } ${followLoading ? "opacity-70" : ""}`}
+                      >
+                        {followLoading ? "..." : isFollowing ? "Following" : "Follow"}
+                      </button>
+                    ) : null}
+
                     <button
                       onClick={() => {
                         if (isCurrent) {
