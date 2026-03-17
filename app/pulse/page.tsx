@@ -71,6 +71,24 @@ function getArtworkSrc(t: Partial<PulseTrack>) {
   return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${s}`;
 }
 
+function normalizeGenre(value: string | null | undefined) {
+  const raw = safeStr(value).trim();
+  if (!raw) return "";
+
+  const lower = raw.toLowerCase();
+
+  if (
+    lower === "classical / cine" ||
+    lower === "classical/cine" ||
+    lower === "classical / cinematic" ||
+    lower === "classical/cinematic"
+  ) {
+    return "Classical / Cinematic";
+  }
+
+  return raw;
+}
+
 export default function PulsePage() {
   const router = useRouter();
   const { playTrack, currentTrack, isPlaying, toggle } = usePlayer();
@@ -81,6 +99,7 @@ export default function PulsePage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [followingSet, setFollowingSet] = useState<Set<string>>(new Set());
   const [followLoadingId, setFollowLoadingId] = useState<string | null>(null);
+  const [followerCounts, setFollowerCounts] = useState<Map<string, number>>(new Map());
 
   const [sort, setSort] = useState<SortKey>("plays_month");
   const [category, setCategory] = useState<CategoryKey>("global");
@@ -154,6 +173,25 @@ export default function PulsePage() {
             };
           });
         }
+
+        const { data: followCountRows, error: followCountError } = await supabase
+          .from("follows")
+          .select("following_profile_id")
+          .in("following_profile_id", artistIds);
+
+        if (followCountError) {
+          console.warn("Pulse follower counts error:", followCountError);
+          setFollowerCounts(new Map());
+        } else {
+          const countMap = new Map<string, number>();
+          (followCountRows ?? []).forEach((row: { following_profile_id: string }) => {
+            const id = String(row.following_profile_id);
+            countMap.set(id, (countMap.get(id) ?? 0) + 1);
+          });
+          setFollowerCounts(countMap);
+        }
+      } else {
+        setFollowerCounts(new Map());
       }
 
       setTracks(enrichedTracks);
@@ -240,10 +278,8 @@ export default function PulsePage() {
   const availableGenres = useMemo(() => {
     const set = new Set<string>();
     for (const t of tracks) {
-      const g = safeStr(t.genre).trim();
-      if (g) {
-        set.add(g);
-      }
+      const g = normalizeGenre(t.genre);
+      if (g) set.add(g);
     }
     return ["All genres", ...Array.from(set).sort((a, b) => a.localeCompare(b))];
   }, [tracks]);
@@ -260,7 +296,7 @@ export default function PulsePage() {
         }
       }
 
-      if (genre !== "All genres" && safeStr(t.genre) !== genre) {
+      if (genre !== "All genres" && normalizeGenre(t.genre) !== genre) {
         return false;
       }
 
@@ -270,7 +306,7 @@ export default function PulsePage() {
 
       const hay = `${safeStr(t.title)} ${safeStr(t.artistDisplayName)} ${safeStr(
         t.artist
-      )} ${safeStr(t.genre)}`.toLowerCase();
+      )} ${normalizeGenre(t.genre)}`.toLowerCase();
 
       return hay.includes(s);
     });
@@ -379,6 +415,12 @@ export default function PulsePage() {
           return set;
         });
 
+        setFollowerCounts((prev) => {
+          const map = new Map(prev);
+          map.set(artistId, Math.max(0, (map.get(artistId) ?? 1) - 1));
+          return map;
+        });
+
         return;
       }
 
@@ -402,6 +444,11 @@ export default function PulsePage() {
       }
 
       setFollowingSet((prev) => new Set(prev).add(artistId));
+      setFollowerCounts((prev) => {
+        const map = new Map(prev);
+        map.set(artistId, (map.get(artistId) ?? 0) + 1);
+        return map;
+      });
     } catch (error: any) {
       console.warn("Pulse follow toggle warning:", error?.message || error);
     } finally {
@@ -417,7 +464,7 @@ export default function PulsePage() {
 
   const genreOptions = availableGenres.map((g) => ({
     value: g,
-    label: g === "All genres" ? "All genres" : g,
+    label: g,
   }));
 
   const sortOptions = [
@@ -497,6 +544,7 @@ export default function PulsePage() {
               Boolean(userId) && Boolean(artistId) && userId !== artistId;
             const isFollowing = artistId ? followingSet.has(artistId) : false;
             const followLoading = followLoadingId === artistId;
+            const followerCount = artistId ? followerCounts.get(artistId) ?? 0 : 0;
 
             return (
               <div
@@ -540,8 +588,29 @@ export default function PulsePage() {
                         ) : (
                           <span>{safeStr(t.artistDisplayName || t.artist || "AI Artist")}</span>
                         )}
-                        {" • "}
-                        {safeStr(t.genre || "-")}
+
+                        {showFollowButton ? (
+                          <>
+                            {" · "}
+                            <button
+                              onClick={() => toggleFollow(artistId)}
+                              disabled={followLoading}
+                              className="text-sm text-white/60 transition hover:text-white disabled:opacity-60"
+                            >
+                              {followLoading ? "..." : isFollowing ? "Following" : "Follow"}
+                            </button>
+                            {" · "}
+                            <span>{followerCount} follower{followerCount === 1 ? "" : "s"}</span>
+                          </>
+                        ) : followerCount > 0 ? (
+                          <>
+                            {" · "}
+                            <span>{followerCount} follower{followerCount === 1 ? "" : "s"}</span>
+                          </>
+                        ) : null}
+
+                        {" · "}
+                        {normalizeGenre(t.genre) || "-"}
                       </div>
                     </div>
                   </div>
@@ -564,20 +633,6 @@ export default function PulsePage() {
                   </div>
 
                   <div className="col-span-3 flex justify-end gap-2">
-                    {showFollowButton ? (
-                      <button
-                        onClick={() => toggleFollow(artistId)}
-                        disabled={followLoading}
-                        className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${
-                          isFollowing
-                            ? "bg-white/12 hover:bg-white/16"
-                            : "bg-gradient-to-r from-cyan-300 to-cyan-400 hover:opacity-90"
-                        } ${followLoading ? "opacity-70" : ""}`}
-                      >
-                        {followLoading ? "..." : isFollowing ? "Following" : "Follow"}
-                      </button>
-                    ) : null}
-
                     <button
                       onClick={() => {
                         if (isCurrent) {

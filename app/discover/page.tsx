@@ -34,6 +34,8 @@ type DiscoverTrack = TrackWithResolvedArtist<TrackRow>;
 type ViewerProfile = {
   plan: string | null;
   is_pro: boolean | null;
+  is_founding: boolean | null;
+  role: string | null;
 };
 
 function pickTitle(t: DiscoverTrack) {
@@ -45,7 +47,7 @@ function pickArtist(t: DiscoverTrack) {
 }
 
 function pickGenre(t: DiscoverTrack) {
-  return (t.genre ?? "-").toString();
+  return normalizeGenre((t.genre ?? "-").toString());
 }
 
 function getArtworkSrc(t: DiscoverTrack) {
@@ -54,6 +56,24 @@ function getArtworkSrc(t: DiscoverTrack) {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function normalizeGenre(value: string | null | undefined) {
+  const raw = (value ?? "").trim();
+  if (!raw) return "";
+
+  const lower = raw.toLowerCase();
+
+  if (
+    lower === "classical / cine" ||
+    lower === "classical/cine" ||
+    lower === "classical / cinematic" ||
+    lower === "classical/cinematic"
+  ) {
+    return "Classical / Cinematic";
+  }
+
+  return raw;
 }
 
 export default function DiscoverPage() {
@@ -243,15 +263,19 @@ export default function DiscoverPage() {
 
         const { data: profile, error: profileError } = await supabase
           .from("profiles")
-          .select("plan, is_pro")
+          .select("plan, is_pro, is_founding, role")
           .eq("id", user.id)
           .maybeSingle<ViewerProfile>();
 
         if (profileError) throw profileError;
         if (!alive) return;
+
         const hasPaidPlan =
           Boolean(profile?.is_pro) ||
-          profile?.plan === "premium";
+          profile?.plan === "premium" ||
+          profile?.plan === "artist" ||
+          Boolean(profile?.is_founding) ||
+          profile?.role === "artist";
 
         setViewerHasPaidPlan(hasPaidPlan);
       } catch (error) {
@@ -301,7 +325,7 @@ export default function DiscoverPage() {
     const set = new Set<string>();
 
     for (const t of tracks) {
-      const g = (t.genre ?? "").trim();
+      const g = normalizeGenre(t.genre);
       if (g) set.add(g);
     }
 
@@ -312,12 +336,13 @@ export default function DiscoverPage() {
     const q = search.trim().toLowerCase();
 
     return tracks.filter((t) => {
-      if (genre !== "All genres" && (t.genre ?? "") !== genre) return false;
+      if (genre !== "All genres" && normalizeGenre(t.genre) !== genre) return false;
 
       if (!q) return true;
 
-      const hay =
-        `${t.title ?? ""} ${t.artistDisplayName ?? ""} ${t.genre ?? ""}`.toLowerCase();
+      const hay = `${t.title ?? ""} ${t.artistDisplayName ?? ""} ${normalizeGenre(
+        t.genre
+      )}`.toLowerCase();
 
       return hay.includes(q);
     });

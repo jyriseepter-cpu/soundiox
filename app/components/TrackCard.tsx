@@ -82,9 +82,19 @@ export default function TrackCard({
     return typeof raw === "string" && raw.trim() ? raw.trim() : null;
   }, [t.user_id]);
 
+  const initialFollowers = useMemo(() => {
+    const raw = t.artistFollowerCount;
+    return typeof raw === "number" ? raw : 0;
+  }, [t.artistFollowerCount]);
+
   const [viewerId, setViewerId] = useState<string | null>(null);
   const [followLoading, setFollowLoading] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
+  const [followerCount, setFollowerCount] = useState(initialFollowers);
+
+  useEffect(() => {
+    setFollowerCount(initialFollowers);
+  }, [initialFollowers]);
 
   useEffect(() => {
     let alive = true;
@@ -98,6 +108,19 @@ export default function TrackCard({
 
       const nextViewerId = user?.id ?? null;
       setViewerId(nextViewerId);
+
+      if (artistUserId) {
+        const { count, error: countError } = await supabase
+          .from("follows")
+          .select("*", { count: "exact", head: true })
+          .eq("following_profile_id", artistUserId);
+
+        if (!alive) return;
+
+        if (!countError) {
+          setFollowerCount(count || 0);
+        }
+      }
 
       if (!nextViewerId || !artistUserId || nextViewerId === artistUserId) {
         setIsFollowing(false);
@@ -177,6 +200,7 @@ export default function TrackCard({
         if (error) throw error;
 
         setIsFollowing(false);
+        setFollowerCount((prev) => Math.max(0, prev - 1));
         return;
       }
 
@@ -200,6 +224,7 @@ export default function TrackCard({
       }
 
       setIsFollowing(true);
+      setFollowerCount((prev) => prev + 1);
     } catch (error: any) {
       console.warn("TrackCard follow toggle warning:", error?.message || error);
     } finally {
@@ -207,7 +232,7 @@ export default function TrackCard({
     }
   }
 
-  const showFollowButton =
+  const showFollowControl =
     Boolean(artistUserId) && Boolean(viewerId) && viewerId !== artistUserId;
 
   return (
@@ -248,7 +273,7 @@ export default function TrackCard({
             {artistSlug ? (
               <Link
                 href={`/artists/${encodeURIComponent(artistSlug)}`}
-                className="cursor-pointer transition hover:text-cyan-300"
+                className="transition hover:text-cyan-300"
               >
                 {getArtist(track)}
               </Link>
@@ -257,26 +282,36 @@ export default function TrackCard({
             )}
 
             {getGenre(track) ? ` • ${getGenre(track)}` : ""}
+
+            {showFollowControl ? (
+              <>
+                {" • "}
+                <button
+                  type="button"
+                  onClick={handleFollowClick}
+                  disabled={followLoading}
+                  className="text-sm font-medium text-white/80 transition hover:text-cyan-300 disabled:opacity-60"
+                >
+                  {followLoading ? "..." : isFollowing ? "Following" : "Follow"}
+                </button>
+                {" • "}
+                <span className="text-white/60">
+                  {followerCount} follower{followerCount === 1 ? "" : "s"}
+                </span>
+              </>
+            ) : followerCount > 0 ? (
+              <>
+                {" • "}
+                <span className="text-white/60">
+                  {followerCount} follower{followerCount === 1 ? "" : "s"}
+                </span>
+              </>
+            ) : null}
           </div>
         </div>
       </div>
 
       <div className="ml-4 flex items-center gap-2">
-        {showFollowButton ? (
-          <button
-            type="button"
-            onClick={handleFollowClick}
-            disabled={followLoading}
-            className={`rounded-xl px-4 py-2 text-base font-semibold text-white transition ${
-              isFollowing
-                ? "bg-white/12 hover:bg-white/16"
-                : "bg-gradient-to-r from-cyan-300 to-cyan-400 hover:opacity-90"
-            } ${followLoading ? "opacity-70" : ""}`}
-          >
-            {followLoading ? "..." : isFollowing ? "Following" : "Follow"}
-          </button>
-        ) : null}
-
         <button
           type="button"
           className="rounded-xl bg-gradient-to-r from-cyan-300 to-cyan-400 px-4 py-2 text-base font-semibold text-white transition hover:opacity-90"
