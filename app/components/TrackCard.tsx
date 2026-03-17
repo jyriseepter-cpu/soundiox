@@ -1,6 +1,8 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
+import { useMemo } from "react";
 import { usePlayer } from "@/app/components/PlayerContext";
 import type { Track } from "@/app/components/PlayerContext";
 
@@ -11,25 +13,33 @@ type Props = {
 };
 
 function getTitle(track: Track) {
-  return (track.title ?? track.name ?? "Untitled").toString();
+  const t = track as any;
+  return (t.title ?? t.name ?? "Untitled").toString();
 }
 
 function getArtist(track: Track) {
+  const t = track as any;
   return (
-    track.artistDisplayName ??
-    track.displayArtist ??
-    track.artist ??
+    t.artistDisplayName ??
+    t.displayArtist ??
+    t.artist ??
     "AI Artist"
   ).toString();
 }
 
+function getGenre(track: Track) {
+  const t = track as any;
+  return (t.genre ?? "").toString();
+}
+
 function getImage(track: Track) {
+  const t = track as any;
   return (
-    track.artistAvatarUrl ??
-    track.avatar_url ??
-    track.artwork_url ??
-    track.image_url ??
-    track.cover_url ??
+    t.artistAvatarUrl ??
+    t.avatar_url ??
+    t.artwork_url ??
+    t.image_url ??
+    t.cover_url ??
     "/logo-new.png"
   ).toString();
 }
@@ -37,10 +47,13 @@ function getImage(track: Track) {
 function isSameTrack(a?: Track | null, b?: Track | null) {
   if (!a || !b) return false;
 
-  if (a.id && b.id) return a.id === b.id;
+  const ta = a as any;
+  const tb = b as any;
 
-  const aSrc = (a.audio_url ?? a.src ?? "").toString();
-  const bSrc = (b.audio_url ?? b.src ?? "").toString();
+  if (ta.id && tb.id) return ta.id === tb.id;
+
+  const aSrc = (ta.audio_url ?? ta.src ?? "").toString();
+  const bSrc = (tb.audio_url ?? tb.src ?? "").toString();
 
   return Boolean(aSrc) && aSrc === bSrc;
 }
@@ -52,8 +65,14 @@ export default function TrackCard({
 }: Props) {
   const { currentTrack, isPlaying, playTrack, toggle } = usePlayer();
 
+  const t = track as any;
   const active = isSameTrack(currentTrack, track);
   const showPause = active && isPlaying;
+
+  const artistSlug = useMemo(() => {
+    const raw = t.artistSlug;
+    return typeof raw === "string" && raw.trim() ? raw.trim() : null;
+  }, [t.artistSlug]);
 
   function handlePlayClick() {
     if (active) {
@@ -102,9 +121,20 @@ export default function TrackCard({
           <div className="truncate text-lg font-bold text-white">
             {getTitle(track)}
           </div>
+
           <div className="truncate text-sm font-medium text-white/80">
-            {getArtist(track)}
-            {track.genre ? ` • ${track.genre}` : ""}
+            {artistSlug ? (
+              <Link
+                href={`/artists/${encodeURIComponent(artistSlug)}`}
+                className="cursor-pointer transition hover:text-cyan-300"
+              >
+                {getArtist(track)}
+              </Link>
+            ) : (
+              <span>{getArtist(track)}</span>
+            )}
+
+            {getGenre(track) ? ` • ${getGenre(track)}` : ""}
           </div>
         </div>
       </div>

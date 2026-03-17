@@ -18,7 +18,6 @@ const GENRES = [
 
 type ProfileRow = {
   display_name: string | null;
-  role: string | null;
 };
 
 function normalizeIsrc(value: string) {
@@ -58,16 +57,11 @@ export default function UploadPage() {
 
         const { data: profile, error: profileError } = await supabase
           .from("profiles")
-          .select("role")
+          .select("display_name")
           .eq("id", user.id)
           .maybeSingle<ProfileRow>();
 
         if (profileError) throw profileError;
-
-        if (profile?.role !== "artist") {
-          router.replace("/account");
-          return;
-        }
 
         if (!active) return;
 
@@ -93,11 +87,6 @@ export default function UploadPage() {
   async function handleUpload() {
     setMessage("");
     setError("");
-
-    if (!canUpload) {
-      setError("Only artist accounts can upload tracks.");
-      return;
-    }
 
     if (!title.trim()) {
       setError("Please enter a title.");
@@ -136,7 +125,7 @@ export default function UploadPage() {
 
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("display_name, role")
+        .select("display_name")
         .eq("id", user.id)
         .maybeSingle<ProfileRow>();
 
@@ -228,7 +217,7 @@ export default function UploadPage() {
       <main className="mx-auto max-w-xl px-6 pb-28 pt-8 text-white">
         <div className="rounded-3xl border border-rose-400/20 bg-rose-400/10 p-6 backdrop-blur-xl">
           <p className="text-sm text-rose-200">
-            Only artist accounts can access the upload page.
+            Please log in to access the upload page.
           </p>
         </div>
       </main>

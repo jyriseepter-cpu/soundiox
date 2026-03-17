@@ -31,9 +31,8 @@ type Props = {
   isPlaying: boolean;
   currentTrackId: string | null;
 
-  onUpgradePlan: (plan: "premium" | "artist") => Promise<void>;
+  onUpgradePlan: (plan: "premium") => Promise<void>;
   selectedTrack: Track | null;
-  viewerRole: "listener" | "artist";
   viewerHasPaidPlan: boolean;
 };
 
@@ -71,7 +70,6 @@ export default function ArtistPanel(props: Props) {
     currentTrackId,
     onUpgradePlan,
     selectedTrack,
-    viewerRole,
     viewerHasPaidPlan,
   } = props;
 
@@ -79,7 +77,7 @@ export default function ArtistPanel(props: Props) {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [newPlaylistName, setNewPlaylistName] = useState("");
   const [selectedPlaylistId, setSelectedPlaylistId] = useState("");
-  const [upgradeLoading, setUpgradeLoading] = useState<"premium" | "artist" | null>(null);
+  const [upgradeLoading, setUpgradeLoading] = useState<"premium" | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const [featuredArtists, setFeaturedArtists] = useState<FeaturedArtist[]>([]);
@@ -128,7 +126,7 @@ export default function ArtistPanel(props: Props) {
         const { data, error } = await supabase
           .from("profiles")
           .select(
-            "id, display_name, bio, country, avatar_url, slug, role, is_pro, is_founding, like_count_month"
+            "id, display_name, bio, country, avatar_url, slug, role, is_founding, like_count_month"
           )
           .eq("role", "artist")
           .order("is_founding", { ascending: false })
@@ -234,7 +232,7 @@ export default function ArtistPanel(props: Props) {
 
   const topTracks = useMemo(() => tracks.slice(0, 8), [tracks]);
 
-  async function handleUpgrade(plan: "premium" | "artist") {
+  async function handleUpgrade(plan: "premium") {
     try {
       setUpgradeLoading(plan);
       await onUpgradePlan(plan);
@@ -243,8 +241,7 @@ export default function ArtistPanel(props: Props) {
     }
   }
 
-  const showPremiumUpgrade = viewerRole !== "artist" && !viewerHasPaidPlan;
-  const showBecomeArtist = viewerRole !== "artist";
+  const showPremiumUpgrade = !viewerHasPaidPlan;
 
   return (
     <>
@@ -295,7 +292,7 @@ export default function ArtistPanel(props: Props) {
           </div>
         </div>
 
-        {showPremiumUpgrade || showBecomeArtist ? (
+        {showPremiumUpgrade ? (
           <div className="space-y-2">
             {showPremiumUpgrade ? (
               <button
@@ -304,16 +301,6 @@ export default function ArtistPanel(props: Props) {
                 className="h-10 w-full rounded-xl bg-yellow-400 font-bold text-black hover:bg-yellow-300 disabled:opacity-60"
               >
                 {upgradeLoading === "premium" ? "Opening..." : "Upgrade to Premium"}
-              </button>
-            ) : null}
-
-            {showBecomeArtist ? (
-              <button
-                onClick={() => handleUpgrade("artist")}
-                disabled={upgradeLoading !== null}
-                className="h-10 w-full rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-500 font-bold text-white hover:opacity-95 disabled:opacity-60"
-              >
-                {upgradeLoading === "artist" ? "Opening..." : "Become Artist"}
               </button>
             ) : null}
           </div>

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
-type Tier = "premium_monthly" | "artist_monthly";
+type Tier = "premium_monthly";
 
 export default function UpgradeButtons() {
   const [loading, setLoading] = useState<Tier | null>(null);
@@ -70,9 +70,6 @@ export default function UpgradeButtons() {
     "h-10 rounded-xl px-4 text-sm font-semibold text-white transition disabled:opacity-60";
   const premiumBtn =
     "bg-gradient-to-r from-yellow-300 via-amber-400 to-yellow-500 hover:opacity-95";
-  const proBtn =
-    "bg-gradient-to-r from-fuchsia-500 via-purple-500 to-pink-500 hover:opacity-95";
-
   return (
     <div className="space-y-3">
       <button
@@ -82,15 +79,6 @@ export default function UpgradeButtons() {
         className={`${baseBtn} ${premiumBtn} w-full`}
       >
         {loading === "premium_monthly" ? "Loading..." : "Upgrade to Premium"}
-      </button>
-
-      <button
-        type="button"
-        onClick={() => startCheckout("artist_monthly")}
-        disabled={loading !== null}
-        className={`${baseBtn} ${proBtn} w-full`}
-      >
-        {loading === "artist_monthly" ? "Loading..." : "Become Artist"}
       </button>
     </div>
   );

@@ -6,18 +6,36 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { usePlayer } from "@/app/components/PlayerContext";
 import CustomSelect from "@/app/components/CustomSelect";
-import {
-  createArtistIdentityMap,
-  enrichTracksWithArtistIdentity,
-  type ArtistIdentityProfile,
-} from "@/lib/artistIdentity";
 
 type SortKey = "plays_month" | "likes_month";
 type CategoryKey = "global" | "new_rising" | "estonia";
-type PulseTrack = any & {
+
+type PulseTrack = {
+  id: string;
+  title: string | null;
+  artist: string | null;
+  genre: string | null;
+  created_at: string | null;
+  plays_this_month: number | null;
+  artwork_url?: string | null;
+  cover_url?: string | null;
+  image_url?: string | null;
+  artwork?: string | null;
+  cover?: string | null;
+  image?: string | null;
+  user_id: string | null;
+  is_published?: boolean | null;
   artistDisplayName: string;
   artistSlug: string | null;
-  user_id: string | null;
+};
+
+type ProfileRow = {
+  id: string;
+  display_name: string | null;
+  slug: string | null;
+  avatar_url: string | null;
+  is_founding?: boolean | null;
+  is_pro?: boolean | null;
 };
 
 function monthStartISO() {
@@ -25,7 +43,7 @@ function monthStartISO() {
   return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
 }
 
-function safeStr(v: any) {
+function safeStr(v: unknown) {
   return (v ?? "").toString();
 }
 
@@ -33,7 +51,7 @@ function isAbsoluteUrl(u: string) {
   return /^https?:\/\//i.test(u);
 }
 
-function getArtworkSrc(t: any) {
+function getArtworkSrc(t: Partial<PulseTrack>) {
   const raw =
     t.artwork_url ||
     t.cover_url ||
@@ -54,12 +72,10 @@ function getArtworkSrc(t: any) {
 }
 
 export default function PulsePage() {
-  console.log("NEW PULSE BUILD");
-
   const router = useRouter();
   const { playTrack, currentTrack, isPlaying, toggle } = usePlayer();
 
-  const [tracks, setTracks] = useState<any[]>([]);
+  const [tracks, setTracks] = useState<PulseTrack[]>([]);
   const [likesMonth, setLikesMonth] = useState<Map<string, number>>(new Map());
   const [likedSet, setLikedSet] = useState<Set<string>>(new Set());
   const [userId, setUserId] = useState<string | null>(null);
@@ -87,16 +103,25 @@ export default function PulsePage() {
         .select("*")
         .eq("is_published", true);
 
-      if (tErr) console.error("Pulse tracks error:", tErr);
+      if (tErr) {
+        console.error("Pulse tracks error:", tErr);
+      }
 
-      const safe = (tRows ?? []) as PulseTrack[];
+      const safeTracks: PulseTrack[] = ((tRows ?? []) as any[]).map((track) => ({
+        ...track,
+        artistDisplayName: safeStr(track.artist || "AI Artist"),
+        artistSlug: null as string | null,
+      }));
+
       const artistIds = Array.from(
         new Set(
-          safe
+          safeTracks
             .map((track) => track.user_id)
             .filter((id): id is string => typeof id === "string" && id.length > 0)
         )
       );
+
+      let enrichedTracks: PulseTrack[] = safeTracks;
 
       if (artistIds.length > 0) {
         const { data: profiles, error: profilesError } = await supabase
@@ -106,18 +131,32 @@ export default function PulsePage() {
 
         if (profilesError) {
           console.warn("Pulse profiles error:", profilesError);
-          setTracks(safe);
         } else {
-          const profileMap = createArtistIdentityMap(
-            (profiles ?? []) as ArtistIdentityProfile[]
-          );
-          setTracks(enrichTracksWithArtistIdentity(safe, profileMap));
+          const profileMap = new Map<string, ProfileRow>();
+          ((profiles ?? []) as ProfileRow[]).forEach((profile) => {
+            profileMap.set(profile.id, profile);
+          });
+
+          enrichedTracks = safeTracks.map((track) => {
+            const profile = track.user_id ? profileMap.get(track.user_id) : undefined;
+
+            return {
+              ...track,
+              artistDisplayName: safeStr(
+                profile?.display_name || track.artist || "AI Artist"
+              ),
+              artistSlug:
+                profile?.slug && safeStr(profile.slug).trim()
+                  ? safeStr(profile.slug).trim()
+                  : null,
+            };
+          });
         }
-      } else {
-        setTracks(safe);
       }
 
-      const ids = safe.map((t: any) => t.id).filter(Boolean);
+      setTracks(enrichedTracks);
+
+      const ids = enrichedTracks.map((t) => t.id).filter(Boolean);
 
       if (ids.length > 0) {
         const { data: likeRows, error: likeErr } = await supabase
@@ -126,10 +165,12 @@ export default function PulsePage() {
           .eq("month", month)
           .in("track_id", ids);
 
-        if (likeErr) console.warn("Pulse likes query error:", likeErr);
+        if (likeErr) {
+          console.warn("Pulse likes query error:", likeErr);
+        }
 
         const map = new Map<string, number>();
-        (likeRows ?? []).forEach((row: any) => {
+        (likeRows ?? []).forEach((row: { track_id: string }) => {
           const trackId = String(row.track_id);
           map.set(trackId, (map.get(trackId) ?? 0) + 1);
         });
@@ -146,10 +187,12 @@ export default function PulsePage() {
           .eq("month", month)
           .in("track_id", ids);
 
-        if (myErr) console.warn("Pulse my likes error:", myErr);
+        if (myErr) {
+          console.warn("Pulse my likes error:", myErr);
+        }
 
         const set = new Set<string>();
-        (myLikes ?? []).forEach((r: any) => set.add(String(r.track_id)));
+        (myLikes ?? []).forEach((r: { track_id: string }) => set.add(String(r.track_id)));
         setLikedSet(set);
       } else {
         setLikedSet(new Set());
@@ -173,7 +216,9 @@ export default function PulsePage() {
     const set = new Set<string>();
     for (const t of tracks) {
       const g = safeStr(t.genre).trim();
-      if (g) set.add(g);
+      if (g) {
+        set.add(g);
+      }
     }
     return ["All genres", ...Array.from(set).sort((a, b) => a.localeCompare(b))];
   }, [tracks]);
@@ -181,21 +226,27 @@ export default function PulsePage() {
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
 
-    return tracks.filter((t: any) => {
+    return tracks.filter((t) => {
       if (category === "new_rising") {
         const created = t.created_at ? new Date(t.created_at).getTime() : 0;
         const days30 = 30 * 24 * 60 * 60 * 1000;
-        if (!created || Date.now() - created > days30) return false;
+        if (!created || Date.now() - created > days30) {
+          return false;
+        }
       }
 
-      if (genre !== "All genres") {
-        if (safeStr(t.genre) !== genre) return false;
+      if (genre !== "All genres" && safeStr(t.genre) !== genre) {
+        return false;
       }
 
-      if (!s) return true;
+      if (!s) {
+        return true;
+      }
 
-      const hay =
-        `${safeStr(t.title)} ${safeStr(t.artist)} ${safeStr(t.genre)}`.toLowerCase();
+      const hay = `${safeStr(t.title)} ${safeStr(t.artistDisplayName)} ${safeStr(
+        t.artist
+      )} ${safeStr(t.genre)}`.toLowerCase();
+
       return hay.includes(s);
     });
   }, [tracks, q, genre, category]);
@@ -203,11 +254,13 @@ export default function PulsePage() {
   const rows = useMemo(() => {
     const list = [...filtered];
 
-    list.sort((a: any, b: any) => {
+    list.sort((a, b) => {
       const aLikes = likesMonth.get(String(a.id)) ?? 0;
       const bLikes = likesMonth.get(String(b.id)) ?? 0;
 
-      if (sort === "likes_month") return bLikes - aLikes;
+      if (sort === "likes_month") {
+        return bLikes - aLikes;
+      }
 
       return (
         (Number(b.plays_this_month ?? 0) || 0) -
@@ -234,7 +287,9 @@ export default function PulsePage() {
         .eq("track_id", trackId)
         .eq("month", month);
 
-      if (error) console.error("Unlike error:", error);
+      if (error) {
+        console.error("Unlike error:", error);
+      }
 
       setLikedSet((prev) => {
         const s = new Set(prev);
@@ -347,12 +402,12 @@ export default function PulsePage() {
         ) : rows.length === 0 ? (
           <div className="p-4 text-white/60">No tracks.</div>
         ) : (
-          rows.map((t: any, idx: number) => {
+          rows.map((t, idx) => {
             const id = String(t.id);
             const liked = likedSet.has(id);
             const likes = likesMonth.get(id) ?? 0;
             const plays = Number(t.plays_this_month ?? 0) || 0;
-            const isCurrent = currentTrack?.id && String(currentTrack.id) === id;
+            const isCurrent = currentTrack?.id && String((currentTrack as any).id) === id;
 
             return (
               <div
@@ -384,17 +439,18 @@ export default function PulsePage() {
                       <div className="truncate font-semibold text-white">
                         {safeStr(t.title) || "Untitled"}
                       </div>
+
                       <div className="truncate text-sm text-white/60">
-                        <Link
-                          href={
-                            t.artistSlug
-                              ? `/artists/${encodeURIComponent(safeStr(t.artistSlug))}`
-                              : "#"
-                          }
-                          className="hover:text-white"
-                        >
-                          {safeStr(t.artistDisplayName || t.artist || "AI Artist")}
-                        </Link>
+                        {t.artistSlug ? (
+                          <Link
+                            href={`/artists/${encodeURIComponent(t.artistSlug)}`}
+                            className="hover:text-white"
+                          >
+                            {safeStr(t.artistDisplayName || t.artist || "AI Artist")}
+                          </Link>
+                        ) : (
+                          <span>{safeStr(t.artistDisplayName || t.artist || "AI Artist")}</span>
+                        )}
                         {" • "}
                         {safeStr(t.genre || "-")}
                       </div>
@@ -424,7 +480,7 @@ export default function PulsePage() {
                         if (isCurrent) {
                           toggle();
                         } else {
-                          playTrack(t, rows);
+                          playTrack(t as any, rows as any);
                         }
                       }}
                       className="rounded-xl bg-gradient-to-r from-cyan-400 to-purple-500 px-4 py-2 text-white"

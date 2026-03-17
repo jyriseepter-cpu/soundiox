@@ -69,11 +69,14 @@ function monthStartISO(d = new Date()) {
   return `${yyyy}-${mm}-01`;
 }
 
+function normalizeSlug(value: string) {
+  return decodeURIComponent(value || "").trim().toLowerCase();
+}
+
 export default function ArtistPage() {
   const router = useRouter();
   const params = useParams();
-  const slug = decodeURIComponent(String(params?.artist || "")).toLowerCase();
-
+  const slug = normalizeSlug(String(params?.artist || ""));
   const { playTrack } = usePlayer();
 
   const [loading, setLoading] = useState(true);
@@ -87,6 +90,7 @@ export default function ArtistPage() {
   const [followerCount, setFollowerCount] = useState(0);
   const [isFollowing, setIsFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
+  const [notFound, setNotFound] = useState(false);
 
   const playsMonth = useMemo(
     () => tracks.reduce((sum, t) => sum + (t.plays_this_month || 0), 0),
@@ -158,7 +162,9 @@ export default function ArtistPage() {
         return;
       }
 
-      if (data?.url) window.location.href = data.url;
+      if (data?.url) {
+        window.location.href = data.url;
+      }
     } catch (e: any) {
       alert(e?.message || "Donate failed");
     } finally {
@@ -262,6 +268,8 @@ export default function ArtistPage() {
 
     async function load() {
       setLoading(true);
+      setNotFound(false);
+      setShowDonateMenu(false);
 
       const {
         data: { user },
@@ -274,19 +282,22 @@ export default function ArtistPage() {
       const { data: artistData, error: artistErr } = await supabase
         .from("profiles")
         .select(
-          "id, display_name, slug, bio, avatar_url, country, plan, is_pro, is_founding, created_at"
+          "id, role, display_name, slug, bio, avatar_url, country, plan, is_pro, is_founding, created_at"
         )
         .eq("slug", slug)
         .eq("role", "artist")
         .maybeSingle();
 
-      if (artistErr) console.error("artist profile load error:", artistErr);
+      if (artistErr) {
+        console.error("artist profile load error:", artistErr);
+      }
       if (cancelled) return;
 
       const a = (artistData as ProfileArtistRow) || null;
       setArtist(a);
 
       if (!a?.id) {
+        setNotFound(true);
         setTracks([]);
         setLikesMonth(0);
         setLikesAllTime(0);
@@ -307,7 +318,9 @@ export default function ArtistPage() {
         .eq("is_published", true)
         .order("created_at", { ascending: false });
 
-      if (trackErr) console.error("artist tracks load error:", trackErr);
+      if (trackErr) {
+        console.error("artist tracks load error:", trackErr);
+      }
       if (cancelled) return;
 
       const t = ((trackData as TrackRow[]) || []).filter(Boolean);
@@ -329,7 +342,9 @@ export default function ArtistPage() {
         .eq("month", monthStart)
         .in("track_id", trackIds);
 
-      if (monthErr) console.error("monthly likes load error:", monthErr);
+      if (monthErr) {
+        console.error("monthly likes load error:", monthErr);
+      }
       if (cancelled) return;
 
       const lm = ((monthRows as TrackLikeMonthlyRow[]) || []).reduce(
@@ -343,7 +358,9 @@ export default function ArtistPage() {
         .select("track_id,likes")
         .in("track_id", trackIds);
 
-      if (allErr) console.error("all time likes load error:", allErr);
+      if (allErr) {
+        console.error("all time likes load error:", allErr);
+      }
       if (cancelled) return;
 
       const la = ((allRows as TrackLikeAllTimeRow[]) || []).reduce(
@@ -366,6 +383,25 @@ export default function ArtistPage() {
   const isFounding = Boolean(artist?.is_founding);
   const isArtist = artist?.plan === "artist" || artist?.role === "artist";
   const isOwnProfile = Boolean(viewerId && artist?.id && viewerId === artist.id);
+
+  if (!loading && notFound) {
+    return (
+      <div className="mx-auto w-full max-w-6xl px-4 pb-28 pt-8">
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center backdrop-blur-xl">
+          <div className="text-2xl font-semibold text-white">Artist not found</div>
+          <div className="mt-2 text-sm text-white/65">
+            This profile could not be loaded from the current artist slug.
+          </div>
+          <button
+            onClick={() => router.push("/artists")}
+            className="mt-5 h-10 rounded-xl bg-white/10 px-4 text-sm font-medium text-white hover:bg-white/15"
+          >
+            Back to Artists
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 pb-28 pt-8">
@@ -641,7 +677,11 @@ export default function ArtistPage() {
                         className="object-cover"
                         sizes="48px"
                       />
-                    ) : null}
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-white/40">
+                        ♪
+                      </div>
+                    )}
                   </div>
 
                   <div className="min-w-0">
