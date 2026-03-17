@@ -35,10 +35,6 @@ type ViewerProfile = {
   plan: string | null;
   is_pro: boolean | null;
 };
-type FollowRow = {
-  follower_id: string;
-  following_profile_id: string;
-};
 
 function pickTitle(t: DiscoverTrack) {
   return (t.title ?? "Untitled").toString();
@@ -74,11 +70,7 @@ export default function DiscoverPage() {
 
   const [selectedTrack, setSelectedTrack] = useState<DiscoverTrack | null>(null);
   const [hasOAuthCode, setHasOAuthCode] = useState(false);
-  const [viewerId, setViewerId] = useState<string | null>(null);
   const [viewerHasPaidPlan, setViewerHasPaidPlan] = useState(false);
-  const [followerCounts, setFollowerCounts] = useState<Record<string, number>>({});
-  const [followingArtistIds, setFollowingArtistIds] = useState<Set<string>>(new Set());
-  const [followLoadingArtistId, setFollowLoadingArtistId] = useState<string | null>(null);
 
   const nowPlayingId = (currentTrack as any)?.id ?? null;
 
@@ -243,14 +235,11 @@ export default function DiscoverPage() {
 
         if (!user) {
           if (!alive) return;
-          setViewerId(null);
           setViewerHasPaidPlan(false);
-          setFollowingArtistIds(new Set());
           return;
         }
 
         if (!alive) return;
-        setViewerId(user.id);
 
         const { data: profile, error: profileError } = await supabase
           .from("profiles")
@@ -268,9 +257,7 @@ export default function DiscoverPage() {
       } catch (error) {
         console.warn("discover viewer profile warning:", error);
         if (!alive) return;
-        setViewerId(null);
         setViewerHasPaidPlan(false);
-        setFollowingArtistIds(new Set());
       }
     }
 
@@ -287,77 +274,6 @@ export default function DiscoverPage() {
       subscription.unsubscribe();
     };
   }, []);
-
-  useEffect(() => {
-    let alive = true;
-
-    async function loadFollowData() {
-      const artistIds = Array.from(
-        new Set(
-          tracks
-            .map((track) => track.user_id)
-            .filter((id): id is string => typeof id === "string" && id.length > 0)
-        )
-      );
-
-      if (!artistIds.length) {
-        if (!alive) return;
-        setFollowerCounts({});
-        setFollowingArtistIds(new Set());
-        return;
-      }
-
-      const { data: followerRows, error: followerError } = await supabase
-        .from("follows")
-        .select("following_profile_id")
-        .in("following_profile_id", artistIds);
-
-      if (followerError) {
-        console.warn("discover follower counts warning:", followerError);
-      }
-
-      if (!alive) return;
-
-      const counts: Record<string, number> = {};
-      (followerRows ?? []).forEach((row: any) => {
-        const artistId = String(row.following_profile_id || "");
-        if (!artistId) return;
-        counts[artistId] = (counts[artistId] || 0) + 1;
-      });
-      setFollowerCounts(counts);
-
-      if (!viewerId) {
-        setFollowingArtistIds(new Set());
-        return;
-      }
-
-      const { data: myFollowRows, error: myFollowError } = await supabase
-        .from("follows")
-        .select("follower_id, following_profile_id")
-        .eq("follower_id", viewerId)
-        .in("following_profile_id", artistIds);
-
-      if (myFollowError) {
-        console.warn("discover follow state warning:", myFollowError);
-        setFollowingArtistIds(new Set());
-        return;
-      }
-
-      const nextSet = new Set<string>();
-      ((myFollowRows ?? []) as FollowRow[]).forEach((row) => {
-        if (row.following_profile_id) {
-          nextSet.add(row.following_profile_id);
-        }
-      });
-      setFollowingArtistIds(nextSet);
-    }
-
-    void loadFollowData();
-
-    return () => {
-      alive = false;
-    };
-  }, [tracks, viewerId]);
 
   useEffect(() => {
     function resetUpgradeState() {
@@ -464,76 +380,6 @@ export default function DiscoverPage() {
     }
   }
 
-  async function toggleArtistFollow(track: DiscoverTrack) {
-    const artistId = track.user_id;
-    if (!artistId) return;
-
-    if (!viewerId) {
-      router.push("/login");
-      return;
-    }
-
-    if (viewerId === artistId) {
-      return;
-    }
-
-    setFollowLoadingArtistId(artistId);
-
-    try {
-      const isFollowing = followingArtistIds.has(artistId);
-
-      if (isFollowing) {
-        const { error } = await supabase
-          .from("follows")
-          .delete()
-          .eq("follower_id", viewerId)
-          .eq("following_profile_id", artistId);
-
-        if (error) throw error;
-
-        setFollowingArtistIds((prev) => {
-          const next = new Set(prev);
-          next.delete(artistId);
-          return next;
-        });
-        setFollowerCounts((prev) => ({
-          ...prev,
-          [artistId]: Math.max(0, (prev[artistId] || 0) - 1),
-        }));
-      } else {
-        const { error } = await supabase.from("follows").insert({
-          follower_id: viewerId,
-          following_profile_id: artistId,
-        });
-
-        if (error) throw error;
-
-        const { error: notificationError } = await supabase
-          .from("notifications")
-          .insert({
-            user_id: artistId,
-            type: "follow",
-            actor_id: viewerId,
-          });
-
-        if (notificationError) {
-          console.error("discover follow notification insert error:", notificationError);
-        }
-
-        setFollowingArtistIds((prev) => new Set(prev).add(artistId));
-        setFollowerCounts((prev) => ({
-          ...prev,
-          [artistId]: (prev[artistId] || 0) + 1,
-        }));
-      }
-    } catch (error: any) {
-      console.warn("discover artist follow warning:", error);
-      alert(error?.message || "Follow action failed");
-    } finally {
-      setFollowLoadingArtistId(null);
-    }
-  }
-
   const customGenreOptions = genreOptions.map((g) => ({
     value: g,
     label: g,
@@ -583,11 +429,6 @@ export default function DiscoverPage() {
                   key={t.id}
                   track={t as any}
                   allTracks={displayedTracks as any}
-                  followerCount={t.user_id ? followerCounts[t.user_id] || 0 : 0}
-                  isFollowingArtist={Boolean(t.user_id && followingArtistIds.has(t.user_id))}
-                  canFollowArtist={Boolean(t.user_id && viewerId !== t.user_id)}
-                  followLoading={followLoadingArtistId === t.user_id}
-                  onToggleFollowArtist={() => void toggleArtistFollow(t)}
                   onPlay={() => {
                     setSelectedTrack(t);
                     void playTrack(t as any, displayedTracks as any);

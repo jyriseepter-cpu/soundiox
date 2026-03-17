@@ -8,11 +8,6 @@ type Props = {
   track: Track;
   allTracks?: Track[];
   onPlay?: () => void;
-  followerCount?: number;
-  isFollowingArtist?: boolean;
-  canFollowArtist?: boolean;
-  followLoading?: boolean;
-  onToggleFollowArtist?: () => void;
 };
 
 function getTitle(track: Track) {
@@ -54,11 +49,6 @@ export default function TrackCard({
   track,
   allTracks = [],
   onPlay,
-  followerCount = 0,
-  isFollowingArtist = false,
-  canFollowArtist = true,
-  followLoading = false,
-  onToggleFollowArtist,
 }: Props) {
   const { currentTrack, isPlaying, playTrack, toggle } = usePlayer();
 
@@ -113,28 +103,13 @@ export default function TrackCard({
             {getTitle(track)}
           </div>
           <div className="truncate text-sm font-medium text-white/80">
-            {getArtist(track)} • {followerCount} follower{followerCount === 1 ? "" : "s"}
+            {getArtist(track)}
             {track.genre ? ` • ${track.genre}` : ""}
           </div>
         </div>
       </div>
 
       <div className="ml-4 flex items-center gap-2">
-        {canFollowArtist && onToggleFollowArtist ? (
-          <button
-            type="button"
-            onClick={onToggleFollowArtist}
-            disabled={followLoading}
-            className={`rounded-xl px-4 py-2 text-base font-semibold transition ${
-              isFollowingArtist
-                ? "bg-white/10 text-white ring-1 ring-white/10 hover:bg-white/15"
-                : "bg-gradient-to-r from-cyan-300 to-cyan-400 text-white hover:opacity-90"
-            } disabled:opacity-60`}
-          >
-            {followLoading ? "Saving..." : isFollowingArtist ? "Following" : "Follow"}
-          </button>
-        ) : null}
-
         <button
           type="button"
           className="rounded-xl bg-gradient-to-r from-cyan-300 to-cyan-400 px-4 py-2 text-base font-semibold text-white transition hover:opacity-90"

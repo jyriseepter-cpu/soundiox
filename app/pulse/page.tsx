@@ -14,10 +14,6 @@ import {
 
 type SortKey = "plays_month" | "likes_month";
 type CategoryKey = "global" | "new_rising" | "estonia";
-type FollowRow = {
-  follower_id: string;
-  following_profile_id: string;
-};
 type PulseTrack = any & {
   artistDisplayName: string;
   artistSlug: string | null;
@@ -67,9 +63,6 @@ export default function PulsePage() {
   const [likesMonth, setLikesMonth] = useState<Map<string, number>>(new Map());
   const [likedSet, setLikedSet] = useState<Set<string>>(new Set());
   const [userId, setUserId] = useState<string | null>(null);
-  const [followerCounts, setFollowerCounts] = useState<Record<string, number>>({});
-  const [followingArtistIds, setFollowingArtistIds] = useState<Set<string>>(new Set());
-  const [followLoadingArtistId, setFollowLoadingArtistId] = useState<string | null>(null);
 
   const [sort, setSort] = useState<SortKey>("plays_month");
   const [category, setCategory] = useState<CategoryKey>("global");
@@ -160,51 +153,6 @@ export default function PulsePage() {
         setLikedSet(set);
       } else {
         setLikedSet(new Set());
-      }
-
-      if (artistIds.length > 0) {
-        const { data: followerRows, error: followerError } = await supabase
-          .from("follows")
-          .select("following_profile_id")
-          .in("following_profile_id", artistIds);
-
-        if (followerError) {
-          console.warn("Pulse follower counts error:", followerError);
-        }
-
-        const counts: Record<string, number> = {};
-        (followerRows ?? []).forEach((row: any) => {
-          const artistId = String(row.following_profile_id || "");
-          if (!artistId) return;
-          counts[artistId] = (counts[artistId] || 0) + 1;
-        });
-        setFollowerCounts(counts);
-
-        if (userId) {
-          const { data: myFollowRows, error: myFollowError } = await supabase
-            .from("follows")
-            .select("follower_id, following_profile_id")
-            .eq("follower_id", userId)
-            .in("following_profile_id", artistIds);
-
-          if (myFollowError) {
-            console.warn("Pulse follow state error:", myFollowError);
-            setFollowingArtistIds(new Set());
-          } else {
-            const nextSet = new Set<string>();
-            ((myFollowRows ?? []) as FollowRow[]).forEach((row) => {
-              if (row.following_profile_id) {
-                nextSet.add(row.following_profile_id);
-              }
-            });
-            setFollowingArtistIds(nextSet);
-          }
-        } else {
-          setFollowingArtistIds(new Set());
-        }
-      } else {
-        setFollowerCounts({});
-        setFollowingArtistIds(new Set());
       }
 
       setLoading(false);
@@ -320,76 +268,6 @@ export default function PulsePage() {
       m.set(trackId, (m.get(trackId) ?? 0) + 1);
       return m;
     });
-  };
-
-  const toggleArtistFollow = async (track: PulseTrack) => {
-    const artistId = track.user_id;
-    if (!artistId) return;
-
-    if (!userId) {
-      router.push("/login");
-      return;
-    }
-
-    if (userId === artistId) {
-      return;
-    }
-
-    setFollowLoadingArtistId(artistId);
-
-    try {
-      const isFollowing = followingArtistIds.has(artistId);
-
-      if (isFollowing) {
-        const { error } = await supabase
-          .from("follows")
-          .delete()
-          .eq("follower_id", userId)
-          .eq("following_profile_id", artistId);
-
-        if (error) throw error;
-
-        setFollowingArtistIds((prev) => {
-          const next = new Set(prev);
-          next.delete(artistId);
-          return next;
-        });
-        setFollowerCounts((prev) => ({
-          ...prev,
-          [artistId]: Math.max(0, (prev[artistId] || 0) - 1),
-        }));
-      } else {
-        const { error } = await supabase.from("follows").insert({
-          follower_id: userId,
-          following_profile_id: artistId,
-        });
-
-        if (error) throw error;
-
-        const { error: notificationError } = await supabase
-          .from("notifications")
-          .insert({
-            user_id: artistId,
-            type: "follow",
-            actor_id: userId,
-          });
-
-        if (notificationError) {
-          console.error("pulse follow notification insert error:", notificationError);
-        }
-
-        setFollowingArtistIds((prev) => new Set(prev).add(artistId));
-        setFollowerCounts((prev) => ({
-          ...prev,
-          [artistId]: (prev[artistId] || 0) + 1,
-        }));
-      }
-    } catch (error: any) {
-      console.error("pulse artist follow error:", error);
-      alert(error?.message || "Follow action failed");
-    } finally {
-      setFollowLoadingArtistId(null);
-    }
   };
 
   const categoryOptions = [
@@ -518,8 +396,6 @@ export default function PulsePage() {
                           {safeStr(t.artistDisplayName || t.artist || "AI Artist")}
                         </Link>
                         {" • "}
-                        {t.user_id ? followerCounts[String(t.user_id)] || 0 : 0} followers
-                        {" • "}
                         {safeStr(t.genre || "-")}
                       </div>
                     </div>
@@ -543,24 +419,6 @@ export default function PulsePage() {
                   </div>
 
                   <div className="col-span-2 flex justify-end gap-2">
-                    {t.user_id && userId !== t.user_id ? (
-                      <button
-                        onClick={() => void toggleArtistFollow(t)}
-                        disabled={followLoadingArtistId === t.user_id}
-                        className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                          followingArtistIds.has(String(t.user_id))
-                            ? "bg-white/10 text-white hover:bg-white/15"
-                            : "bg-gradient-to-r from-cyan-400 to-fuchsia-500 text-black hover:opacity-95"
-                        } disabled:opacity-60`}
-                      >
-                        {followLoadingArtistId === t.user_id
-                          ? "Saving..."
-                          : followingArtistIds.has(String(t.user_id))
-                          ? "Following"
-                          : "Follow"}
-                      </button>
-                    ) : null}
-
                     <button
                       onClick={() => {
                         if (isCurrent) {
