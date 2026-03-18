@@ -7,7 +7,6 @@ export type ArtistIdentityProfile = {
   country?: string | null;
   role?: string | null;
   is_founding: boolean | null;
-  is_pro: boolean | null;
   like_count_month?: number | null;
 };
 
