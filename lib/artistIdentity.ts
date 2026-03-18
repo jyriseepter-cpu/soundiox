@@ -19,7 +19,6 @@ export type NormalizedArtistIdentity = {
   country: string | null;
   role: string | null;
   isFounding: boolean;
-  isPro: boolean;
   likeCountMonth: number | null;
 };
 
@@ -45,17 +44,19 @@ export function normalizeArtistIdentity(
   profile: ArtistIdentityProfile
 ): NormalizedArtistIdentity {
   return {
-    id: profile.id,
-    displayName: cleanText(profile.display_name) || "AI Artist",
-    slug: cleanText(profile.slug),
-    avatarUrl: cleanText(profile.avatar_url),
-    bio: cleanText(profile.bio),
-    country: cleanText(profile.country),
-    role: cleanText(profile.role),
-    isFounding: Boolean(profile.is_founding),
-    likeCountMonth:
-      typeof profile.like_count_month === "number" ? profile.like_count_month : null,
-  };
+  id: profile.id,
+  displayName: cleanText(profile.display_name) || "AI Artist",
+  slug: cleanText(profile.slug),
+  avatarUrl: cleanText(profile.avatar_url),
+  bio: cleanText(profile.bio),
+  country: cleanText(profile.country),
+  role: cleanText(profile.role),
+  isFounding: Boolean(profile.is_founding),
+  likeCountMonth:
+    typeof profile.like_count_month === "number"
+      ? profile.like_count_month
+      : null,
+};
 }
 
 export function createArtistIdentityMap(
