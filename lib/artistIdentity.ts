@@ -53,7 +53,6 @@ export function normalizeArtistIdentity(
     country: cleanText(profile.country),
     role: cleanText(profile.role),
     isFounding: Boolean(profile.is_founding),
-    isPro: Boolean(profile.is_pro),
     likeCountMonth:
       typeof profile.like_count_month === "number" ? profile.like_count_month : null,
   };
