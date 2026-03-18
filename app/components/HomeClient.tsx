@@ -115,19 +115,19 @@ export default function HomeClient() {
               >
                 Join the Wave
               </Link>
-            </div>
 
-            <div className="mt-3 flex flex-wrap items-center gap-3">
               <Link
                 href="/founding-artists"
                 className="rounded-2xl bg-white/10 px-6 py-3 font-bold text-white ring-1 ring-white/10 hover:bg-white/15"
               >
                 Founding Artist
               </Link>
+            </div>
 
+            <div className="mt-3">
               <Link
                 href="/about/pulse"
-                className="rounded-2xl bg-white/10 px-6 py-3 font-bold text-white ring-1 ring-white/10 hover:bg-white/15"
+                className="inline-flex rounded-xl bg-white/10 px-5 py-2.5 text-sm font-bold text-white ring-1 ring-white/10 hover:bg-white/15"
               >
                 Monetization
               </Link>
