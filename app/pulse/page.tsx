@@ -35,8 +35,18 @@ type ProfileRow = {
   slug: string | null;
   avatar_url: string | null;
   is_founding?: boolean | null;
-  is_pro?: boolean | null;
+  role?: string | null;
+  plan?: string | null;
+  country?: string | null;
 };
+
+type ViewerProfile = {
+  role: string | null;
+  plan: string | null;
+  is_founding: boolean | null;
+};
+
+const MONTHLY_LIKE_LIMIT = 100;
 
 function monthStartISO() {
   const d = new Date();
@@ -89,6 +99,17 @@ function normalizeGenre(value: string | null | undefined) {
   return raw;
 }
 
+function normalizeRole(value: string | null | undefined) {
+  if (value === "artist") return "artist";
+  return "listener";
+}
+
+function normalizePlan(value: string | null | undefined) {
+  if (value === "premium") return "premium";
+  if (value === "artist") return "artist";
+  return "free";
+}
+
 export default function PulsePage() {
   const router = useRouter();
   const { playTrack, currentTrack, isPlaying, toggle } = usePlayer();
@@ -101,19 +122,101 @@ export default function PulsePage() {
   const [followLoadingId, setFollowLoadingId] = useState<string | null>(null);
   const [followerCounts, setFollowerCounts] = useState<Map<string, number>>(new Map());
 
+  const [viewerRole, setViewerRole] = useState<"listener" | "artist">("listener");
+  const [viewerPlan, setViewerPlan] = useState<"free" | "premium" | "artist">("free");
+  const [viewerIsFounding, setViewerIsFounding] = useState(false);
+  const [viewerLikesUsed, setViewerLikesUsed] = useState(0);
+
   const [sort, setSort] = useState<SortKey>("plays_month");
   const [category, setCategory] = useState<CategoryKey>("global");
   const [genre, setGenre] = useState<string>("All genres");
   const [q, setQ] = useState<string>("");
 
   const [loading, setLoading] = useState(true);
+  const [actionMessage, setActionMessage] = useState("");
   const month = useMemo(() => monthStartISO(), []);
 
+  const viewerCanLike =
+    viewerIsFounding ||
+    viewerRole === "artist" ||
+    viewerPlan === "premium" ||
+    viewerPlan === "artist";
+
+  const likesRemaining = Math.max(0, MONTHLY_LIKE_LIMIT - viewerLikesUsed);
+
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      setUserId(data.user?.id ?? null);
+    let alive = true;
+
+    async function loadViewer() {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) {
+        console.warn("Pulse auth user warning:", userError);
+      }
+
+      if (!alive) return;
+
+      setUserId(user?.id ?? null);
+
+      if (!user?.id) {
+        setViewerRole("listener");
+        setViewerPlan("free");
+        setViewerIsFounding(false);
+        setViewerLikesUsed(0);
+        return;
+      }
+
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("role, plan, is_founding")
+        .eq("id", user.id)
+        .maybeSingle<ViewerProfile>();
+
+      if (profileError) {
+        console.warn("Pulse viewer profile warning:", profileError);
+        if (!alive) return;
+        setViewerRole("listener");
+        setViewerPlan("free");
+        setViewerIsFounding(false);
+      } else {
+        if (!alive) return;
+        setViewerRole(normalizeRole(profile?.role));
+        setViewerPlan(normalizePlan(profile?.plan));
+        setViewerIsFounding(Boolean(profile?.is_founding));
+      }
+
+      const { data: myMonthLikes, error: myMonthLikesError } = await supabase
+        .from("likes")
+        .select("track_id")
+        .eq("user_id", user.id)
+        .eq("month", month);
+
+      if (myMonthLikesError) {
+        console.warn("Pulse monthly usage warning:", myMonthLikesError);
+        if (!alive) return;
+        setViewerLikesUsed(0);
+      } else {
+        if (!alive) return;
+        setViewerLikesUsed((myMonthLikes ?? []).length);
+      }
+    }
+
+    void loadViewer();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(() => {
+      void loadViewer();
     });
-  }, []);
+
+    return () => {
+      alive = false;
+      subscription.unsubscribe();
+    };
+  }, [month]);
 
   useEffect(() => {
     const load = async () => {
@@ -147,7 +250,7 @@ export default function PulsePage() {
       if (artistIds.length > 0) {
         const { data: profiles, error: profilesError } = await supabase
           .from("profiles")
-          .select("id, display_name, slug, avatar_url, is_founding, is_pro")
+          .select("id, display_name, slug, avatar_url, is_founding, role, plan, country")
           .in("id", artistIds);
 
         if (profilesError) {
@@ -172,6 +275,15 @@ export default function PulsePage() {
                   : null,
             };
           });
+
+          if (category === "estonia") {
+            const estoniaOnly = enrichedTracks.filter((track) => {
+              const profile = track.user_id ? profileMap.get(track.user_id) : undefined;
+              const country = safeStr(profile?.country).trim().toLowerCase();
+              return country === "estonia" || country === "eesti";
+            });
+            enrichedTracks = estoniaOnly;
+          }
         }
 
         const { data: followCountRows, error: followCountError } = await supabase
@@ -265,7 +377,7 @@ export default function PulsePage() {
     };
 
     void load();
-  }, [userId, month]);
+  }, [userId, month, category]);
 
   const rewardPool = useMemo(() => {
     let sum = 0;
@@ -332,12 +444,15 @@ export default function PulsePage() {
     return list;
   }, [filtered, likesMonth, sort]);
 
-  const toggleLike = async (trackId: string) => {
+  async function toggleLike(trackId: string) {
+    setActionMessage("");
+
     if (!userId) {
       router.push("/login");
       return;
     }
 
+    const track = tracks.find((item) => String(item.id) === String(trackId));
     const liked = likedSet.has(trackId);
 
     if (liked) {
@@ -350,6 +465,8 @@ export default function PulsePage() {
 
       if (error) {
         console.error("Unlike error:", error);
+        setActionMessage("Could not remove like right now.");
+        return;
       }
 
       setLikedSet((prev) => {
@@ -364,6 +481,27 @@ export default function PulsePage() {
         return m;
       });
 
+      setViewerLikesUsed((prev) => Math.max(0, prev - 1));
+      return;
+    }
+
+    if (!viewerCanLike) {
+      setActionMessage("Upgrade required to like tracks.");
+      return;
+    }
+
+    if (!track) {
+      setActionMessage("Track not found.");
+      return;
+    }
+
+    if (track.user_id && userId === track.user_id) {
+      setActionMessage("You can’t like your own track.");
+      return;
+    }
+
+    if (viewerLikesUsed >= MONTHLY_LIKE_LIMIT) {
+      setActionMessage("Your monthly like limit has been reached.");
       return;
     }
 
@@ -375,6 +513,16 @@ export default function PulsePage() {
 
     if (error) {
       console.error("Like error:", error);
+
+      if (
+        typeof error.message === "string" &&
+        (error.message.toLowerCase().includes("duplicate") ||
+          error.message.toLowerCase().includes("unique"))
+      ) {
+        setActionMessage("You already liked this track this month.");
+      } else {
+        setActionMessage("Could not like this track right now.");
+      }
       return;
     }
 
@@ -384,9 +532,10 @@ export default function PulsePage() {
       m.set(trackId, (m.get(trackId) ?? 0) + 1);
       return m;
     });
-  };
+    setViewerLikesUsed((prev) => prev + 1);
+  }
 
-  const toggleFollow = async (artistId: string | null) => {
+  async function toggleFollow(artistId: string | null) {
     if (!artistId) return;
 
     if (!userId) {
@@ -454,7 +603,7 @@ export default function PulsePage() {
     } finally {
       setFollowLoadingId(null);
     }
-  };
+  }
 
   const categoryOptions = [
     { value: "global", label: "Category: Global" },
@@ -483,6 +632,28 @@ export default function PulsePage() {
         </div>
         <div className="text-sm text-white/60">Community signal + momentum.</div>
       </div>
+
+      {!userId ? (
+        <div className="mb-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75">
+          You can listen without logging in. Log in to create playlists, follow artists, and unlock account features.
+        </div>
+      ) : !viewerCanLike ? (
+        <div className="mb-4 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-400/10 px-4 py-3 text-sm text-fuchsia-100">
+          Free account active. You can listen and create playlists. Upgrade to Premium for likes or become an Artist to upload and like tracks.
+        </div>
+      ) : (
+        <div className="mb-4 rounded-2xl border border-cyan-300/20 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100">
+          Likes used this month: {viewerLikesUsed}/{MONTHLY_LIKE_LIMIT}
+          {" · "}
+          Remaining: {likesRemaining}
+        </div>
+      )}
+
+      {actionMessage ? (
+        <div className="mb-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80">
+          {actionMessage}
+        </div>
+      ) : null}
 
       <div className="mb-4 flex w-full flex-wrap items-center gap-3 md:flex-nowrap md:justify-between">
         <div className="rounded-xl bg-white/10 px-4 py-2 text-sm text-white ring-1 ring-white/10">
@@ -545,6 +716,18 @@ export default function PulsePage() {
             const isFollowing = artistId ? followingSet.has(artistId) : false;
             const followLoading = followLoadingId === artistId;
             const followerCount = artistId ? followerCounts.get(artistId) ?? 0 : 0;
+            const isOwnTrack = Boolean(userId && artistId && userId === artistId);
+            const likeDisabledReason = !userId
+              ? "Log in to like"
+              : liked
+              ? "Unlike"
+              : isOwnTrack
+              ? "You can’t like your own track"
+              : !viewerCanLike
+              ? "Upgrade required to like"
+              : likesRemaining <= 0
+              ? "Monthly like limit reached"
+              : "Like";
 
             return (
               <div
@@ -625,8 +808,8 @@ export default function PulsePage() {
                       onClick={() => toggleLike(id)}
                       className={`text-xl leading-none transition ${
                         liked ? "text-red-500" : "text-cyan-300 hover:text-cyan-200"
-                      }`}
-                      title={liked ? "Unlike" : "Like"}
+                      } ${!liked && (!userId || isOwnTrack || !viewerCanLike || likesRemaining <= 0) ? "opacity-50" : ""}`}
+                      title={likeDisabledReason}
                     >
                       ♥
                     </button>

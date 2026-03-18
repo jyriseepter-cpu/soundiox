@@ -2,9 +2,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
 import { usePlayer } from "@/app/components/PlayerContext";
 import type { Track } from "@/app/components/PlayerContext";
 
@@ -65,99 +62,13 @@ export default function TrackCard({
   allTracks = [],
   onPlay,
 }: Props) {
-  const router = useRouter();
   const { currentTrack, isPlaying, playTrack, toggle } = usePlayer();
 
   const t = track as any;
   const active = isSameTrack(currentTrack, track);
   const showPause = active && isPlaying;
-
-  const artistSlug = useMemo(() => {
-    const raw = t.artistSlug;
-    return typeof raw === "string" && raw.trim() ? raw.trim() : null;
-  }, [t.artistSlug]);
-
-  const artistUserId = useMemo(() => {
-    const raw = t.user_id;
-    return typeof raw === "string" && raw.trim() ? raw.trim() : null;
-  }, [t.user_id]);
-
-  const initialFollowers = useMemo(() => {
-    const raw = t.artistFollowerCount;
-    return typeof raw === "number" ? raw : 0;
-  }, [t.artistFollowerCount]);
-
-  const [viewerId, setViewerId] = useState<string | null>(null);
-  const [followLoading, setFollowLoading] = useState(false);
-  const [isFollowing, setIsFollowing] = useState(false);
-  const [followerCount, setFollowerCount] = useState(initialFollowers);
-
-  useEffect(() => {
-    setFollowerCount(initialFollowers);
-  }, [initialFollowers]);
-
-  useEffect(() => {
-    let alive = true;
-
-    async function loadFollowState() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!alive) return;
-
-      const nextViewerId = user?.id ?? null;
-      setViewerId(nextViewerId);
-
-      if (artistUserId) {
-        const { count, error: countError } = await supabase
-          .from("follows")
-          .select("*", { count: "exact", head: true })
-          .eq("following_profile_id", artistUserId);
-
-        if (!alive) return;
-
-        if (!countError) {
-          setFollowerCount(count || 0);
-        }
-      }
-
-      if (!nextViewerId || !artistUserId || nextViewerId === artistUserId) {
-        setIsFollowing(false);
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from("follows")
-        .select("follower_id, following_profile_id")
-        .eq("follower_id", nextViewerId)
-        .eq("following_profile_id", artistUserId)
-        .maybeSingle();
-
-      if (!alive) return;
-
-      if (error) {
-        console.warn("TrackCard follow lookup warning:", error.message);
-        setIsFollowing(false);
-        return;
-      }
-
-      setIsFollowing(Boolean(data));
-    }
-
-    void loadFollowState();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(() => {
-      void loadFollowState();
-    });
-
-    return () => {
-      alive = false;
-      subscription.unsubscribe();
-    };
-  }, [artistUserId]);
+  const artistSlug =
+    typeof t.artistSlug === "string" && t.artistSlug.trim() ? t.artistSlug.trim() : null;
 
   function handlePlayClick() {
     if (active) {
@@ -172,68 +83,6 @@ export default function TrackCard({
 
     playTrack(track, allTracks.length ? allTracks : [track]);
   }
-
-  async function handleFollowClick() {
-    if (!artistUserId) return;
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user?.id) {
-      router.push("/login");
-      return;
-    }
-
-    if (user.id === artistUserId) return;
-
-    try {
-      setFollowLoading(true);
-
-      if (isFollowing) {
-        const { error } = await supabase
-          .from("follows")
-          .delete()
-          .eq("follower_id", user.id)
-          .eq("following_profile_id", artistUserId);
-
-        if (error) throw error;
-
-        setIsFollowing(false);
-        setFollowerCount((prev) => Math.max(0, prev - 1));
-        return;
-      }
-
-      const { error } = await supabase.from("follows").insert({
-        follower_id: user.id,
-        following_profile_id: artistUserId,
-      });
-
-      if (error) throw error;
-
-      const { error: notificationError } = await supabase
-        .from("notifications")
-        .insert({
-          user_id: artistUserId,
-          type: "follow",
-          actor_id: user.id,
-        });
-
-      if (notificationError) {
-        console.error("TrackCard follow notification warning:", notificationError);
-      }
-
-      setIsFollowing(true);
-      setFollowerCount((prev) => prev + 1);
-    } catch (error: any) {
-      console.warn("TrackCard follow toggle warning:", error?.message || error);
-    } finally {
-      setFollowLoading(false);
-    }
-  }
-
-  const showFollowControl =
-    Boolean(artistUserId) && Boolean(viewerId) && viewerId !== artistUserId;
 
   return (
     <div
@@ -282,31 +131,6 @@ export default function TrackCard({
             )}
 
             {getGenre(track) ? ` • ${getGenre(track)}` : ""}
-
-            {showFollowControl ? (
-              <>
-                {" • "}
-                <button
-                  type="button"
-                  onClick={handleFollowClick}
-                  disabled={followLoading}
-                  className="text-sm font-medium text-white/80 transition hover:text-cyan-300 disabled:opacity-60"
-                >
-                  {followLoading ? "..." : isFollowing ? "Following" : "Follow"}
-                </button>
-                {" • "}
-                <span className="text-white/60">
-                  {followerCount} follower{followerCount === 1 ? "" : "s"}
-                </span>
-              </>
-            ) : followerCount > 0 ? (
-              <>
-                {" • "}
-                <span className="text-white/60">
-                  {followerCount} follower{followerCount === 1 ? "" : "s"}
-                </span>
-              </>
-            ) : null}
           </div>
         </div>
       </div>

@@ -31,12 +31,14 @@ type TrackRow = {
 
 type ProfileMini = ArtistIdentityProfile;
 type DiscoverTrack = TrackWithResolvedArtist<TrackRow>;
+
 type ViewerProfile = {
   plan: string | null;
-  is_pro: boolean | null;
   is_founding: boolean | null;
   role: string | null;
 };
+
+type UpgradeTier = "premium" | "artist";
 
 function pickTitle(t: DiscoverTrack) {
   return (t.title ?? "Untitled").toString();
@@ -76,6 +78,17 @@ function normalizeGenre(value: string | null | undefined) {
   return raw;
 }
 
+function normalizePlan(value: string | null | undefined) {
+  if (value === "premium") return "premium";
+  if (value === "artist") return "artist";
+  return "free";
+}
+
+function normalizeRole(value: string | null | undefined) {
+  if (value === "artist") return "artist";
+  return "listener";
+}
+
 export default function DiscoverPage() {
   const router = useRouter();
   const { playTrack, currentTrack, isPlaying } = usePlayer();
@@ -83,18 +96,26 @@ export default function DiscoverPage() {
   const [tracks, setTracks] = useState<DiscoverTrack[]>([]);
   const [loading, setLoading] = useState(true);
   const [authSettling, setAuthSettling] = useState(false);
-  const [upgradeLoading, setUpgradeLoading] = useState<"premium" | null>(null);
+  const [upgradeLoading, setUpgradeLoading] = useState<UpgradeTier | null>(null);
 
   const [search, setSearch] = useState("");
   const [genre, setGenre] = useState("All genres");
 
   const [selectedTrack, setSelectedTrack] = useState<DiscoverTrack | null>(null);
   const [hasOAuthCode, setHasOAuthCode] = useState(false);
-  const [viewerHasPaidPlan, setViewerHasPaidPlan] = useState(false);
+
+  const [viewerLoggedIn, setViewerLoggedIn] = useState(false);
+  const [viewerRole, setViewerRole] = useState<"listener" | "artist">("listener");
+  const [viewerPlan, setViewerPlan] = useState<"free" | "premium" | "artist">("free");
+  const [viewerIsFounding, setViewerIsFounding] = useState(false);
 
   const nowPlayingId = (currentTrack as any)?.id ?? null;
 
   const authReadyRef = useRef(false);
+
+  const viewerIsArtist = viewerIsFounding || viewerRole === "artist" || viewerPlan === "artist";
+  const viewerCanLike = viewerIsFounding || viewerRole === "artist" || viewerPlan === "premium" || viewerPlan === "artist";
+  const viewerHasPaidPlan = viewerCanLike || viewerIsArtist;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -118,7 +139,6 @@ export default function DiscoverPage() {
           .order("created_at", { ascending: false });
 
         if (error) throw error;
-
         if (!alive) return;
 
         const rawTracks = (data ?? []) as TrackRow[];
@@ -255,33 +275,36 @@ export default function DiscoverPage() {
 
         if (!user) {
           if (!alive) return;
-          setViewerHasPaidPlan(false);
+          setViewerLoggedIn(false);
+          setViewerRole("listener");
+          setViewerPlan("free");
+          setViewerIsFounding(false);
           return;
         }
 
         if (!alive) return;
 
+        setViewerLoggedIn(true);
+
         const { data: profile, error: profileError } = await supabase
           .from("profiles")
-          .select("plan, is_pro, is_founding, role")
+          .select("plan, is_founding, role")
           .eq("id", user.id)
           .maybeSingle<ViewerProfile>();
 
         if (profileError) throw profileError;
         if (!alive) return;
 
-        const hasPaidPlan =
-          Boolean(profile?.is_pro) ||
-          profile?.plan === "premium" ||
-          profile?.plan === "artist" ||
-          Boolean(profile?.is_founding) ||
-          profile?.role === "artist";
-
-        setViewerHasPaidPlan(hasPaidPlan);
+        setViewerRole(normalizeRole(profile?.role));
+        setViewerPlan(normalizePlan(profile?.plan));
+        setViewerIsFounding(Boolean(profile?.is_founding));
       } catch (error) {
         console.warn("discover viewer profile warning:", error);
         if (!alive) return;
-        setViewerHasPaidPlan(false);
+        setViewerLoggedIn(false);
+        setViewerRole("listener");
+        setViewerPlan("free");
+        setViewerIsFounding(false);
       }
     }
 
@@ -348,7 +371,7 @@ export default function DiscoverPage() {
     });
   }, [tracks, search, genre]);
 
-  async function handleUpgradePlan(plan: "premium") {
+  async function handleUpgradePlan(plan: UpgradeTier) {
     try {
       setUpgradeLoading(plan);
 
@@ -418,19 +441,32 @@ export default function DiscoverPage() {
         </div>
       ) : null}
 
+      {!viewerLoggedIn ? (
+        <div className="mb-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75">
+          You can listen without logging in. Log in to create playlists, upgrade, and unlock more features.
+        </div>
+      ) : null}
+
+      {viewerLoggedIn && !viewerHasPaidPlan ? (
+        <div className="mb-4 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-400/10 px-4 py-3 text-sm text-fuchsia-100">
+          Free account active. Playlists are enabled. Upgrade to Premium for likes or become an Artist to upload music.
+        </div>
+      ) : null}
+
       <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <input
           className="h-10 w-full rounded-xl bg-white/10 px-4 text-white placeholder-white/50 ring-1 ring-white/10 outline-none focus:ring-white/20 md:max-w-[520px]"
           placeholder="Search tracks, artists, genres..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          autoComplete="off"
         />
 
         <CustomSelect
           value={genre}
           onChange={setGenre}
           options={customGenreOptions}
-          className="w-full md:w-[200px]"
+          className="w-full md:w-[220px]"
         />
       </div>
 

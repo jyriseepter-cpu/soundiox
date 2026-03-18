@@ -10,24 +10,39 @@ type WebhookContext = {
   webhookSecret: string;
   supabase: any;
   premiumPriceId: string;
-  artistProPriceId: string;
+  artistPriceId: string;
 };
 
-function requiredEnv(name: string) {
-  const value = process.env[name];
-  return value && value.trim().length > 0 ? value.trim() : null;
+type ProfileAccessRow = {
+  id: string;
+  role: string | null;
+  is_founding: boolean | null;
+};
+
+function readEnv(...names: string[]) {
+  for (const name of names) {
+    const value = process.env[name];
+    if (value && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return null;
 }
 
 function getWebhookContext(): WebhookContext {
-  const stripeSecretKey = requiredEnv("STRIPE_SECRET_KEY");
-  const webhookSecret = requiredEnv("STRIPE_WEBHOOK_SECRET");
-  const supabaseUrl = requiredEnv("NEXT_PUBLIC_SUPABASE_URL");
-  const supabaseServiceRoleKey = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
-  const premiumPriceId = requiredEnv("STRIPE_PREMIUM_PRICE_ID");
-  const artistProPriceId = requiredEnv("STRIPE_ARTIST_PRO_PRICE_ID");
+  const stripeSecretKey = readEnv("STRIPE_SECRET_KEY", "STRIPE_SECRET_KEY_LIVE");
+  const webhookSecret = readEnv("STRIPE_WEBHOOK_SECRET");
+  const supabaseUrl = readEnv("NEXT_PUBLIC_SUPABASE_URL");
+  const supabaseServiceRoleKey = readEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const premiumPriceId = readEnv("STRIPE_PREMIUM_PRICE_ID", "PREMIUM_PRICE_ID");
+  const artistPriceId = readEnv(
+    "STRIPE_ARTIST_PRICE_ID",
+    "STRIPE_ARTIST_PRO_PRICE_ID",
+    "ARTIST_PRO_PRICE_ID"
+  );
 
   if (!stripeSecretKey) {
-    throw new Error("Missing STRIPE_SECRET_KEY");
+    throw new Error("Missing STRIPE_SECRET_KEY or STRIPE_SECRET_KEY_LIVE");
   }
   if (!webhookSecret) {
     throw new Error("Missing STRIPE_WEBHOOK_SECRET");
@@ -39,10 +54,12 @@ function getWebhookContext(): WebhookContext {
     throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
   }
   if (!premiumPriceId) {
-    throw new Error("Missing STRIPE_PREMIUM_PRICE_ID");
+    throw new Error("Missing STRIPE_PREMIUM_PRICE_ID or PREMIUM_PRICE_ID");
   }
-  if (!artistProPriceId) {
-    throw new Error("Missing STRIPE_ARTIST_PRO_PRICE_ID");
+  if (!artistPriceId) {
+    throw new Error(
+      "Missing STRIPE_ARTIST_PRICE_ID or STRIPE_ARTIST_PRO_PRICE_ID or ARTIST_PRO_PRICE_ID"
+    );
   }
 
   return {
@@ -55,7 +72,7 @@ function getWebhookContext(): WebhookContext {
       },
     }),
     premiumPriceId,
-    artistProPriceId,
+    artistPriceId,
   };
 }
 
@@ -65,27 +82,59 @@ function planFromPriceId(
 ): PlanValue | null {
   if (!priceId) return null;
   if (priceId === context.premiumPriceId) return "premium";
-  if (priceId === context.artistProPriceId) return "artist";
+  if (priceId === context.artistPriceId) return "artist";
   return null;
+}
+
+function isAccessGranted(status: Stripe.Subscription.Status) {
+  return status === "trialing" || status === "active";
+}
+
+function isDowngradeStatus(status: Stripe.Subscription.Status) {
+  return (
+    status === "canceled" ||
+    status === "unpaid" ||
+    status === "past_due" ||
+    status === "incomplete_expired"
+  );
 }
 
 async function updateProfile(params: {
   context: WebhookContext;
   userId: string;
-  plan: PlanValue;
+  plan?: PlanValue;
+  role?: "artist" | "listener";
   stripeCustomerId?: string | null;
   stripeSubscriptionId?: string | null;
 }) {
-  const { context, userId, plan, stripeCustomerId, stripeSubscriptionId } = params;
-
-  const payload = {
-    id: userId,
+  const {
+    context,
+    userId,
     plan,
-    role: plan === "artist" ? "artist" : undefined,
-    is_pro: plan === "premium",
-    stripe_customer_id: stripeCustomerId || null,
-    stripe_subscription_id: stripeSubscriptionId || null,
+    role,
+    stripeCustomerId,
+    stripeSubscriptionId,
+  } = params;
+
+  const payload: Record<string, any> = {
+    id: userId,
   };
+
+  if (typeof plan !== "undefined") {
+    payload.plan = plan;
+  }
+
+  if (typeof role !== "undefined") {
+    payload.role = role;
+  }
+
+  if (typeof stripeCustomerId !== "undefined") {
+    payload.stripe_customer_id = stripeCustomerId || null;
+  }
+
+  if (typeof stripeSubscriptionId !== "undefined") {
+    payload.stripe_subscription_id = stripeSubscriptionId || null;
+  }
 
   const { error } = await context.supabase
     .from("profiles")
@@ -102,7 +151,7 @@ async function getProfileByStripeCustomerId(
 ) {
   const { data, error } = await context.supabase
     .from("profiles")
-    .select("id")
+    .select("id, role, is_founding")
     .eq("stripe_customer_id", stripeCustomerId)
     .maybeSingle();
 
@@ -110,7 +159,24 @@ async function getProfileByStripeCustomerId(
     throw error;
   }
 
-  return data;
+  return data as ProfileAccessRow | null;
+}
+
+async function getProfileByUserId(
+  userId: string,
+  context: WebhookContext
+): Promise<ProfileAccessRow | null> {
+  const { data, error } = await context.supabase
+    .from("profiles")
+    .select("id, role, is_founding")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as ProfileAccessRow | null;
 }
 
 async function getSessionPriceId(
@@ -131,6 +197,70 @@ async function getSessionPriceId(
   }
 
   return price.id || null;
+}
+
+function getSubscriptionPriceId(subscription: Stripe.Subscription): string | null {
+  const firstItem = subscription.items.data[0];
+  const price = firstItem?.price;
+
+  if (!price) return null;
+
+  if (typeof price === "string") {
+    return price;
+  }
+
+  return price.id || null;
+}
+
+async function getUserIdFromStripeCustomerId(
+  stripeCustomerId: string,
+  context: WebhookContext
+): Promise<string | null> {
+  const profile = await getProfileByStripeCustomerId(stripeCustomerId, context);
+  return profile?.id ? String(profile.id) : null;
+}
+
+async function applyFreeDowngrade(params: {
+  context: WebhookContext;
+  userId: string;
+  stripeCustomerId?: string | null;
+}) {
+  const { context, userId, stripeCustomerId } = params;
+
+  const profile = await getProfileByUserId(userId, context);
+
+  if (!profile) {
+    await updateProfile({
+      context,
+      userId,
+      plan: "free",
+      role: "listener",
+      stripeCustomerId,
+      stripeSubscriptionId: null,
+    });
+    return;
+  }
+
+  if (profile.is_founding) {
+    await updateProfile({
+      context,
+      userId,
+      plan: "free",
+      stripeCustomerId,
+      stripeSubscriptionId: null,
+    });
+
+    return;
+  }
+
+  await updateProfile({
+    context,
+    userId,
+    plan: "free",
+    role: "listener",
+    stripeCustomerId,
+    stripeSubscriptionId: null,
+  });
 }
 
 async function handleCheckoutCompleted(
@@ -188,6 +318,7 @@ async function handleCheckoutCompleted(
     context,
     userId,
     plan,
+    role: plan === "artist" ? "artist" : undefined,
     stripeCustomerId,
     stripeSubscriptionId,
   });
@@ -199,6 +330,94 @@ async function handleCheckoutCompleted(
     stripeCustomerId,
     stripeSubscriptionId,
   });
+}
+
+async function handleSubscriptionUpdated(
+  subscription: Stripe.Subscription,
+  context: WebhookContext
+) {
+  const stripeCustomerId =
+    typeof subscription.customer === "string"
+      ? subscription.customer
+      : subscription.customer?.id || null;
+  const stripeSubscriptionId = subscription.id;
+  const status = subscription.status;
+  const priceId = getSubscriptionPriceId(subscription);
+  const metadata = subscription.metadata || {};
+  const planFromMetadata = String(metadata.plan || "").trim();
+  const planFromPrice = planFromPriceId(priceId, context);
+  const normalizedPlan =
+    planFromMetadata === "artist" || planFromMetadata === "premium"
+      ? (planFromMetadata as Extract<PlanValue, "artist" | "premium">)
+      : null;
+  const plan = normalizedPlan || planFromPrice;
+
+  if (!stripeCustomerId) {
+    console.warn("customer.subscription.updated missing customer id", {
+      subscriptionId: stripeSubscriptionId,
+      status,
+    });
+    return;
+  }
+
+  const metadataUserId = String(metadata.userId || "").trim() || null;
+  const userId =
+    metadataUserId || (await getUserIdFromStripeCustomerId(stripeCustomerId, context));
+
+  if (!userId) {
+    console.warn("No profile found for subscription update", {
+      stripeCustomerId,
+      stripeSubscriptionId,
+      status,
+    });
+    return;
+  }
+
+  if (isAccessGranted(status)) {
+    if (!plan || plan === "free") {
+      console.warn("customer.subscription.updated missing paid plan", {
+        userId,
+        stripeSubscriptionId,
+        status,
+        priceId,
+        metadata,
+      });
+      return;
+    }
+
+    await updateProfile({
+      context,
+      userId,
+      plan,
+      role: plan === "artist" ? "artist" : undefined,
+      stripeCustomerId,
+      stripeSubscriptionId,
+    });
+
+    console.log("customer.subscription.updated granted access", {
+      userId,
+      plan,
+      stripeCustomerId,
+      stripeSubscriptionId,
+      status,
+    });
+    return;
+  }
+
+  if (isDowngradeStatus(status)) {
+    await applyFreeDowngrade({
+      context,
+      userId,
+      stripeCustomerId,
+    });
+
+    console.log("customer.subscription.updated downgraded access", {
+      userId,
+      stripeCustomerId,
+      stripeSubscriptionId,
+      status,
+    });
+  }
 }
 
 async function handleSubscriptionDeleted(
@@ -215,15 +434,7 @@ async function handleSubscriptionDeleted(
     return;
   }
 
-  const { data: profile, error } = await context.supabase
-    .from("profiles")
-    .select("id, role, is_founding")
-    .eq("stripe_customer_id", stripeCustomerId)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
+  const profile = await getProfileByStripeCustomerId(stripeCustomerId, context);
 
   if (!profile?.id) {
     console.warn("No profile found for deleted subscription customer", {
@@ -232,24 +443,11 @@ async function handleSubscriptionDeleted(
     return;
   }
 
-  await updateProfile({
+  await applyFreeDowngrade({
     context,
     userId: profile.id,
-    plan: "free",
     stripeCustomerId,
-    stripeSubscriptionId: null,
   });
-
-  if (profile.role === "artist" && !profile.is_founding) {
-    const { error: roleResetError } = await context.supabase
-      .from("profiles")
-      .update({ role: "listener", is_pro: false })
-      .eq("id", profile.id);
-
-    if (roleResetError) {
-      throw roleResetError;
-    }
-  }
 
   console.log("customer.subscription.deleted synced profile", {
     userId: profile.id,
@@ -295,6 +493,12 @@ export async function POST(req: Request) {
       case "customer.subscription.deleted": {
         const subscription = event.data.object as Stripe.Subscription;
         await handleSubscriptionDeleted(subscription, context);
+        break;
+      }
+
+      case "customer.subscription.updated": {
+        const subscription = event.data.object as Stripe.Subscription;
+        await handleSubscriptionUpdated(subscription, context);
         break;
       }
 

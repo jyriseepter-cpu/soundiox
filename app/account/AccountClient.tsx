@@ -75,7 +75,13 @@ function deleteInviteCookie() {
 
 function normalizeProfilePlan(value: string | null | undefined) {
   if (value === "premium") return "premium";
+  if (value === "artist") return "artist";
   return "free";
+}
+
+function normalizeProfileRole(value: string | null | undefined) {
+  if (value === "artist") return "artist";
+  return "listener";
 }
 
 export default function AccountClient() {
@@ -99,13 +105,13 @@ export default function AccountClient() {
   const [userId, setUserId] = useState<string>("");
   const [email, setEmail] = useState<string>("");
 
-  const [isArtistAccount, setIsArtistAccount] = useState(false);
+  const [role, setRole] = useState<"listener" | "artist">("listener");
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
   const [country, setCountry] = useState("");
   const [slug, setSlug] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
-  const [plan, setPlan] = useState("free");
+  const [plan, setPlan] = useState<"free" | "premium" | "artist">("free");
   const [isFounding, setIsFounding] = useState(false);
   const [followingCount, setFollowingCount] = useState(0);
   const [followingProfiles, setFollowingProfiles] = useState<FollowingProfileRow[]>([]);
@@ -118,6 +124,11 @@ export default function AccountClient() {
     if (!slug) return "";
     return `/artists/${slug}`;
   }, [slug]);
+
+  const isArtistAccount = isFounding || role === "artist" || plan === "artist";
+  const canUpload = isArtistAccount;
+  const canCreatePlaylists = Boolean(userId);
+  const canLikeTracks = isFounding || role === "artist" || plan === "premium" || plan === "artist";
 
   async function loadProfile(user: any, options?: { skipCreate?: boolean }) {
     const { data: profile, error: profileError } = await supabase
@@ -137,17 +148,18 @@ export default function AccountClient() {
 
     const nextDisplayName = profile?.display_name || defaultDisplayName;
     const nextSlug = profile?.slug || defaultSlug;
+    const nextRole = normalizeProfileRole(profile?.role);
+    const nextPlan = normalizeProfilePlan(profile?.plan);
+    const nextFounding = Boolean(profile?.is_founding);
 
-    const nextIsArtist = profile?.role === "artist";
-
-    setIsArtistAccount(nextIsArtist);
+    setRole(nextRole);
     setDisplayName(nextDisplayName);
     setBio(profile?.bio || "");
     setCountry(profile?.country || "");
     setSlug(nextSlug);
     setAvatarUrl(profile?.avatar_url || "");
-    setPlan(normalizeProfilePlan(profile?.plan));
-    setIsFounding(Boolean(profile?.is_founding));
+    setPlan(nextPlan);
+    setIsFounding(nextFounding);
 
     if (!profile && !options?.skipCreate) {
       const insertPayload = {
@@ -171,7 +183,7 @@ export default function AccountClient() {
         throw insertError;
       }
 
-      setIsArtistAccount(false);
+      setRole("listener");
       setDisplayName(nextDisplayName);
       setBio("");
       setCountry("");
@@ -294,18 +306,22 @@ export default function AccountClient() {
   }, [router, hasFoundingInvite]);
 
   useEffect(() => {
-    if (!selectedPlan) return;
+    if (!selectedPlan || checkoutStatus === "success") return;
 
     if (selectedPlan === "premium") {
       setMessage("Premium plan selected. Complete checkout to activate it.");
     }
-  }, [selectedPlan]);
+
+    if (selectedPlan === "artist") {
+      setMessage("Artist plan selected. Complete checkout to activate it.");
+    }
+  }, [selectedPlan, checkoutStatus]);
 
   useEffect(() => {
     if (!checkoutStatus) return;
 
     if (checkoutStatus === "success") {
-      setMessage("Checkout completed successfully.");
+      setMessage("Checkout completed. Activating your plan...");
       setError("");
     }
 
@@ -313,6 +329,69 @@ export default function AccountClient() {
       setError("Checkout was cancelled.");
     }
   }, [checkoutStatus]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refreshProfileAfterCheckout() {
+      if (checkoutStatus !== "success") return;
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        return;
+      }
+
+      for (let attempt = 0; attempt < 6; attempt++) {
+        if (cancelled) return;
+
+        try {
+          await loadProfile(user);
+
+          if (cancelled) return;
+
+          if (attempt < 5) {
+            const { data: profileRow, error: profileError } = await supabase
+              .from("profiles")
+              .select("role, plan, is_founding")
+              .eq("id", user.id)
+              .maybeSingle<{
+                role: string | null;
+                plan: string | null;
+                is_founding: boolean | null;
+              }>();
+
+            if (profileError) {
+              throw profileError;
+            }
+
+            const refreshedRole = normalizeProfileRole(profileRow?.role);
+            const refreshedPlan = normalizeProfilePlan(profileRow?.plan);
+            const refreshedFounding = Boolean(profileRow?.is_founding);
+
+            if (refreshedFounding || refreshedRole === "artist" || refreshedPlan !== "free") {
+              setMessage("Your access is active.");
+              router.replace("/account");
+              return;
+            }
+          }
+        } catch (err: any) {
+          console.error("checkout profile refresh error:", err?.message || err);
+        }
+
+        await new Promise((resolve) => window.setTimeout(resolve, 1500));
+      }
+    }
+
+    void refreshProfileAfterCheckout();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [checkoutStatus, router]);
 
   useEffect(() => {
     let mounted = true;
@@ -545,13 +624,15 @@ export default function AccountClient() {
                     <span className="rounded-full border border-cyan-300/30 bg-cyan-400/10 px-3 py-1 text-xs font-medium text-cyan-200">
                       Founding Artist
                     </span>
-                  ) : null}
-
-                  {isArtistAccount && !isFounding ? (
+                  ) : isArtistAccount ? (
                     <span className="rounded-full border border-fuchsia-300/30 bg-fuchsia-400/10 px-3 py-1 text-xs font-medium text-fuchsia-200">
                       Artist
                     </span>
-                  ) : null}
+                  ) : (
+                    <span className="rounded-full border border-white/15 bg-white/8 px-3 py-1 text-xs font-medium text-white/75">
+                      Listener
+                    </span>
+                  )}
                 </div>
 
                 <p className="mt-1 text-sm text-white/65">{email}</p>
@@ -574,12 +655,21 @@ export default function AccountClient() {
                     </Link>
                   ) : null}
 
-                  <Link
-                    href="/upload"
-                    className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-4 py-2 text-sm text-cyan-100 transition hover:bg-cyan-400/15"
-                  >
-                    Upload track
-                  </Link>
+                  {canUpload ? (
+                    <Link
+                      href="/upload"
+                      className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-4 py-2 text-sm text-cyan-100 transition hover:bg-cyan-400/15"
+                    >
+                      Upload track
+                    </Link>
+                  ) : (
+                    <Link
+                      href="/discover"
+                      className="rounded-full border border-fuchsia-300/20 bg-fuchsia-400/10 px-4 py-2 text-sm text-fuchsia-100 transition hover:bg-fuchsia-400/15"
+                    >
+                      Become Artist
+                    </Link>
+                  )}
 
                   <button
                     type="button"
@@ -602,8 +692,16 @@ export default function AccountClient() {
 
             <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/75">
               <div>
-                <span className="text-white/45">Plan:</span>{" "}
-                <span className="font-medium text-white">{plan}</span>
+                <span className="text-white/45">Access:</span>{" "}
+                <span className="font-medium text-white">
+                  {isFounding
+                    ? "Founding Artist"
+                    : isArtistAccount
+                    ? "Artist"
+                    : plan === "premium"
+                    ? "Premium Listener"
+                    : "Free Listener"}
+                </span>
               </div>
             </div>
           </div>
@@ -627,18 +725,50 @@ export default function AccountClient() {
           </div>
         ) : null}
 
+        {!isFounding && !isArtistAccount ? (
+          <section className="grid gap-4 md:grid-cols-2">
+            <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+              <h2 className="text-lg font-semibold text-white">Artist access</h2>
+              <p className="mt-2 text-sm leading-6 text-white/65">
+                Upgrade to Artist to upload tracks and build your public SoundioX profile.
+              </p>
+
+              <div className="mt-5">
+                <Link
+                  href="/discover"
+                  className="inline-flex h-12 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:scale-[1.01]"
+                >
+                  Become Artist
+                </Link>
+              </div>
+            </div>
+
+            <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+              <h2 className="text-lg font-semibold text-white">Premium listener</h2>
+              <p className="mt-2 text-sm leading-6 text-white/65">
+                Premium unlocks monthly likes while keeping playlists available on your account.
+              </p>
+
+              <div className="mt-5">
+                <Link
+                  href="/discover"
+                  className="inline-flex h-12 items-center justify-center rounded-full border border-white/15 bg-white/8 px-6 text-sm font-medium text-white transition hover:bg-white/12"
+                >
+                  Upgrade to Premium
+                </Link>
+              </div>
+            </div>
+          </section>
+        ) : null}
+
         <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
           <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
             <h2 className="text-lg font-semibold text-white">Profile settings</h2>
-            <p className="mt-1 text-sm text-white/60">
-              Edit your public profile.
-            </p>
+            <p className="mt-1 text-sm text-white/60">Edit your public profile.</p>
 
             <div className="mt-6 space-y-5">
               <div>
-                <label className="mb-2 block text-sm text-white/75">
-                  Display name
-                </label>
+                <label className="mb-2 block text-sm text-white/75">Display name</label>
                 <input
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
@@ -658,9 +788,7 @@ export default function AccountClient() {
               </div>
 
               <div>
-                <label className="mb-2 block text-sm text-white/75">
-                  Public profile URL
-                </label>
+                <label className="mb-2 block text-sm text-white/75">Public profile URL</label>
                 <div className="flex items-center rounded-2xl border border-white/10 bg-white/6 px-4">
                   <span className="mr-2 text-sm text-white/35">/artists/</span>
                   <input
@@ -700,16 +828,44 @@ export default function AccountClient() {
 
               <div className="mt-5 space-y-3 text-sm text-white/75">
                 <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <div className="text-white/45">Founding</div>
+                  <div className="text-white/45">Founding Artist</div>
                   <div className="mt-1 font-medium text-white">
                     {isFounding ? "Active" : "Not active"}
                   </div>
                 </div>
 
                 <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="text-white/45">Role</div>
+                  <div className="mt-1 font-medium text-white">
+                    {isFounding ? "Founding Artist" : role === "artist" ? "Artist" : "Listener"}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
                   <div className="text-white/45">Plan</div>
                   <div className="mt-1 font-medium text-white">
-                    {plan === "premium" ? "Premium" : "Free"}
+                    {plan === "premium" ? "Premium" : plan === "artist" ? "Artist" : "Free"}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="text-white/45">Likes access</div>
+                  <div className="mt-1 font-medium text-white">
+                    {canLikeTracks ? "Enabled" : "Upgrade required"}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="text-white/45">Playlists</div>
+                  <div className="mt-1 font-medium text-white">
+                    {canCreatePlaylists ? "Enabled" : "Login required"}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="text-white/45">Upload access</div>
+                  <div className="mt-1 font-medium text-white">
+                    {canUpload ? "Enabled" : "Artist upgrade required"}
                   </div>
                 </div>
 
@@ -786,16 +942,33 @@ export default function AccountClient() {
               </p>
 
               <div className="mt-5 space-y-3">
-                <Link
-                  href="/upload"
-                  className="inline-flex h-12 w-full items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:scale-[1.01]"
-                >
-                  Open upload page
-                </Link>
+                {canUpload ? (
+                  <>
+                    <Link
+                      href="/upload"
+                      className="inline-flex h-12 w-full items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:scale-[1.01]"
+                    >
+                      Open upload page
+                    </Link>
 
-                <p className="text-xs leading-6 text-white/45">
-                  Upload audio, cover art, title and genre to publish a new track.
-                </p>
+                    <p className="text-xs leading-6 text-white/45">
+                      Upload audio, cover art, title and genre to publish a new track.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <Link
+                      href="/discover"
+                      className="inline-flex h-12 w-full items-center justify-center rounded-full border border-fuchsia-300/20 bg-fuchsia-400/10 px-6 text-sm font-medium text-fuchsia-100 transition hover:bg-fuchsia-400/15"
+                    >
+                      Become Artist
+                    </Link>
+
+                    <p className="text-xs leading-6 text-white/45">
+                      Artist access is required before uploading tracks.
+                    </p>
+                  </>
+                )}
               </div>
             </section>
           </div>

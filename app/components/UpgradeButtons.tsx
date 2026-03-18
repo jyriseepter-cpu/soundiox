@@ -78,7 +78,9 @@ export default function UpgradeButtons() {
         disabled={loading !== null}
         className={`${baseBtn} ${premiumBtn} w-full`}
       >
-        {loading === "premium_monthly" ? "Loading..." : "Upgrade to Premium"}
+        {loading === "premium_monthly"
+          ? "Loading..."
+          : "30 days free, then EUR 5.99/month"}
       </button>
     </div>
   );

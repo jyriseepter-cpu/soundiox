@@ -31,7 +31,7 @@ type Props = {
   isPlaying: boolean;
   currentTrackId: string | null;
 
-  onUpgradePlan: (plan: "premium") => Promise<void>;
+  onUpgradePlan: (plan: "premium" | "artist") => Promise<void>;
   selectedTrack: Track | null;
   viewerHasPaidPlan: boolean;
 };
@@ -77,7 +77,7 @@ export default function ArtistPanel(props: Props) {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [newPlaylistName, setNewPlaylistName] = useState("");
   const [selectedPlaylistId, setSelectedPlaylistId] = useState("");
-  const [upgradeLoading, setUpgradeLoading] = useState<"premium" | null>(null);
+  const [upgradeLoading, setUpgradeLoading] = useState<"premium" | "artist" | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const [featuredArtists, setFeaturedArtists] = useState<FeaturedArtist[]>([]);
@@ -90,7 +90,18 @@ export default function ArtistPanel(props: Props) {
       const { data } = await supabase.auth.getUser();
       setUser(data.user ?? null);
     };
+
     void loadUser();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const fetchPlaylists = async () => {
@@ -111,7 +122,12 @@ export default function ArtistPanel(props: Props) {
   };
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      setPlaylists([]);
+      setSelectedPlaylistId("");
+      return;
+    }
+
     void fetchPlaylists();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
@@ -126,13 +142,12 @@ export default function ArtistPanel(props: Props) {
         const { data, error } = await supabase
           .from("profiles")
           .select(
-            "id, display_name, bio, country, avatar_url, slug, role, is_founding, like_count_month"
+            "id, display_name, bio, country, avatar_url, slug, role, is_founding, like_count_month, created_at"
           )
-          .eq("role", "artist")
           .order("is_founding", { ascending: false })
           .order("like_count_month", { ascending: false })
           .order("created_at", { ascending: false })
-          .limit(4);
+          .limit(12);
 
         if (error) {
           console.error("Featured artists load error:", error.message);
@@ -143,7 +158,8 @@ export default function ArtistPanel(props: Props) {
         if (!ignore) {
           const normalized = ((data ?? []) as ArtistIdentityProfile[])
             .map(normalizeArtistIdentity)
-            .filter((artist) => artist.slug && artist.displayName);
+            .filter((artist) => (artist.role === "artist" || artist.isFounding) && artist.displayName)
+            .slice(0, 4);
 
           setFeaturedArtists(normalized);
         }
@@ -223,7 +239,7 @@ export default function ArtistPanel(props: Props) {
     ]);
 
     if (error) {
-      showToast("Track is already in playlist");
+      showToast("This track is already in that playlist");
       return;
     }
 
@@ -232,7 +248,7 @@ export default function ArtistPanel(props: Props) {
 
   const topTracks = useMemo(() => tracks.slice(0, 8), [tracks]);
 
-  async function handleUpgrade(plan: "premium") {
+  async function handleUpgrade(plan: "premium" | "artist") {
     try {
       setUpgradeLoading(plan);
       await onUpgradePlan(plan);
@@ -241,7 +257,7 @@ export default function ArtistPanel(props: Props) {
     }
   }
 
-  const showPremiumUpgrade = !viewerHasPaidPlan;
+  const showUpgradeActions = user ? !viewerHasPaidPlan : true;
 
   return (
     <>
@@ -292,17 +308,37 @@ export default function ArtistPanel(props: Props) {
           </div>
         </div>
 
-        {showPremiumUpgrade ? (
-          <div className="space-y-2">
-            {showPremiumUpgrade ? (
-              <button
-                onClick={() => handleUpgrade("premium")}
-                disabled={upgradeLoading !== null}
-                className="h-10 w-full rounded-xl bg-yellow-400 font-bold text-black hover:bg-yellow-300 disabled:opacity-60"
-              >
-                {upgradeLoading === "premium" ? "Opening..." : "Upgrade to Premium"}
-              </button>
+        {showUpgradeActions ? (
+          <div className="space-y-3">
+            {!user ? (
+              <div className="rounded-2xl bg-white/8 px-4 py-3 text-center text-sm font-semibold text-white/70 ring-1 ring-white/10">
+                Log in to create playlists, upgrade, and unlock more features.
+              </div>
             ) : null}
+
+            <button
+              onClick={() => handleUpgrade("premium")}
+              disabled={upgradeLoading !== null || !user}
+              className="h-10 w-full rounded-xl bg-yellow-400 font-bold text-black hover:bg-yellow-300 disabled:opacity-60"
+            >
+              {upgradeLoading === "premium" ? "Opening..." : "Upgrade to Premium"}
+            </button>
+
+            <div className="text-center text-xs font-semibold text-white/55">
+              Premium unlocks monthly likes. Playlists are available to every logged-in user.
+            </div>
+
+            <button
+              onClick={() => handleUpgrade("artist")}
+              disabled={upgradeLoading !== null || !user}
+              className="h-10 w-full rounded-xl bg-gradient-to-r from-cyan-400 to-fuchsia-500 font-bold text-white hover:opacity-95 disabled:opacity-60"
+            >
+              {upgradeLoading === "artist" ? "Opening..." : "Become Artist"}
+            </button>
+
+            <div className="text-center text-xs font-semibold text-white/55">
+              Artist unlocks uploads and artist access.
+            </div>
           </div>
         ) : null}
 
