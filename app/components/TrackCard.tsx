@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useState } from "react";
 import { usePlayer } from "@/app/components/PlayerContext";
 import type { Track } from "@/app/components/PlayerContext";
 
@@ -9,6 +10,12 @@ type Props = {
   track: Track;
   allTracks?: Track[];
   onPlay?: () => void;
+  onAdd?: (track: Track) => void;
+  onLike?: (track: Track) => void;
+  likeCount?: number;
+  isLiked?: boolean;
+  likeLoading?: boolean;
+  canLike?: boolean;
 };
 
 function getTitle(track: Track) {
@@ -18,12 +25,7 @@ function getTitle(track: Track) {
 
 function getArtist(track: Track) {
   const t = track as any;
-  return (
-    t.artistDisplayName ??
-    t.displayArtist ??
-    t.artist ??
-    "AI Artist"
-  ).toString();
+  return (t.artistDisplayName ?? t.displayArtist ?? t.artist ?? "AI Artist").toString();
 }
 
 function getGenre(track: Track) {
@@ -61,8 +63,15 @@ export default function TrackCard({
   track,
   allTracks = [],
   onPlay,
+  onAdd,
+  onLike,
+  likeCount = 0,
+  isLiked = false,
+  likeLoading = false,
+  canLike = true,
 }: Props) {
   const { currentTrack, isPlaying, playTrack, toggle } = usePlayer();
+  const [shareCopied, setShareCopied] = useState(false);
 
   const t = track as any;
   const active = isSameTrack(currentTrack, track);
@@ -82,6 +91,40 @@ export default function TrackCard({
     }
 
     playTrack(track, allTracks.length ? allTracks : [track]);
+  }
+
+  function handleAddClick() {
+    if (onAdd) {
+      onAdd(track);
+    }
+  }
+
+  function handleLikeClick() {
+    if (!canLike || likeLoading) return;
+    if (onLike) {
+      onLike(track);
+    }
+  }
+
+  async function handleShareClick() {
+    const trackId = t?.id ? String(t.id) : "";
+
+    if (!trackId) return;
+
+    try {
+      const origin =
+        typeof window !== "undefined"
+          ? window.location.origin
+          : process.env.NEXT_PUBLIC_APP_URL || "https://soundiox.io";
+
+      const shareUrl = `${origin}/track/${trackId}`;
+
+      await navigator.clipboard.writeText(shareUrl);
+      setShareCopied(true);
+      window.setTimeout(() => setShareCopied(false), 1800);
+    } catch (error) {
+      console.warn("share copy failed:", error);
+    }
   }
 
   return (
@@ -114,9 +157,7 @@ export default function TrackCard({
         </div>
 
         <div className="min-w-0">
-          <div className="truncate text-lg font-bold text-white">
-            {getTitle(track)}
-          </div>
+          <div className="truncate text-lg font-bold text-white">{getTitle(track)}</div>
 
           <div className="truncate text-sm font-medium text-white/80">
             {artistSlug ? (
@@ -138,6 +179,32 @@ export default function TrackCard({
       <div className="ml-4 flex items-center gap-2">
         <button
           type="button"
+          onClick={handleLikeClick}
+          disabled={!canLike || likeLoading}
+          title={canLike ? "Like track" : "Upgrade to like tracks"}
+          className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-2 text-sm font-semibold transition ${
+            canLike
+              ? isLiked
+                ? "text-pink-200 hover:bg-white/10"
+                : "text-white/55 hover:bg-white/10 hover:text-white/80"
+              : "cursor-not-allowed text-white/30"
+          }`}
+        >
+          <span className="text-base leading-none">{isLiked ? "♥" : "♡"}</span>
+          <span>{likeLoading ? "..." : likeCount}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={handleShareClick}
+          className="rounded-xl bg-white/8 px-3 py-2 text-sm font-semibold text-white/75 ring-1 ring-white/10 transition hover:bg-white/12 hover:text-white"
+        >
+          {shareCopied ? "Copied" : "Share"}
+        </button>
+
+        <button
+          type="button"
+          onClick={handleAddClick}
           className="rounded-xl bg-gradient-to-r from-cyan-300 to-cyan-400 px-4 py-2 text-base font-semibold text-white transition hover:opacity-90"
         >
           Add

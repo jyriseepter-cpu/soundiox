@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import TrackCard from "@/app/components/TrackCard";
+import { usePlayer } from "@/app/components/PlayerContext";
 
 type ProfileRow = {
   id: string;
@@ -30,6 +32,35 @@ type FollowingProfileRow = {
   display_name: string | null;
   slug: string | null;
   avatar_url: string | null;
+};
+
+type PlaylistRow = {
+  id: string;
+  name: string;
+  created_at: string | null;
+  user_id: string;
+};
+
+type PlaylistTrackRow = {
+  playlist_id: string;
+  track_id: string;
+};
+
+type LikeRow = {
+  track_id: string;
+};
+
+type TrackRow = {
+  id: string;
+  title: string | null;
+  artist: string | null;
+  genre: string | null;
+  artwork_url: string | null;
+  audio_url: string | null;
+  created_at: string | null;
+  plays_all_time?: number | null;
+  plays_this_month?: number | null;
+  user_id?: string | null;
 };
 
 function slugify(value: string) {
@@ -87,6 +118,8 @@ function normalizeProfileRole(value: string | null | undefined) {
 export default function AccountClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { playTrack } = usePlayer();
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const inviteHandledRef = useRef(false);
 
@@ -113,9 +146,19 @@ export default function AccountClient() {
   const [avatarUrl, setAvatarUrl] = useState("");
   const [plan, setPlan] = useState<"free" | "premium" | "artist">("free");
   const [isFounding, setIsFounding] = useState(false);
+
   const [followingCount, setFollowingCount] = useState(0);
   const [followingProfiles, setFollowingProfiles] = useState<FollowingProfileRow[]>([]);
   const [loadingFollowing, setLoadingFollowing] = useState(false);
+
+  const [playlists, setPlaylists] = useState<PlaylistRow[]>([]);
+  const [loadingPlaylists, setLoadingPlaylists] = useState(false);
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState<string>("");
+  const [selectedPlaylistTracks, setSelectedPlaylistTracks] = useState<TrackRow[]>([]);
+  const [loadingSelectedPlaylistTracks, setLoadingSelectedPlaylistTracks] = useState(false);
+
+  const [likedTracks, setLikedTracks] = useState<TrackRow[]>([]);
+  const [loadingLikedTracks, setLoadingLikedTracks] = useState(false);
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -125,10 +168,15 @@ export default function AccountClient() {
     return `/artists/${slug}`;
   }, [slug]);
 
+  const selectedPlaylist = useMemo(() => {
+    return playlists.find((playlist) => playlist.id === selectedPlaylistId) ?? null;
+  }, [playlists, selectedPlaylistId]);
+
   const isArtistAccount = isFounding || role === "artist" || plan === "artist";
   const canUpload = isArtistAccount;
   const canCreatePlaylists = Boolean(userId);
-  const canLikeTracks = isFounding || role === "artist" || plan === "premium" || plan === "artist";
+  const canLikeTracks =
+    isFounding || role === "artist" || plan === "premium" || plan === "artist";
 
   async function loadProfile(user: any, options?: { skipCreate?: boolean }) {
     const { data: profile, error: profileError } = await supabase
@@ -247,6 +295,127 @@ export default function AccountClient() {
     }
   }
 
+  async function loadPlaylists(ownerId: string) {
+    setLoadingPlaylists(true);
+
+    try {
+      const { data, error } = await supabase
+        .from("playlists")
+        .select("id,name,created_at,user_id")
+        .eq("user_id", ownerId)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      const rows = (data ?? []) as PlaylistRow[];
+      setPlaylists(rows);
+
+      setSelectedPlaylistId((prev) => {
+        if (prev && rows.some((playlist) => playlist.id === prev)) return prev;
+        return rows[0]?.id ?? "";
+      });
+    } catch (err) {
+      console.error("playlists load error:", err);
+      setPlaylists([]);
+      setSelectedPlaylistId("");
+    } finally {
+      setLoadingPlaylists(false);
+    }
+  }
+
+  async function loadLikedTracks(ownerId: string) {
+    setLoadingLikedTracks(true);
+
+    try {
+      const { data: likeRows, error: likesError } = await supabase
+        .from("likes")
+        .select("track_id")
+        .eq("user_id", ownerId);
+
+      if (likesError) throw likesError;
+
+      const ids = ((likeRows ?? []) as LikeRow[])
+        .map((row) => row.track_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0);
+
+      if (!ids.length) {
+        setLikedTracks([]);
+        return;
+      }
+
+      const { data: tracks, error: tracksError } = await supabase
+        .from("tracks")
+        .select("id,title,artist,genre,artwork_url,audio_url,created_at,plays_all_time,plays_this_month,user_id")
+        .in("id", ids);
+
+      if (tracksError) throw tracksError;
+
+      const trackMap = new Map(
+        ((tracks ?? []) as TrackRow[]).map((track) => [track.id, track])
+      );
+
+      const orderedTracks = ids
+        .map((id) => trackMap.get(id))
+        .filter((track): track is TrackRow => Boolean(track));
+
+      setLikedTracks(orderedTracks);
+    } catch (err) {
+      console.error("liked tracks load error:", err);
+      setLikedTracks([]);
+    } finally {
+      setLoadingLikedTracks(false);
+    }
+  }
+
+  async function loadSelectedPlaylistTracks(playlistId: string) {
+    if (!playlistId) {
+      setSelectedPlaylistTracks([]);
+      return;
+    }
+
+    setLoadingSelectedPlaylistTracks(true);
+
+    try {
+      const { data: playlistTrackRows, error: playlistTracksError } = await supabase
+        .from("playlist_tracks")
+        .select("playlist_id, track_id")
+        .eq("playlist_id", playlistId);
+
+      if (playlistTracksError) throw playlistTracksError;
+
+      const ids = ((playlistTrackRows ?? []) as PlaylistTrackRow[])
+        .map((row) => row.track_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0);
+
+      if (!ids.length) {
+        setSelectedPlaylistTracks([]);
+        return;
+      }
+
+      const { data: tracks, error: tracksError } = await supabase
+        .from("tracks")
+        .select("id,title,artist,genre,artwork_url,audio_url,created_at,plays_all_time,plays_this_month,user_id")
+        .in("id", ids);
+
+      if (tracksError) throw tracksError;
+
+      const trackMap = new Map(
+        ((tracks ?? []) as TrackRow[]).map((track) => [track.id, track])
+      );
+
+      const orderedTracks = ids
+        .map((id) => trackMap.get(id))
+        .filter((track): track is TrackRow => Boolean(track));
+
+      setSelectedPlaylistTracks(orderedTracks);
+    } catch (err) {
+      console.error("selected playlist tracks load error:", err);
+      setSelectedPlaylistTracks([]);
+    } finally {
+      setLoadingSelectedPlaylistTracks(false);
+    }
+  }
+
   useEffect(() => {
     let mounted = true;
 
@@ -274,7 +443,11 @@ export default function AccountClient() {
         setEmail(user.email ?? "");
 
         await loadProfile(user, { skipCreate: hasFoundingInvite });
-        await loadFollowing(user.id);
+        await Promise.all([
+          loadFollowing(user.id),
+          loadPlaylists(user.id),
+          loadLikedTracks(user.id),
+        ]);
       } catch (err: any) {
         setError(err?.message || "Account page failed to load.");
       } finally {
@@ -296,7 +469,11 @@ export default function AccountClient() {
 
       setUserId(session.user.id);
       setEmail(session.user.email ?? "");
-      void loadFollowing(session.user.id);
+      void Promise.all([
+        loadFollowing(session.user.id),
+        loadPlaylists(session.user.id),
+        loadLikedTracks(session.user.id),
+      ]);
     });
 
     return () => {
@@ -443,7 +620,11 @@ export default function AccountClient() {
 
         deleteInviteCookie();
         await loadProfile(session.user);
-        await loadFollowing(session.user.id);
+        await Promise.all([
+          loadFollowing(session.user.id),
+          loadPlaylists(session.user.id),
+          loadLikedTracks(session.user.id),
+        ]);
         setMessage("Welcome, Founding Artist.");
         router.replace("/account?welcome=founding");
       } catch (err: any) {
@@ -463,6 +644,10 @@ export default function AccountClient() {
       mounted = false;
     };
   }, [hasFoundingInvite, inviteToken, router]);
+
+  useEffect(() => {
+    void loadSelectedPlaylistTracks(selectedPlaylistId);
+  }, [selectedPlaylistId]);
 
   async function handleSave() {
     if (!userId) return;
@@ -762,64 +947,186 @@ export default function AccountClient() {
         ) : null}
 
         <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-            <h2 className="text-lg font-semibold text-white">Profile settings</h2>
-            <p className="mt-1 text-sm text-white/60">Edit your public profile.</p>
+          <div className="space-y-6">
+            <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+              <h2 className="text-lg font-semibold text-white">Profile settings</h2>
+              <p className="mt-1 text-sm text-white/60">Edit your public profile.</p>
 
-            <div className="mt-6 space-y-5">
-              <div>
-                <label className="mb-2 block text-sm text-white/75">Display name</label>
-                <input
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="AI Artist"
-                  className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm text-white/75">Country</label>
-                <input
-                  value={country}
-                  onChange={(e) => setCountry(e.target.value)}
-                  placeholder="Estonia"
-                  className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm text-white/75">Public profile URL</label>
-                <div className="flex items-center rounded-2xl border border-white/10 bg-white/6 px-4">
-                  <span className="mr-2 text-sm text-white/35">/artists/</span>
+              <div className="mt-6 space-y-5">
+                <div>
+                  <label className="mb-2 block text-sm text-white/75">Display name</label>
                   <input
-                    value={slug}
-                    onChange={(e) => setSlug(slugify(e.target.value))}
-                    placeholder="ai-artist"
-                    className="h-12 w-full bg-transparent text-white outline-none placeholder:text-white/30"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    placeholder="AI Artist"
+                    className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
                   />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm text-white/75">Country</label>
+                  <input
+                    value={country}
+                    onChange={(e) => setCountry(e.target.value)}
+                    placeholder="Estonia"
+                    className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm text-white/75">Public profile URL</label>
+                  <div className="flex items-center rounded-2xl border border-white/10 bg-white/6 px-4">
+                    <span className="mr-2 text-sm text-white/35">/artists/</span>
+                    <input
+                      value={slug}
+                      onChange={(e) => setSlug(slugify(e.target.value))}
+                      placeholder="ai-artist"
+                      className="h-12 w-full bg-transparent text-white outline-none placeholder:text-white/30"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm text-white/75">Bio</label>
+                  <textarea
+                    value={bio}
+                    onChange={(e) => setBio(e.target.value)}
+                    placeholder="Tell listeners who you are..."
+                    rows={6}
+                    className="w-full rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="inline-flex h-12 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {saving ? "Saving..." : "Save profile"}
+                </button>
+              </div>
+            </section>
+
+            <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-white">My Playlists</h2>
+                  <p className="mt-1 text-sm text-white/60">
+                    Open your saved playlists and play them from your account.
+                  </p>
+                </div>
+
+                <div className="text-sm font-medium text-white/55">
+                  {playlists.length} total
                 </div>
               </div>
 
-              <div>
-                <label className="mb-2 block text-sm text-white/75">Bio</label>
-                <textarea
-                  value={bio}
-                  onChange={(e) => setBio(e.target.value)}
-                  placeholder="Tell listeners who you are..."
-                  rows={6}
-                  className="w-full rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
-                />
+              {loadingPlaylists ? (
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+                  Loading playlists...
+                </div>
+              ) : playlists.length === 0 ? (
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+                  You do not have playlists yet. Create one on Discover.
+                </div>
+              ) : (
+                <>
+                  <div className="mb-4 flex flex-wrap gap-2">
+                    {playlists.map((playlist) => {
+                      const active = playlist.id === selectedPlaylistId;
+
+                      return (
+                        <button
+                          key={playlist.id}
+                          type="button"
+                          onClick={() => setSelectedPlaylistId(playlist.id)}
+                          className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                            active
+                              ? "bg-cyan-400 text-white"
+                              : "border border-white/10 bg-white/8 text-white/80 hover:bg-white/12"
+                          }`}
+                        >
+                          {playlist.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <div className="text-sm text-white/45">Selected playlist</div>
+                    <div className="mt-1 text-base font-semibold text-white">
+                      {selectedPlaylist?.name || "—"}
+                    </div>
+                    <div className="mt-1 text-sm text-white/55">
+                      {selectedPlaylistTracks.length} track
+                      {selectedPlaylistTracks.length === 1 ? "" : "s"}
+                    </div>
+                  </div>
+
+                  {loadingSelectedPlaylistTracks ? (
+                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+                      Loading playlist tracks...
+                    </div>
+                  ) : selectedPlaylistTracks.length === 0 ? (
+                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+                      This playlist is empty.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {selectedPlaylistTracks.map((track) => (
+                        <TrackCard
+                          key={track.id}
+                          track={track as any}
+                          allTracks={selectedPlaylistTracks as any}
+                          onPlay={() => {
+                            void playTrack(track as any, selectedPlaylistTracks as any);
+                          }}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </section>
+
+            <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-white">My Likes</h2>
+                  <p className="mt-1 text-sm text-white/60">
+                    Tracks you have supported with likes.
+                  </p>
+                </div>
+
+                <div className="text-sm font-medium text-white/55">
+                  {likedTracks.length} total
+                </div>
               </div>
 
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={saving}
-                className="inline-flex h-12 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {saving ? "Saving..." : "Save profile"}
-              </button>
-            </div>
+              {loadingLikedTracks ? (
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+                  Loading liked tracks...
+                </div>
+              ) : likedTracks.length === 0 ? (
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+                  You have not liked any tracks yet.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {likedTracks.map((track) => (
+                    <TrackCard
+                      key={track.id}
+                      track={track as any}
+                      allTracks={likedTracks as any}
+                      onPlay={() => {
+                        void playTrack(track as any, likedTracks as any);
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
           </div>
 
           <div className="space-y-6">
@@ -861,84 +1168,15 @@ export default function AccountClient() {
                     {canCreatePlaylists ? "Enabled" : "Login required"}
                   </div>
                 </div>
-
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <div className="text-white/45">Upload access</div>
-                  <div className="mt-1 font-medium text-white">
-                    {canUpload ? "Enabled" : "Artist upgrade required"}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <div className="text-white/45">Profile link</div>
-                  <div className="mt-1 break-all font-medium text-white">
-                    {profileUrl || "Create a slug to activate"}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <div className="text-white/45">Following</div>
-                  <div className="mt-1 font-medium text-white">{followingCount}</div>
-                </div>
-              </div>
-            </section>
-
-            <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-              <h2 className="text-lg font-semibold text-white">Following</h2>
-              <p className="mt-2 text-sm text-white/65">
-                Profiles you follow for quick return visits.
-              </p>
-
-              <div className="mt-5 space-y-3">
-                {loadingFollowing ? (
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
-                    Loading followed profiles...
-                  </div>
-                ) : followingProfiles.length === 0 ? (
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
-                    You are not following any profiles yet.
-                  </div>
-                ) : (
-                  followingProfiles.map((profile) => (
-                    <Link
-                      key={profile.id}
-                      href={profile.slug ? `/artists/${profile.slug}` : "#"}
-                      className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 p-3 transition hover:bg-black/30"
-                    >
-                      <div className="relative h-11 w-11 overflow-hidden rounded-2xl border border-white/10 bg-white/5">
-                        {profile.avatar_url ? (
-                          <Image
-                            src={getAvatarUrl(profile.avatar_url)}
-                            alt={profile.display_name || "Profile"}
-                            fill
-                            className="object-cover"
-                            sizes="44px"
-                          />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-white/50">
-                            {(profile.display_name || "P").charAt(0).toUpperCase()}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-semibold text-white">
-                          {profile.display_name || "Profile"}
-                        </div>
-                        <div className="truncate text-xs text-white/55">
-                          {profile.slug ? `/artists/${profile.slug}` : "Profile link unavailable"}
-                        </div>
-                      </div>
-                    </Link>
-                  ))
-                )}
               </div>
             </section>
 
             <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
               <h2 className="text-lg font-semibold text-white">Upload track</h2>
               <p className="mt-2 text-sm text-white/65">
-                Publish a new song to your SoundioX profile and discovery feed.
+                {canUpload
+                  ? "Publish a new song to your SoundioX profile and discovery feed."
+                  : "Unlock artist access to upload tracks and build your public SoundioX profile."}
               </p>
 
               <div className="mt-5 space-y-3">
@@ -959,13 +1197,13 @@ export default function AccountClient() {
                   <>
                     <Link
                       href="/discover"
-                      className="inline-flex h-12 w-full items-center justify-center rounded-full border border-fuchsia-300/20 bg-fuchsia-400/10 px-6 text-sm font-medium text-fuchsia-100 transition hover:bg-fuchsia-400/15"
+                      className="inline-flex h-12 w-full items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:scale-[1.01]"
                     >
                       Become Artist
                     </Link>
 
                     <p className="text-xs leading-6 text-white/45">
-                      Artist access is required before uploading tracks.
+                      Upgrade your access to start uploading tracks and shaping your artist profile.
                     </p>
                   </>
                 )}

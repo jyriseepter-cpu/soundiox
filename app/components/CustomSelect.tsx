@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState, useRef, useEffect } from "react";
 
 type Option = {
   value: string;
@@ -21,79 +21,84 @@ export default function CustomSelect({
   className = "",
 }: Props) {
   const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const ref = useRef<HTMLDivElement | null>(null);
 
-  const selected = options.find((o) => o.value === value) || options[0] || null;
+  const selected = options.find((o) => o.value === value);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (!wrapRef.current) return;
-      if (!wrapRef.current.contains(e.target as Node)) {
+      if (!ref.current) return;
+      if (!ref.current.contains(e.target as Node)) {
         setOpen(false);
       }
     }
 
-    function handleEscape(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-
     document.addEventListener("mousedown", handleClickOutside);
-    window.addEventListener("keydown", handleEscape);
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      window.removeEventListener("keydown", handleEscape);
-    };
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   return (
-    <div ref={wrapRef} className={`relative ${className}`}>
+    <div ref={ref} className={`relative ${className}`}>
+      {/* SELECT BUTTON */}
       <button
         type="button"
-        onClick={() => setOpen((prev) => !prev)}
-        className="flex h-11 w-full items-center justify-between rounded-2xl border border-cyan-200/35 bg-[linear-gradient(135deg,rgba(103,232,249,0.88),rgba(34,211,238,0.82),rgba(56,189,248,0.76))] px-4 text-left text-sm font-medium text-white shadow-[0_8px_24px_rgba(34,211,238,0.18)] ring-1 ring-white/12 backdrop-blur-md transition hover:border-cyan-100/45 hover:bg-[linear-gradient(135deg,rgba(125,240,255,0.95),rgba(45,220,240,0.88),rgba(72,196,255,0.82))]"
-        aria-haspopup="listbox"
-        aria-expanded={open}
+        onClick={() => setOpen((p) => !p)}
+        className="
+          h-10 w-full rounded-xl px-4 text-sm font-semibold
+          text-white
+          bg-gradient-to-r from-cyan-400 to-sky-400
+          ring-1 ring-cyan-200/40
+          backdrop-blur
+          flex items-center justify-between
+          hover:opacity-95
+        "
       >
-        <span className="truncate">{selected?.label ?? ""}</span>
-
-        <span
-          className={`ml-3 text-[11px] text-white/95 transition duration-200 ${
-            open ? "rotate-180" : ""
-          }`}
-        >
-          ▼
+        <span className="truncate">
+          {selected ? selected.label : "Select"}
         </span>
+        <span className="ml-2 text-xs">▼</span>
       </button>
 
-      {open ? (
-        <div className="absolute left-0 top-[calc(100%+8px)] z-50 w-full overflow-hidden rounded-2xl border border-cyan-200/35 bg-[linear-gradient(180deg,rgba(103,232,249,0.82),rgba(34,211,238,0.72),rgba(56,189,248,0.68))] shadow-[0_18px_50px_rgba(0,0,0,0.34)] ring-1 ring-white/12 backdrop-blur-2xl">
-          <div role="listbox" className="max-h-72 overflow-y-auto p-2">
-            {options.map((option) => {
-              const active = option.value === value;
+      {/* DROPDOWN */}
+      {open && (
+        <div
+          className="
+            absolute z-50 mt-2 w-full
+            rounded-2xl
+            bg-[#89d7ff]/95
+            backdrop-blur
+            ring-1 ring-white/20
+            shadow-2xl
+            p-2
+          "
+        >
+          {options.map((option) => {
+            const isActive = option.value === value;
 
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => {
-                    onChange(option.value);
-                    setOpen(false);
-                  }}
-                  className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
-                    active
-                      ? "bg-white/22 text-white ring-1 ring-white/20"
-                      : "text-white/95 hover:bg-white/12 hover:text-white"
-                  }`}
-                >
-                  <span className="truncate">{option.label}</span>
-                  {active ? <span className="ml-3 text-white">✓</span> : null}
-                </button>
-              );
-            })}
-          </div>
+            return (
+              <button
+                key={option.value}
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+                className={`
+                  w-full text-left px-3 py-2 rounded-xl
+                  text-sm font-semibold
+                  transition
+                  ${
+                    isActive
+                      ? "bg-white/30 text-white"
+                      : "text-white/95 hover:bg-white/20"
+                  }
+                `}
+              >
+                {option.label}
+              </button>
+            );
+          })}
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

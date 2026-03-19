@@ -29,6 +29,27 @@ type TrackRow = {
   user_id: string | null;
 };
 
+type Playlist = {
+  id: string;
+  name: string;
+  created_at: string;
+  user_id: string;
+};
+
+type PlaylistTrackRow = {
+  playlist_id: string;
+  track_id: string;
+};
+
+type LikeRow = {
+  track_id: string;
+};
+
+type TrackLikesAllTimeRow = {
+  track_id: string;
+  likes: number | null;
+};
+
 type ProfileMini = ArtistIdentityProfile;
 type DiscoverTrack = TrackWithResolvedArtist<TrackRow>;
 
@@ -89,6 +110,11 @@ function normalizeRole(value: string | null | undefined) {
   return "listener";
 }
 
+function monthStartDateString() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+}
+
 export default function DiscoverPage() {
   const router = useRouter();
   const { playTrack, currentTrack, isPlaying } = usePlayer();
@@ -105,17 +131,39 @@ export default function DiscoverPage() {
   const [hasOAuthCode, setHasOAuthCode] = useState(false);
 
   const [viewerLoggedIn, setViewerLoggedIn] = useState(false);
+  const [viewerUserId, setViewerUserId] = useState<string | null>(null);
   const [viewerRole, setViewerRole] = useState<"listener" | "artist">("listener");
   const [viewerPlan, setViewerPlan] = useState<"free" | "premium" | "artist">("free");
   const [viewerIsFounding, setViewerIsFounding] = useState(false);
 
-  const nowPlayingId = (currentTrack as any)?.id ?? null;
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState("");
+  const [selectedPlaylistTrackIds, setSelectedPlaylistTrackIds] = useState<string[]>([]);
+  const [newPlaylistName, setNewPlaylistName] = useState("");
+  const [playlistMenuOpen, setPlaylistMenuOpen] = useState(false);
 
+  const [likesByTrackId, setLikesByTrackId] = useState<Record<string, number>>({});
+  const [likedTrackIds, setLikedTrackIds] = useState<string[]>([]);
+  const [likeLoadingTrackId, setLikeLoadingTrackId] = useState<string | null>(null);
+
+  const [toast, setToast] = useState<string | null>(null);
+
+  const nowPlayingId = (currentTrack as any)?.id ?? null;
   const authReadyRef = useRef(false);
 
-  const viewerIsArtist = viewerIsFounding || viewerRole === "artist" || viewerPlan === "artist";
-  const viewerCanLike = viewerIsFounding || viewerRole === "artist" || viewerPlan === "premium" || viewerPlan === "artist";
+  const viewerIsArtist =
+    viewerIsFounding || viewerRole === "artist" || viewerPlan === "artist";
+  const viewerCanLike =
+    viewerIsFounding ||
+    viewerRole === "artist" ||
+    viewerPlan === "premium" ||
+    viewerPlan === "artist";
   const viewerHasPaidPlan = viewerCanLike || viewerIsArtist;
+
+  function showToast(text: string) {
+    setToast(text);
+    window.setTimeout(() => setToast(null), 2200);
+  }
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -276,6 +324,7 @@ export default function DiscoverPage() {
         if (!user) {
           if (!alive) return;
           setViewerLoggedIn(false);
+          setViewerUserId(null);
           setViewerRole("listener");
           setViewerPlan("free");
           setViewerIsFounding(false);
@@ -285,6 +334,7 @@ export default function DiscoverPage() {
         if (!alive) return;
 
         setViewerLoggedIn(true);
+        setViewerUserId(user.id);
 
         const { data: profile, error: profileError } = await supabase
           .from("profiles")
@@ -302,6 +352,7 @@ export default function DiscoverPage() {
         console.warn("discover viewer profile warning:", error);
         if (!alive) return;
         setViewerLoggedIn(false);
+        setViewerUserId(null);
         setViewerRole("listener");
         setViewerPlan("free");
         setViewerIsFounding(false);
@@ -344,6 +395,152 @@ export default function DiscoverPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let alive = true;
+
+    async function loadLikes() {
+      try {
+        const { data, error } = await supabase
+          .from("track_likes_all_time")
+          .select("track_id, likes");
+
+        if (error) throw error;
+        if (!alive) return;
+
+        const map: Record<string, number> = {};
+
+        for (const row of (data ?? []) as TrackLikesAllTimeRow[]) {
+          if (row.track_id) {
+            map[row.track_id] = Number(row.likes ?? 0);
+          }
+        }
+
+        setLikesByTrackId(map);
+      } catch (error) {
+        console.warn("discover likes warning:", error);
+        if (!alive) return;
+        setLikesByTrackId({});
+      }
+    }
+
+    void loadLikes();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadViewerLikes() {
+      if (!viewerUserId) {
+        setLikedTrackIds([]);
+        return;
+      }
+
+      try {
+        const monthStart = monthStartDateString();
+
+        const { data, error } = await supabase
+          .from("likes")
+          .select("track_id")
+          .eq("user_id", viewerUserId)
+          .eq("month", monthStart);
+
+        if (error) throw error;
+        if (!alive) return;
+
+        const ids = ((data ?? []) as LikeRow[])
+          .map((row) => row.track_id)
+          .filter((id): id is string => typeof id === "string" && id.length > 0);
+
+        setLikedTrackIds(ids);
+      } catch (error) {
+        console.warn("discover viewer likes warning:", error);
+        if (!alive) return;
+        setLikedTrackIds([]);
+      }
+    }
+
+    void loadViewerLikes();
+
+    return () => {
+      alive = false;
+    };
+  }, [viewerUserId]);
+
+  async function fetchPlaylists(userId: string) {
+    const { data, error } = await supabase
+      .from("playlists")
+      .select("id,name,created_at,user_id")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.warn("discover playlists warning:", error);
+      setPlaylists([]);
+      setSelectedPlaylistId("");
+      return;
+    }
+
+    const list = (data ?? []) as Playlist[];
+    setPlaylists(list);
+
+    setSelectedPlaylistId((prev) => {
+      if (prev && list.some((p) => p.id === prev)) return prev;
+      return list[0]?.id ?? "";
+    });
+  }
+
+  useEffect(() => {
+    if (!viewerUserId) {
+      setPlaylists([]);
+      setSelectedPlaylistId("");
+      setSelectedPlaylistTrackIds([]);
+      return;
+    }
+
+    void fetchPlaylists(viewerUserId);
+  }, [viewerUserId]);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadSelectedPlaylistTracks() {
+      if (!selectedPlaylistId) {
+        setSelectedPlaylistTrackIds([]);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("playlist_tracks")
+        .select("playlist_id, track_id")
+        .eq("playlist_id", selectedPlaylistId);
+
+      if (error) {
+        console.warn("discover playlist tracks warning:", error);
+        if (!alive) return;
+        setSelectedPlaylistTrackIds([]);
+        return;
+      }
+
+      if (!alive) return;
+
+      const ids = ((data ?? []) as PlaylistTrackRow[])
+        .map((row) => row.track_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0);
+
+      setSelectedPlaylistTrackIds(ids);
+    }
+
+    void loadSelectedPlaylistTracks();
+
+    return () => {
+      alive = false;
+    };
+  }, [selectedPlaylistId]);
+
   const genreOptions = useMemo(() => {
     const set = new Set<string>();
 
@@ -370,6 +567,152 @@ export default function DiscoverPage() {
       return hay.includes(q);
     });
   }, [tracks, search, genre]);
+
+  const selectedPlaylist = useMemo(
+    () => playlists.find((p) => p.id === selectedPlaylistId) ?? null,
+    [playlists, selectedPlaylistId]
+  );
+
+  const selectedPlaylistTracks = useMemo(() => {
+    if (!selectedPlaylistTrackIds.length) return [];
+
+    const idSet = new Set(selectedPlaylistTrackIds);
+    return tracks.filter((track) => idSet.has(track.id));
+  }, [tracks, selectedPlaylistTrackIds]);
+
+  async function createPlaylist() {
+    if (!viewerUserId) {
+      showToast("Please log in first");
+      return;
+    }
+
+    const name = newPlaylistName.trim();
+
+    if (!name) {
+      showToast("Enter playlist name");
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("playlists")
+      .insert([{ name, user_id: viewerUserId }])
+      .select("id,name,created_at,user_id")
+      .single();
+
+    if (error) {
+      console.error(error);
+      showToast("Create failed");
+      return;
+    }
+
+    setNewPlaylistName("");
+
+    await fetchPlaylists(viewerUserId);
+
+    if (data?.id) {
+      setSelectedPlaylistId(data.id);
+      setPlaylistMenuOpen(true);
+    }
+
+    showToast("Playlist created ✓");
+  }
+
+  async function addTrackToSelectedPlaylist(track: DiscoverTrack) {
+    if (!viewerUserId) {
+      showToast("Please log in first");
+      return;
+    }
+
+    if (!selectedPlaylistId) {
+      showToast("Choose a playlist first");
+      setPlaylistMenuOpen(true);
+      return;
+    }
+
+    const { error } = await supabase.from("playlist_tracks").insert([
+      {
+        playlist_id: selectedPlaylistId,
+        track_id: track.id,
+      },
+    ]);
+
+    if (error) {
+      showToast("This track is already in that playlist");
+      return;
+    }
+
+    setSelectedPlaylistTrackIds((prev) =>
+      prev.includes(track.id) ? prev : [track.id, ...prev]
+    );
+
+    const playlistName =
+      playlists.find((playlist) => playlist.id === selectedPlaylistId)?.name ?? "playlist";
+
+    showToast(`Added to ${playlistName} ✓`);
+  }
+
+  async function toggleLike(trackId: string) {
+    if (!viewerLoggedIn) {
+      showToast("Log in to use likes");
+      return;
+    }
+
+    if (!viewerCanLike) {
+      showToast("Premium or Artist unlocks likes");
+      return;
+    }
+
+    if (!viewerUserId) {
+      showToast("Please log in first");
+      return;
+    }
+
+    const month = monthStartDateString();
+    const alreadyLiked = likedTrackIds.includes(trackId);
+
+    try {
+      setLikeLoadingTrackId(trackId);
+
+      if (alreadyLiked) {
+        const { error } = await supabase
+          .from("likes")
+          .delete()
+          .eq("user_id", viewerUserId)
+          .eq("track_id", trackId)
+          .eq("month", month);
+
+        if (error) throw error;
+
+        setLikedTrackIds((prev) => prev.filter((id) => id !== trackId));
+        setLikesByTrackId((prev) => ({
+          ...prev,
+          [trackId]: Math.max(0, (prev[trackId] ?? 0) - 1),
+        }));
+        return;
+      }
+
+      const { error } = await supabase.from("likes").insert([
+        {
+          user_id: viewerUserId,
+          track_id: trackId,
+          month,
+        },
+      ]);
+
+      if (error) throw error;
+
+      setLikedTrackIds((prev) => (prev.includes(trackId) ? prev : [...prev, trackId]));
+      setLikesByTrackId((prev) => ({
+        ...prev,
+        [trackId]: (prev[trackId] ?? 0) + 1,
+      }));
+    } catch (error: any) {
+      console.warn("toggle like warning:", error?.message || error);
+      showToast(error?.message || "Like failed");
+    } finally {
+      setLikeLoadingTrackId(null);
+    }
+  }
 
   async function handleUpgradePlan(plan: UpgradeTier) {
     try {
@@ -435,6 +778,12 @@ export default function DiscoverPage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 pb-28 pt-6">
+      {toast ? (
+        <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-black/80 px-4 py-2 text-sm font-semibold text-white shadow-lg backdrop-blur">
+          {toast}
+        </div>
+      ) : null}
+
       {authSettling ? (
         <div className="mb-4 rounded-2xl border border-cyan-300/20 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100">
           Signing you in...
@@ -455,20 +804,153 @@ export default function DiscoverPage() {
 
       <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <input
-          className="h-10 w-full rounded-xl bg-white/10 px-4 text-white placeholder-white/50 ring-1 ring-white/10 outline-none focus:ring-white/20 md:max-w-[520px]"
+          className="h-10 w-full rounded-xl bg-white/10 px-4 text-white placeholder-white/50 ring-1 ring-white/10 outline-none focus:ring-white/20 md:max-w-[420px]"
           placeholder="Search tracks, artists, genres..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           autoComplete="off"
         />
 
-        <CustomSelect
-          value={genre}
-          onChange={setGenre}
-          options={customGenreOptions}
-          className="w-full md:w-[220px]"
-        />
+        <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center">
+          <CustomSelect
+            value={genre}
+            onChange={setGenre}
+            options={customGenreOptions}
+            className="w-full md:w-[220px]"
+          />
+
+          <div className="relative w-full md:w-[240px]">
+            <button
+              type="button"
+              onClick={() => setPlaylistMenuOpen((prev) => !prev)}
+              className="flex h-10 w-full items-center justify-between rounded-xl bg-gradient-to-r from-cyan-400 to-sky-400 px-4 text-sm font-semibold text-white ring-1 ring-cyan-200/40 backdrop-blur transition hover:opacity-95"
+            >
+              <span className="truncate">
+                {selectedPlaylist ? `Playlist: ${selectedPlaylist.name}` : "My Playlists"}
+              </span>
+              <span className="ml-3 text-xs text-white/90">▼</span>
+            </button>
+
+            {playlistMenuOpen ? (
+              <div className="absolute right-0 top-12 z-40 w-full rounded-2xl bg-[#89d7ff]/95 p-3 text-white shadow-2xl ring-1 ring-white/20 backdrop-blur">
+                {!viewerLoggedIn ? (
+                  <div className="text-sm font-semibold text-white/90">
+                    Log in to create and use playlists.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      {playlists.length === 0 ? (
+                        <div className="rounded-xl bg-white/15 px-3 py-2 text-sm font-medium text-white/90">
+                          No playlists yet.
+                        </div>
+                      ) : (
+                        playlists.map((playlist) => {
+                          const isActive = playlist.id === selectedPlaylistId;
+
+                          return (
+                            <button
+                              key={playlist.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedPlaylistId(playlist.id);
+                                setPlaylistMenuOpen(false);
+                              }}
+                              className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-semibold transition ${
+                                isActive
+                                  ? "bg-white/25 text-white"
+                                  : "bg-white/10 text-white/95 hover:bg-white/20"
+                              }`}
+                            >
+                              <span className="truncate">{playlist.name}</span>
+                              {isActive ? <span className="text-[10px]">OPEN</span> : null}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    <div className="flex gap-2">
+                      <input
+                        value={newPlaylistName}
+                        onChange={(e) => setNewPlaylistName(e.target.value)}
+                        placeholder="New playlist..."
+                        className="h-10 flex-1 rounded-xl bg-white/15 px-3 text-sm font-medium text-white placeholder:text-white/60 outline-none ring-1 ring-white/15"
+                      />
+                      <button
+                        type="button"
+                        onClick={createPlaylist}
+                        className="h-10 rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-500 px-4 text-sm font-bold text-white ring-1 ring-white/15"
+                      >
+                        Create
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+        </div>
       </div>
+
+      {selectedPlaylist ? (
+        <div className="mb-4 rounded-2xl bg-white/8 p-3 ring-1 ring-white/10">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-bold text-white">
+                {selectedPlaylist.name}
+              </div>
+              <div className="text-xs font-semibold text-white/55">
+                {selectedPlaylistTracks.length} track
+                {selectedPlaylistTracks.length === 1 ? "" : "s"}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setSelectedPlaylistId("")}
+              className="rounded-xl bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/80 ring-1 ring-white/10 transition hover:bg-white/15"
+            >
+              Close
+            </button>
+          </div>
+
+          {selectedPlaylistTracks.length === 0 ? (
+            <div className="text-sm text-white/60">
+              This playlist is empty. Use Add on any track to start filling it.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {selectedPlaylistTracks.map((track) => (
+                <div
+                  key={track.id}
+                  className="flex items-center justify-between rounded-xl bg-white/8 px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-bold text-white">
+                      {track.title ?? "Untitled"}
+                    </div>
+                    <div className="truncate text-xs font-semibold text-white/55">
+                      {track.artistDisplayName}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedTrack(track);
+                      void playTrack(track as any, selectedPlaylistTracks as any);
+                    }}
+                    className="rounded-xl bg-gradient-to-r from-purple-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90"
+                  >
+                    Play
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
         <div className="rounded-2xl bg-white/6 p-3 ring-1 ring-white/10">
@@ -494,6 +976,12 @@ export default function DiscoverPage() {
                     setSelectedTrack(t);
                     void playTrack(t as any, displayedTracks as any);
                   }}
+                  onAdd={() => void addTrackToSelectedPlaylist(t)}
+                  onLike={() => void toggleLike(t.id)}
+                  likeCount={likesByTrackId[t.id] ?? 0}
+                  isLiked={likedTrackIds.includes(t.id)}
+                  likeLoading={likeLoadingTrackId === t.id}
+                  canLike={viewerCanLike}
                 />
               ))
             )}
