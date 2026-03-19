@@ -775,7 +775,7 @@ export default function AccountClient() {
 
   return (
     <main className="min-h-screen bg-[#07090f] px-6 py-10 text-white">
-      <div className="mx-auto max-w-5xl space-y-6">
+      <div className="mx-auto max-w-6xl space-y-6">
         <section className="overflow-hidden rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(45,212,191,0.16),transparent_35%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.16),transparent_35%),rgba(255,255,255,0.04)] p-6 shadow-[0_20px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl">
           <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-4">
@@ -946,13 +946,13 @@ export default function AccountClient() {
           </section>
         ) : null}
 
-        <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="space-y-6">
+        <section className="grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(340px,0.95fr)] xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
+          <div className="min-w-0 space-y-6">
             <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
               <h2 className="text-lg font-semibold text-white">Profile settings</h2>
               <p className="mt-1 text-sm text-white/60">Edit your public profile.</p>
 
-              <div className="mt-6 space-y-5">
+              <div className="mt-6 max-w-2xl space-y-5 xl:max-w-[42rem]">
                 <div>
                   <label className="mb-2 block text-sm text-white/75">Display name</label>
                   <input
@@ -1129,7 +1129,7 @@ export default function AccountClient() {
             </section>
           </div>
 
-          <div className="space-y-6">
+          <div className="min-w-0 space-y-6">
             <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
               <h2 className="text-lg font-semibold text-white">Status</h2>
 
