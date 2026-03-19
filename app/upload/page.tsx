@@ -26,6 +26,27 @@ function normalizeIsrc(value: string) {
   return value.trim().toUpperCase().replace(/\s+/g, "");
 }
 
+function isValidIsrc(value: string) {
+  return /^[A-Z]{2}[A-Z0-9]{3}\d{7}$/.test(value);
+}
+
+function generateFallbackIsrc() {
+  const year = String(new Date().getFullYear()).slice(-2);
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let middle = "";
+  let tail = "";
+
+  for (let i = 0; i < 3; i += 1) {
+    middle += chars[Math.floor(Math.random() * chars.length)];
+  }
+
+  for (let i = 0; i < 7; i += 1) {
+    tail += String(Math.floor(Math.random() * 10));
+  }
+
+  return `SX${year}${middle}${tail}`;
+}
+
 function formatFileSize(bytes: number) {
   if (!Number.isFinite(bytes) || bytes <= 0) return "";
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
@@ -44,12 +65,23 @@ export default function UploadPage() {
 
   const [title, setTitle] = useState("");
   const [isrc, setIsrc] = useState("");
+  const [isrcError, setIsrcError] = useState("");
   const [genre, setGenre] = useState("");
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [artFile, setArtFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
 
   async function handleUpload() {
+    const normalizedIsrc = normalizeIsrc(isrc);
+    const finalIsrc = normalizedIsrc || generateFallbackIsrc();
+
+    if (normalizedIsrc && !isValidIsrc(normalizedIsrc)) {
+      setIsrcError("Please enter a valid ISRC, for example USRC17607839.");
+      return;
+    }
+
+    setIsrcError("");
+
     if (!title.trim()) {
       alert("Please enter a title.");
       return;
@@ -72,7 +104,6 @@ export default function UploadPage() {
     try {
       const { data: auth } = await supabase.auth.getUser();
       const user = auth?.user;
-      const normalizedIsrc = normalizeIsrc(isrc);
 
       if (!user) {
         alert("Please log in first.");
@@ -115,7 +146,7 @@ export default function UploadPage() {
 
       const { error: insertError } = await supabase.from("tracks").insert({
         title,
-        isrc: normalizedIsrc || null,
+        isrc: finalIsrc,
         genre,
         audio_url: audioUrl,
         artwork_url: artworkUrl,
@@ -133,6 +164,7 @@ export default function UploadPage() {
 
       setTitle("");
       setIsrc("");
+      setIsrcError("");
       setGenre("");
       setAudioFile(null);
       setArtFile(null);
@@ -189,8 +221,19 @@ export default function UploadPage() {
                     placeholder="e.g. USRC17607839"
                     className="h-[52px] w-full rounded-2xl border border-white/10 bg-black/20 px-4 text-base text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
                     value={isrc}
-                    onChange={(e) => setIsrc(normalizeIsrc(e.target.value))}
+                    onChange={(e) => {
+                      setIsrc(normalizeIsrc(e.target.value));
+                      if (isrcError) {
+                        setIsrcError("");
+                      }
+                    }}
                   />
+                  <p className="mt-2 text-xs leading-6 text-white/45">
+                    Leave blank to auto-create an internal release code.
+                  </p>
+                  {isrcError ? (
+                    <p className="mt-1 text-sm text-rose-300">{isrcError}</p>
+                  ) : null}
                 </div>
 
                 <div>
