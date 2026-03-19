@@ -187,7 +187,6 @@ export default function UploadPage() {
         audio_url: audioUrl,
         artwork_url: artworkUrl,
         user_id: user.id,
-        owner: artistName,
         is_published: true,
         plays_all_time: 0,
         plays_this_month: 0,
