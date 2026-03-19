@@ -59,6 +59,22 @@ function formatSelectedFile(file: File | null, fallback: string) {
   return size ? `${file.name} • ${size}` : file.name;
 }
 
+function formatSupabaseError(error: {
+  code?: string | null;
+  message?: string | null;
+  details?: string | null;
+  hint?: string | null;
+}) {
+  const parts = [
+    error.code ? `code=${error.code}` : null,
+    error.message ? `message=${error.message}` : null,
+    error.details ? `details=${error.details}` : null,
+    error.hint ? `hint=${error.hint}` : null,
+  ].filter(Boolean);
+
+  return parts.join(" | ");
+}
+
 export default function UploadPage() {
   const audioInputRef = useRef<HTMLInputElement | null>(null);
   const artInputRef = useRef<HTMLInputElement | null>(null);
@@ -110,6 +126,23 @@ export default function UploadPage() {
         return;
       }
 
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("display_name")
+        .eq("id", user.id)
+        .maybeSingle<{ display_name: string | null }>();
+
+      if (profileError) {
+        console.warn("profile lookup warning before track insert:", profileError);
+      }
+
+      const emailFallback =
+        typeof user.email === "string" && user.email.includes("@")
+          ? user.email.split("@")[0]
+          : null;
+      const artistName =
+        profile?.display_name?.trim() || emailFallback || `artist-${user.id.slice(0, 8)}`;
+
       const audioExt = audioFile.name.split(".").pop();
       const artExt = artFile.name.split(".").pop();
 
@@ -121,8 +154,9 @@ export default function UploadPage() {
         .upload(audioFileName, audioFile);
 
       if (audioError) {
-        console.error(audioError);
-        alert("Audio upload failed");
+        const formattedAudioError = formatSupabaseError(audioError);
+        console.error("audio upload error:", audioError);
+        alert(`Audio upload failed: ${formattedAudioError || "Unknown storage error."}`);
         return;
       }
 
@@ -131,8 +165,9 @@ export default function UploadPage() {
         .upload(artFileName, artFile);
 
       if (artError) {
-        console.error(artError);
-        alert("Artwork upload failed");
+        const formattedArtError = formatSupabaseError(artError);
+        console.error("artwork upload error:", artError);
+        alert(`Artwork upload failed: ${formattedArtError || "Unknown storage error."}`);
         return;
       }
 
@@ -144,19 +179,34 @@ export default function UploadPage() {
         data: { publicUrl: artworkUrl },
       } = supabase.storage.from("art").getPublicUrl(artFileName);
 
-      const { error: insertError } = await supabase.from("tracks").insert({
-        title,
+      const insertPayload = {
+        title: title.trim(),
+        artist: artistName,
         isrc: finalIsrc,
-        genre,
+        genre: genre.trim(),
         audio_url: audioUrl,
         artwork_url: artworkUrl,
         user_id: user.id,
+        owner: artistName,
         is_published: true,
-      });
+        plays_all_time: 0,
+        plays_this_month: 0,
+      };
+
+      console.log("tracks insert payload:", insertPayload);
+
+      const { error: insertError } = await supabase
+        .from("tracks")
+        .insert(insertPayload);
 
       if (insertError) {
-        console.error(insertError);
-        alert("Database insert failed");
+        const formattedInsertError = formatSupabaseError(insertError);
+        console.error("tracks insert error:", insertError);
+        alert(
+          `Database insert failed: ${
+            formattedInsertError || "Unknown Supabase error. This may be an RLS policy issue."
+          }`
+        );
         return;
       }
 
@@ -171,9 +221,9 @@ export default function UploadPage() {
 
       if (audioInputRef.current) audioInputRef.current.value = "";
       if (artInputRef.current) artInputRef.current.value = "";
-    } catch (err) {
-      console.error(err);
-      alert("Unexpected error");
+    } catch (err: any) {
+      console.error("unexpected upload error:", err);
+      alert(`Unexpected error: ${err?.message || String(err)}`);
     } finally {
       setUploading(false);
     }
