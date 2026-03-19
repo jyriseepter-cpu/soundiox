@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import type { Track } from "@/app/components/PlayerContext";
@@ -16,10 +16,17 @@ type Props = {
   genre: string;
   selectedTitle: string;
   artworkSrc: string;
+  artistProfileId: string | null;
+  artistSlug: string | null;
+  followerCount: number;
+  isFollowing: boolean;
+  followLoading: boolean;
+  showFollowButton: boolean;
 
   tracks: Track[];
   onSelectTrack: (t: Track) => void;
   onPlayClick: (t: Track) => void;
+  onToggleFollow: (artistId: string) => void;
 
   isPlaying: boolean;
   currentTrackId: string | null;
@@ -40,8 +47,15 @@ export default function ArtistPanel(props: Props) {
     artistName,
     genre,
     artworkSrc,
+    artistProfileId,
+    artistSlug,
+    followerCount,
+    isFollowing,
+    followLoading,
+    showFollowButton,
     tracks,
     onPlayClick,
+    onToggleFollow,
     isPlaying,
     currentTrackId,
     onUpgradePlan,
@@ -130,6 +144,11 @@ export default function ArtistPanel(props: Props) {
     }
   }
 
+  function handleFollowClick() {
+    if (!artistProfileId || followLoading) return;
+    onToggleFollow(artistProfileId);
+  }
+
   const showUpgradeActions = user ? !viewerHasPaidPlan : true;
 
   return (
@@ -141,8 +160,41 @@ export default function ArtistPanel(props: Props) {
           className="h-12 w-12 rounded-xl object-cover ring-1 ring-white/10"
         />
         <div>
-          <div className="text-base font-bold text-white">{artistName}</div>
-          <div className="text-sm font-semibold text-white/65">Genre: {genre}</div>
+          <div className="flex flex-wrap items-center gap-2">
+            {artistSlug ? (
+              <Link
+                href={`/artists/${encodeURIComponent(artistSlug)}`}
+                className="text-base font-bold text-white transition hover:text-cyan-300"
+              >
+                {artistName}
+              </Link>
+            ) : (
+              <div className="text-base font-bold text-white">{artistName}</div>
+            )}
+
+            <span className="text-xs font-semibold text-white/45">
+              {followerCount} follower{followerCount === 1 ? "" : "s"}
+            </span>
+          </div>
+
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <div className="text-sm font-semibold text-white/65">Genre: {genre}</div>
+
+            {showFollowButton ? (
+              <button
+                type="button"
+                onClick={handleFollowClick}
+                disabled={followLoading}
+                className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 transition ${
+                  isFollowing
+                    ? "bg-white/10 text-white ring-white/10 hover:bg-white/14"
+                    : "bg-gradient-to-r from-cyan-400/20 to-fuchsia-500/20 text-cyan-100 ring-cyan-300/20 hover:from-cyan-400/25 hover:to-fuchsia-500/25"
+                } disabled:cursor-not-allowed disabled:opacity-60`}
+              >
+                {followLoading ? "..." : isFollowing ? "Following" : "Follow"}
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
 

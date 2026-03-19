@@ -45,6 +45,10 @@ type LikeRow = {
   track_id: string;
 };
 
+type FollowRow = {
+  following_profile_id: string;
+};
+
 type TrackLikesAllTimeRow = {
   track_id: string;
   likes: number | null;
@@ -145,6 +149,11 @@ export default function DiscoverPage() {
   const [likesByTrackId, setLikesByTrackId] = useState<Record<string, number>>({});
   const [likedTrackIds, setLikedTrackIds] = useState<string[]>([]);
   const [likeLoadingTrackId, setLikeLoadingTrackId] = useState<string | null>(null);
+  const [followingArtistIds, setFollowingArtistIds] = useState<Set<string>>(new Set());
+  const [followLoadingArtistId, setFollowLoadingArtistId] = useState<string | null>(null);
+  const [followerCountsByArtistId, setFollowerCountsByArtistId] = useState<
+    Record<string, number>
+  >({});
 
   const [toast, setToast] = useState<string | null>(null);
 
@@ -470,6 +479,82 @@ export default function DiscoverPage() {
     };
   }, [viewerUserId]);
 
+  useEffect(() => {
+    let alive = true;
+
+    async function loadFollowData() {
+      const artistIds = Array.from(
+        new Set(
+          tracks
+            .map((track) => track.user_id)
+            .filter((id): id is string => typeof id === "string" && id.length > 0)
+        )
+      );
+
+      if (!artistIds.length) {
+        if (!alive) return;
+        setFollowerCountsByArtistId({});
+        setFollowingArtistIds(new Set());
+        return;
+      }
+
+      try {
+        const { data: countRows, error: countError } = await supabase
+          .from("follows")
+          .select("following_profile_id")
+          .in("following_profile_id", artistIds);
+
+        if (countError) throw countError;
+        if (!alive) return;
+
+        const counts: Record<string, number> = {};
+
+        for (const row of (countRows ?? []) as FollowRow[]) {
+          if (row.following_profile_id) {
+            counts[row.following_profile_id] = (counts[row.following_profile_id] ?? 0) + 1;
+          }
+        }
+
+        setFollowerCountsByArtistId(counts);
+
+        if (!viewerUserId) {
+          setFollowingArtistIds(new Set());
+          return;
+        }
+
+        const { data: followRows, error: followError } = await supabase
+          .from("follows")
+          .select("following_profile_id")
+          .eq("follower_id", viewerUserId)
+          .in("following_profile_id", artistIds);
+
+        if (followError) throw followError;
+        if (!alive) return;
+
+        const nextFollowing = new Set<string>();
+
+        for (const row of (followRows ?? []) as FollowRow[]) {
+          if (row.following_profile_id) {
+            nextFollowing.add(row.following_profile_id);
+          }
+        }
+
+        setFollowingArtistIds(nextFollowing);
+      } catch (error) {
+        console.warn("discover follow data warning:", error);
+        if (!alive) return;
+        setFollowerCountsByArtistId({});
+        setFollowingArtistIds(new Set());
+      }
+    }
+
+    void loadFollowData();
+
+    return () => {
+      alive = false;
+    };
+  }, [tracks, viewerUserId]);
+
   async function fetchPlaylists(userId: string) {
     const { data, error } = await supabase
       .from("playlists")
@@ -711,6 +796,74 @@ export default function DiscoverPage() {
       showToast(error?.message || "Like failed");
     } finally {
       setLikeLoadingTrackId(null);
+    }
+  }
+
+  async function toggleArtistFollow(artistId: string) {
+    if (!artistId) return;
+
+    if (!viewerLoggedIn || !viewerUserId) {
+      showToast("Log in to follow artists");
+      return;
+    }
+
+    if (viewerUserId === artistId) {
+      return;
+    }
+
+    try {
+      setFollowLoadingArtistId(artistId);
+
+      if (followingArtistIds.has(artistId)) {
+        const { error } = await supabase
+          .from("follows")
+          .delete()
+          .eq("follower_id", viewerUserId)
+          .eq("following_profile_id", artistId);
+
+        if (error) throw error;
+
+        setFollowingArtistIds((prev) => {
+          const next = new Set(prev);
+          next.delete(artistId);
+          return next;
+        });
+        setFollowerCountsByArtistId((prev) => ({
+          ...prev,
+          [artistId]: Math.max(0, (prev[artistId] ?? 0) - 1),
+        }));
+        return;
+      }
+
+      const { error } = await supabase.from("follows").insert({
+        follower_id: viewerUserId,
+        following_profile_id: artistId,
+      });
+
+      if (error) throw error;
+
+      const { error: notificationError } = await supabase
+        .from("notifications")
+        .insert({
+          user_id: artistId,
+          type: "follow",
+          actor_id: viewerUserId,
+        });
+
+      if (notificationError) {
+        console.warn("discover follow notification warning:", notificationError);
+      }
+
+      setFollowingArtistIds((prev) => new Set(prev).add(artistId));
+      setFollowerCountsByArtistId((prev) => ({
+        ...prev,
+        [artistId]: (prev[artistId] ?? 0) + 1,
+      }));
+    } catch (error: any) {
+      console.warn("discover follow toggle warning:", error?.message || error);
+      showToast(error?.message || "Follow action failed");
+    } finally {
+      setFollowLoadingArtistId(null);
     }
   }
 
@@ -978,10 +1131,15 @@ export default function DiscoverPage() {
                   }}
                   onAdd={() => void addTrackToSelectedPlaylist(t)}
                   onLike={() => void toggleLike(t.id)}
+                  onFollow={() => void toggleArtistFollow(t.user_id ?? "")}
                   likeCount={likesByTrackId[t.id] ?? 0}
                   isLiked={likedTrackIds.includes(t.id)}
                   likeLoading={likeLoadingTrackId === t.id}
                   canLike={viewerCanLike}
+                  artistId={t.user_id}
+                  showFollowButton={Boolean(t.user_id && t.user_id !== viewerUserId)}
+                  isFollowing={Boolean(t.user_id && followingArtistIds.has(t.user_id))}
+                  followLoading={followLoadingArtistId === t.user_id}
                 />
               ))
             )}
@@ -994,6 +1152,20 @@ export default function DiscoverPage() {
             genre={selectedTrack ? pickGenre(selectedTrack) : "-"}
             selectedTitle={selectedTrack ? pickTitle(selectedTrack) : "No track selected"}
             artworkSrc={selectedTrack ? getArtworkSrc(selectedTrack) : "/logo-new.png"}
+            artistProfileId={selectedTrack?.user_id ?? null}
+            artistSlug={selectedTrack?.artistSlug ?? null}
+            followerCount={
+              selectedTrack?.user_id ? followerCountsByArtistId[selectedTrack.user_id] ?? 0 : 0
+            }
+            isFollowing={Boolean(
+              selectedTrack?.user_id && followingArtistIds.has(selectedTrack.user_id)
+            )}
+            followLoading={Boolean(
+              selectedTrack?.user_id && followLoadingArtistId === selectedTrack.user_id
+            )}
+            showFollowButton={Boolean(
+              selectedTrack?.user_id && selectedTrack.user_id !== viewerUserId
+            )}
             tracks={displayedTracks as any}
             onSelectTrack={(t: any) => {
               setSelectedTrack(t);
@@ -1003,6 +1175,7 @@ export default function DiscoverPage() {
               setSelectedTrack(t);
               void playTrack(t, displayedTracks as any);
             }}
+            onToggleFollow={toggleArtistFollow}
             isPlaying={isPlaying}
             currentTrackId={nowPlayingId}
             selectedTrack={selectedTrack as any}

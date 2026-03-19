@@ -12,10 +12,15 @@ type Props = {
   onPlay?: () => void;
   onAdd?: (track: Track) => void;
   onLike?: (track: Track) => void;
+  onFollow?: (artistId: string) => void;
   likeCount?: number;
   isLiked?: boolean;
   likeLoading?: boolean;
   canLike?: boolean;
+  artistId?: string | null;
+  showFollowButton?: boolean;
+  isFollowing?: boolean;
+  followLoading?: boolean;
 };
 
 function getTitle(track: Track) {
@@ -65,10 +70,15 @@ export default function TrackCard({
   onPlay,
   onAdd,
   onLike,
+  onFollow,
   likeCount = 0,
   isLiked = false,
   likeLoading = false,
   canLike = true,
+  artistId = null,
+  showFollowButton = false,
+  isFollowing = false,
+  followLoading = false,
 }: Props) {
   const { currentTrack, isPlaying, playTrack, toggle } = usePlayer();
   const [shareCopied, setShareCopied] = useState(false);
@@ -104,6 +114,11 @@ export default function TrackCard({
     if (onLike) {
       onLike(track);
     }
+  }
+
+  function handleFollowClick() {
+    if (!artistId || !onFollow || followLoading) return;
+    onFollow(artistId);
   }
 
   async function handleShareClick() {
@@ -177,6 +192,21 @@ export default function TrackCard({
       </div>
 
       <div className="ml-4 flex items-center gap-2">
+        {showFollowButton ? (
+          <button
+            type="button"
+            onClick={handleFollowClick}
+            disabled={followLoading}
+            className={`rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition ${
+              isFollowing
+                ? "bg-white/10 text-white ring-white/10 hover:bg-white/14"
+                : "bg-cyan-400/10 text-cyan-100 ring-cyan-300/20 hover:bg-cyan-400/15"
+            } disabled:cursor-not-allowed disabled:opacity-60`}
+          >
+            {followLoading ? "..." : isFollowing ? "Following" : "Follow"}
+          </button>
+        ) : null}
+
         <button
           type="button"
           onClick={handleLikeClick}
