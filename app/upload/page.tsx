@@ -22,6 +22,10 @@ const genreOptions = [
   { value: "Techno", label: "Techno" },
 ];
 
+function normalizeIsrc(value: string) {
+  return value.trim().toUpperCase().replace(/\s+/g, "");
+}
+
 function formatFileSize(bytes: number) {
   if (!Number.isFinite(bytes) || bytes <= 0) return "";
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
@@ -39,6 +43,7 @@ export default function UploadPage() {
   const artInputRef = useRef<HTMLInputElement | null>(null);
 
   const [title, setTitle] = useState("");
+  const [isrc, setIsrc] = useState("");
   const [genre, setGenre] = useState("");
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [artFile, setArtFile] = useState<File | null>(null);
@@ -67,6 +72,7 @@ export default function UploadPage() {
     try {
       const { data: auth } = await supabase.auth.getUser();
       const user = auth?.user;
+      const normalizedIsrc = normalizeIsrc(isrc);
 
       if (!user) {
         alert("Please log in first.");
@@ -109,6 +115,7 @@ export default function UploadPage() {
 
       const { error: insertError } = await supabase.from("tracks").insert({
         title,
+        isrc: normalizedIsrc || null,
         genre,
         audio_url: audioUrl,
         artwork_url: artworkUrl,
@@ -125,6 +132,7 @@ export default function UploadPage() {
       alert("Upload successful 🚀");
 
       setTitle("");
+      setIsrc("");
       setGenre("");
       setAudioFile(null);
       setArtFile(null);
@@ -169,6 +177,19 @@ export default function UploadPage() {
                     className="h-[52px] w-full rounded-2xl border border-white/10 bg-black/20 px-4 text-base text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-white/80">
+                    ISRC (optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. USRC17607839"
+                    className="h-[52px] w-full rounded-2xl border border-white/10 bg-black/20 px-4 text-base text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
+                    value={isrc}
+                    onChange={(e) => setIsrc(normalizeIsrc(e.target.value))}
                   />
                 </div>
 
