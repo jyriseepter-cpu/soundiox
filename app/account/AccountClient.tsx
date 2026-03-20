@@ -67,6 +67,8 @@ type TrackRow = {
   user_id?: string | null;
 };
 
+const ARTIST_CAMPAIGN_DEADLINE_ISO = "2026-03-23T23:59:59Z";
+
 function slugify(value: string) {
   return value
     .toLowerCase()
@@ -100,17 +102,24 @@ function getCookieValue(name: string) {
 
 function setInviteCookie(token: string) {
   if (typeof document === "undefined") return;
-  document.cookie = `soundiox_invite_token=${encodeURIComponent(token)}; path=/; max-age=3600; samesite=lax`;
+  document.cookie = `soundiox_invite_token=${encodeURIComponent(
+    token
+  )}; path=/; max-age=3600; samesite=lax`;
 }
 
 function deleteInviteCookie() {
   if (typeof document === "undefined") return;
-  document.cookie = "soundiox_invite_token=; path=/; max-age=0; samesite=lax";
+  document.cookie =
+    "soundiox_invite_token=; path=/; max-age=0; samesite=lax";
 }
 
 function normalizeProfileRole(value: string | null | undefined) {
   if (value === "artist") return "artist";
   return "listener";
+}
+
+function isArtistCampaignActive() {
+  return Date.now() <= new Date(ARTIST_CAMPAIGN_DEADLINE_ISO).getTime();
 }
 
 export default function AccountClient() {
@@ -132,6 +141,7 @@ export default function AccountClient() {
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [claimingInvite, setClaimingInvite] = useState(false);
+  const [claimingArtistCampaign, setClaimingArtistCampaign] = useState(false);
 
   const [userId, setUserId] = useState<string>("");
   const [email, setEmail] = useState<string>("");
@@ -142,18 +152,25 @@ export default function AccountClient() {
   const [country, setCountry] = useState("");
   const [slug, setSlug] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
-  const [plan, setPlan] = useState<"free" | "premium" | "artist" | "lifetime">("free");
+  const [plan, setPlan] = useState<"free" | "premium" | "artist" | "lifetime">(
+    "free"
+  );
   const [isFounding, setIsFounding] = useState(false);
 
   const [followingCount, setFollowingCount] = useState(0);
-  const [followingProfiles, setFollowingProfiles] = useState<FollowingProfileRow[]>([]);
+  const [followingProfiles, setFollowingProfiles] = useState<
+    FollowingProfileRow[]
+  >([]);
   const [loadingFollowing, setLoadingFollowing] = useState(false);
 
   const [playlists, setPlaylists] = useState<PlaylistRow[]>([]);
   const [loadingPlaylists, setLoadingPlaylists] = useState(false);
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string>("");
-  const [selectedPlaylistTracks, setSelectedPlaylistTracks] = useState<TrackRow[]>([]);
-  const [loadingSelectedPlaylistTracks, setLoadingSelectedPlaylistTracks] = useState(false);
+  const [selectedPlaylistTracks, setSelectedPlaylistTracks] = useState<
+    TrackRow[]
+  >([]);
+  const [loadingSelectedPlaylistTracks, setLoadingSelectedPlaylistTracks] =
+    useState(false);
 
   const [likedTracks, setLikedTracks] = useState<TrackRow[]>([]);
   const [loadingLikedTracks, setLoadingLikedTracks] = useState(false);
@@ -167,9 +184,12 @@ export default function AccountClient() {
   }, [slug]);
 
   const selectedPlaylist = useMemo(() => {
-    return playlists.find((playlist) => playlist.id === selectedPlaylistId) ?? null;
+    return (
+      playlists.find((playlist) => playlist.id === selectedPlaylistId) ?? null
+    );
   }, [playlists, selectedPlaylistId]);
 
+  const artistCampaignActive = isArtistCampaignActive();
   const isArtistAccount = isFounding || role === "artist" || plan === "artist";
   const canUpload = isArtistAccount;
   const canCreatePlaylists = Boolean(userId);
@@ -179,6 +199,9 @@ export default function AccountClient() {
     plan === "premium" ||
     plan === "artist" ||
     plan === "lifetime";
+
+  const showArtistCampaignCta =
+    !isFounding && !canUpload && artistCampaignActive;
 
   async function loadProfile(user: any, options?: { skipCreate?: boolean }) {
     const { data: profile, error: profileError } = await supabase
@@ -286,7 +309,10 @@ export default function AccountClient() {
 
       const followedIds = rows
         .map((row) => row.following_profile_id)
-        .filter((value): value is string => typeof value === "string" && value.length > 0);
+        .filter(
+          (value): value is string =>
+            typeof value === "string" && value.length > 0
+        );
 
       if (!followedIds.length) {
         setFollowingProfiles([]);
@@ -303,12 +329,17 @@ export default function AccountClient() {
       }
 
       const profileMap = new Map(
-        ((profiles ?? []) as FollowingProfileRow[]).map((profile) => [profile.id, profile])
+        ((profiles ?? []) as FollowingProfileRow[]).map((profile) => [
+          profile.id,
+          profile,
+        ])
       );
 
       const orderedProfiles = followedIds
         .map((id) => profileMap.get(id))
-        .filter((profile): profile is FollowingProfileRow => Boolean(profile));
+        .filter(
+          (profile): profile is FollowingProfileRow => Boolean(profile)
+        );
 
       setFollowingProfiles(orderedProfiles);
     } catch (err) {
@@ -361,7 +392,9 @@ export default function AccountClient() {
 
       const ids = ((likeRows ?? []) as LikeRow[])
         .map((row) => row.track_id)
-        .filter((id): id is string => typeof id === "string" && id.length > 0);
+        .filter(
+          (id): id is string => typeof id === "string" && id.length > 0
+        );
 
       if (!ids.length) {
         setLikedTracks([]);
@@ -370,7 +403,9 @@ export default function AccountClient() {
 
       const { data: tracks, error: tracksError } = await supabase
         .from("tracks")
-        .select("id,title,artist,genre,artwork_url,audio_url,created_at,plays_all_time,plays_this_month,user_id")
+        .select(
+          "id,title,artist,genre,artwork_url,audio_url,created_at,plays_all_time,plays_this_month,user_id"
+        )
         .in("id", ids);
 
       if (tracksError) throw tracksError;
@@ -401,16 +436,19 @@ export default function AccountClient() {
     setLoadingSelectedPlaylistTracks(true);
 
     try {
-      const { data: playlistTrackRows, error: playlistTracksError } = await supabase
-        .from("playlist_tracks")
-        .select("playlist_id, track_id")
-        .eq("playlist_id", playlistId);
+      const { data: playlistTrackRows, error: playlistTracksError } =
+        await supabase
+          .from("playlist_tracks")
+          .select("playlist_id, track_id")
+          .eq("playlist_id", playlistId);
 
       if (playlistTracksError) throw playlistTracksError;
 
       const ids = ((playlistTrackRows ?? []) as PlaylistTrackRow[])
         .map((row) => row.track_id)
-        .filter((id): id is string => typeof id === "string" && id.length > 0);
+        .filter(
+          (id): id is string => typeof id === "string" && id.length > 0
+        );
 
       if (!ids.length) {
         setSelectedPlaylistTracks([]);
@@ -419,7 +457,9 @@ export default function AccountClient() {
 
       const { data: tracks, error: tracksError } = await supabase
         .from("tracks")
-        .select("id,title,artist,genre,artwork_url,audio_url,created_at,plays_all_time,plays_this_month,user_id")
+        .select(
+          "id,title,artist,genre,artwork_url,audio_url,created_at,plays_all_time,plays_this_month,user_id"
+        )
         .in("id", ids);
 
       if (tracksError) throw tracksError;
@@ -574,7 +614,11 @@ export default function AccountClient() {
             const refreshedPlan = normalizeAccessPlan(profileRow?.plan);
             const refreshedFounding = Boolean(profileRow?.is_founding);
 
-            if (refreshedFounding || refreshedRole === "artist" || refreshedPlan !== "free") {
+            if (
+              refreshedFounding ||
+              refreshedRole === "artist" ||
+              refreshedPlan !== "free"
+            ) {
               setMessage("Your access is active.");
               router.replace("/account");
               return;
@@ -602,7 +646,11 @@ export default function AccountClient() {
       if (!hasFoundingInvite) return;
       if (inviteHandledRef.current) return;
 
-      const pendingInviteToken = (inviteToken || getCookieValue("soundiox_invite_token") || "").trim();
+      const pendingInviteToken = (
+        inviteToken ||
+        getCookieValue("soundiox_invite_token") ||
+        ""
+      ).trim();
 
       if (!pendingInviteToken) return;
 
@@ -778,6 +826,51 @@ export default function AccountClient() {
     }
   }
 
+  async function handleClaimArtistCampaign() {
+    if (!userId) return;
+
+    setClaimingArtistCampaign(true);
+    setMessage("");
+    setError("");
+
+    try {
+      if (!artistCampaignActive) {
+        throw new Error("This free artist campaign has ended.");
+      }
+
+      const nextSlug = slugify(slug || displayName || "artist");
+      const nextDisplayName = (displayName || "AI Artist").trim() || "AI Artist";
+
+      const payload = {
+        id: userId,
+        email: email || null,
+        role: "artist",
+        display_name: nextDisplayName,
+        bio: bio.trim() || null,
+        country: country.trim() || null,
+        avatar_url: avatarUrl || null,
+        slug: nextSlug || null,
+        plan: "lifetime",
+      };
+
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .upsert(payload, { onConflict: "id" });
+
+      if (updateError) throw updateError;
+
+      setRole("artist");
+      setPlan("lifetime");
+      setSlug(nextSlug);
+      setDisplayName(nextDisplayName);
+      setMessage("Artist access activated for free forever.");
+    } catch (err: any) {
+      setError(err?.message || "Campaign activation failed.");
+    } finally {
+      setClaimingArtistCampaign(false);
+    }
+  }
+
   async function handleLogout() {
     setError("");
     setMessage("");
@@ -872,6 +965,17 @@ export default function AccountClient() {
                     >
                       Upload track
                     </Link>
+                  ) : showArtistCampaignCta ? (
+                    <button
+                      type="button"
+                      onClick={handleClaimArtistCampaign}
+                      disabled={claimingArtistCampaign}
+                      className="rounded-full border border-rose-300/25 bg-gradient-to-r from-rose-600 via-red-500 to-orange-500 px-4 py-2 text-sm font-semibold text-white transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {claimingArtistCampaign
+                        ? "Activating..."
+                        : "Launch Campaign: Free Forever"}
+                    </button>
                   ) : (
                     <Link
                       href="/discover"
@@ -895,7 +999,9 @@ export default function AccountClient() {
                   type="file"
                   accept="image/*"
                   className="hidden"
-                  onChange={(e) => handleAvatarChange(e.target.files?.[0] || null)}
+                  onChange={(e) =>
+                    handleAvatarChange(e.target.files?.[0] || null)
+                  }
                 />
               </div>
             </div>
@@ -906,15 +1012,20 @@ export default function AccountClient() {
                 <span className="font-medium text-white">
                   {isFounding
                     ? "Founding Artist"
-                    : isArtistAccount
+                    : canUpload
                     ? "Artist"
                     : plan === "lifetime"
-                    ? "Lifetime"
+                    ? "Lifetime Listener"
                     : plan === "premium"
                     ? "Premium Listener"
                     : "Free Listener"}
                 </span>
               </div>
+              {!canUpload && artistCampaignActive ? (
+                <div className="mt-1 text-xs text-rose-200/90">
+                  Free artist campaign active until Monday.
+                </div>
+              ) : null}
             </div>
           </div>
         </section>
@@ -937,28 +1048,46 @@ export default function AccountClient() {
           </div>
         ) : null}
 
-        {!isFounding && plan !== "lifetime" && !isArtistAccount ? (
+        {!isFounding && !isArtistAccount ? (
           <section className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-              <h2 className="text-lg font-semibold text-white">Artist access</h2>
-              <p className="mt-2 text-sm leading-6 text-white/65">
-                Upgrade to Artist to upload tracks and build your public SoundioX profile.
+            <div className="rounded-[28px] border border-rose-300/15 bg-[radial-gradient(circle_at_top_left,rgba(244,63,94,0.22),transparent_35%),radial-gradient(circle_at_top_right,rgba(249,115,22,0.18),transparent_35%),rgba(255,255,255,0.04)] p-6 backdrop-blur-xl">
+              <h2 className="text-lg font-semibold text-white">
+                Artist campaign
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-white/75">
+                Join before Monday and unlock artist access for free forever.
               </p>
 
               <div className="mt-5">
-                <Link
-                  href="/discover"
-                  className="inline-flex h-12 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:scale-[1.01]"
-                >
-                  Become Artist
-                </Link>
+                {showArtistCampaignCta ? (
+                  <button
+                    type="button"
+                    onClick={handleClaimArtistCampaign}
+                    disabled={claimingArtistCampaign}
+                    className="inline-flex h-12 items-center justify-center rounded-full bg-gradient-to-r from-rose-600 via-red-500 to-orange-500 px-6 text-sm font-semibold text-white transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {claimingArtistCampaign
+                      ? "Activating..."
+                      : "Launch Campaign: Free Forever"}
+                  </button>
+                ) : (
+                  <Link
+                    href="/discover"
+                    className="inline-flex h-12 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:scale-[1.01]"
+                  >
+                    Become Artist
+                  </Link>
+                )}
               </div>
             </div>
 
             <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-              <h2 className="text-lg font-semibold text-white">Premium listener</h2>
+              <h2 className="text-lg font-semibold text-white">
+                Premium listener
+              </h2>
               <p className="mt-2 text-sm leading-6 text-white/65">
-                Premium unlocks monthly likes while keeping playlists available on your account.
+                Premium unlocks monthly likes while keeping playlists available
+                on your account.
               </p>
 
               <div className="mt-5">
@@ -976,275 +1105,358 @@ export default function AccountClient() {
         <section className="grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(340px,0.95fr)] xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
           <div className="min-w-0 space-y-6">
             <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-              <h2 className="text-lg font-semibold text-white">Profile settings</h2>
-              <p className="mt-1 text-sm text-white/60">Edit your public profile.</p>
+  <h2 className="text-lg font-semibold text-white">Profile settings</h2>
+  <p className="mt-1 text-sm text-white/60">Edit your public profile.</p>
 
-              <div className="mt-6 max-w-2xl space-y-5 xl:max-w-[42rem]">
-                <div>
-                  <label className="mb-2 block text-sm text-white/75">Display name</label>
-                  <input
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="AI Artist"
-                    className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
+  <div className="mt-6 max-w-2xl space-y-5 xl:max-w-[42rem]">
+    <div>
+      <label className="mb-2 block text-sm text-white/75">Display name</label>
+      <input
+        value={displayName}
+        onChange={(e) => setDisplayName(e.target.value)}
+        placeholder="AI Artist"
+        className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
+      />
+    </div>
+
+    <div>
+      <label className="mb-2 block text-sm text-white/75">Country</label>
+      <input
+        value={country}
+        onChange={(e) => setCountry(e.target.value)}
+        placeholder="Estonia"
+        className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
+      />
+    </div>
+
+    <div>
+      <label className="mb-2 block text-sm text-white/75">
+        Public profile URL
+      </label>
+      <div className="flex items-center rounded-2xl border border-white/10 bg-white/6 px-4">
+        <span className="mr-2 text-sm text-white/35">/artists/</span>
+        <input
+          value={slug}
+          onChange={(e) => setSlug(slugify(e.target.value))}
+          placeholder="ai-artist"
+          className="h-12 w-full bg-transparent text-white outline-none placeholder:text-white/30"
+        />
+      </div>
+    </div>
+
+    <div>
+      <label className="mb-2 block text-sm text-white/75">Bio</label>
+      <textarea
+        value={bio}
+        onChange={(e) => setBio(e.target.value)}
+        placeholder="Tell listeners who you are..."
+        rows={6}
+        className="w-full rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
+      />
+    </div>
+
+    <button
+      type="button"
+      onClick={handleSave}
+      disabled={saving}
+      className="inline-flex h-12 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      {saving ? "Saving..." : "Save profile"}
+    </button>
+  </div>
+</section>
+
+<section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+  <div className="mb-4 flex items-center justify-between gap-3">
+    <div>
+      <h2 className="text-lg font-semibold text-white">My Playlists</h2>
+      <p className="mt-1 text-sm text-white/60">
+        Open your saved playlists and play them from your account.
+      </p>
+    </div>
+
+    <div className="text-sm font-medium text-white/55">{playlists.length} total</div>
+  </div>
+
+  {loadingPlaylists ? (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+      Loading playlists...
+    </div>
+  ) : playlists.length === 0 ? (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+      You do not have playlists yet. Create one on Discover.
+    </div>
+  ) : (
+    <>
+      <div className="mb-4 flex flex-wrap gap-2">
+        {playlists.map((playlist) => {
+          const active = playlist.id === selectedPlaylistId;
+
+          return (
+            <button
+              key={playlist.id}
+              type="button"
+              onClick={() => setSelectedPlaylistId(playlist.id)}
+              className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                active
+                  ? "bg-cyan-400 text-white"
+                  : "border border-white/10 bg-white/8 text-white/80 hover:bg-white/12"
+              }`}
+            >
+              {playlist.name}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+        <div className="text-sm text-white/45">Selected playlist</div>
+        <div className="mt-1 text-base font-semibold text-white">
+          {selectedPlaylist?.name || "—"}
+        </div>
+        <div className="mt-1 text-sm text-white/55">
+          {selectedPlaylistTracks.length} track
+          {selectedPlaylistTracks.length === 1 ? "" : "s"}
+        </div>
+      </div>
+
+      {loadingSelectedPlaylistTracks ? (
+        <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+          Loading playlist tracks...
+        </div>
+      ) : selectedPlaylistTracks.length === 0 ? (
+        <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+          This playlist is empty.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {selectedPlaylistTracks.map((track) => (
+            <TrackCard
+              key={track.id}
+              track={track as any}
+              allTracks={selectedPlaylistTracks as any}
+              onPlay={() => {
+                void playTrack(track as any, selectedPlaylistTracks as any);
+              }}
+            />
+          ))}
+        </div>
+      )}
+    </>
+  )}
+</section>
+
+<section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+  <div className="mb-4 flex items-center justify-between gap-3">
+    <div>
+      <h2 className="text-lg font-semibold text-white">My Likes</h2>
+      <p className="mt-1 text-sm text-white/60">
+        Tracks you have supported with likes.
+      </p>
+    </div>
+
+    <div className="text-sm font-medium text-white/55">{likedTracks.length} total</div>
+  </div>
+
+  {loadingLikedTracks ? (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+      Loading liked tracks...
+    </div>
+  ) : likedTracks.length === 0 ? (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+      You have not liked any tracks yet.
+    </div>
+  ) : (
+    <div className="space-y-2">
+      {likedTracks.map((track) => (
+        <TrackCard
+          key={track.id}
+          track={track as any}
+          allTracks={likedTracks as any}
+          onPlay={() => {
+            void playTrack(track as any, likedTracks as any);
+          }}
+        />
+      ))}
+    </div>
+  )}
+</section>
+</div>
+
+<div className="min-w-0 space-y-6">
+  <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+    <h2 className="text-lg font-semibold text-white">Status</h2>
+
+    <div className="mt-5 space-y-3 text-sm text-white/75">
+      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+        <div className="text-white/45">Founding Artist</div>
+        <div className="mt-1 font-medium text-white">
+          {isFounding ? "Active" : "Not active"}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+        <div className="text-white/45">Role</div>
+        <div className="mt-1 font-medium text-white">
+          {isFounding ? "Founding Artist" : role === "artist" ? "Artist" : "Listener"}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+        <div className="text-white/45">Plan</div>
+        <div className="mt-1 font-medium text-white">
+          {plan === "premium"
+            ? "Premium"
+            : plan === "artist"
+            ? "Artist"
+            : plan === "lifetime"
+            ? canUpload
+              ? "Artist Campaign"
+              : "Lifetime"
+            : "Free"}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+        <div className="text-white/45">Likes access</div>
+        <div className="mt-1 font-medium text-white">
+          {canLikeTracks ? "Enabled" : "Upgrade required"}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+        <div className="text-white/45">Playlists</div>
+        <div className="mt-1 font-medium text-white">
+          {canCreatePlaylists ? "Enabled" : "Login required"}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+    <h2 className="text-lg font-semibold text-white">Upload track</h2>
+    <p className="mt-2 text-sm text-white/65">
+      {canUpload
+        ? "Publish a new song to your SoundioX profile and discovery feed."
+        : showArtistCampaignCta
+        ? "Join before Monday and unlock artist access for free forever."
+        : "Unlock artist access to upload tracks and build your public SoundioX profile."}
+    </p>
+
+    <div className="mt-5 space-y-3">
+      {canUpload ? (
+        <>
+          <Link
+            href="/upload"
+            className="inline-flex h-12 w-full items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:scale-[1.01]"
+          >
+            Open upload page
+          </Link>
+
+          <p className="text-xs leading-6 text-white/45">
+            Upload audio, cover art, title and genre to publish a new track.
+          </p>
+        </>
+      ) : showArtistCampaignCta ? (
+        <>
+          <button
+            type="button"
+            onClick={handleClaimArtistCampaign}
+            disabled={claimingArtistCampaign}
+            className="inline-flex h-12 w-full items-center justify-center rounded-full bg-gradient-to-r from-rose-600 via-red-500 to-orange-500 px-6 text-sm font-semibold text-white transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {claimingArtistCampaign
+              ? "Activating..."
+              : "Launch Campaign: Free Forever"}
+          </button>
+
+          <p className="text-xs leading-6 text-rose-200/90">
+            Free forever if you join before Monday. No payment required.
+          </p>
+        </>
+      ) : (
+        <>
+          <Link
+            href="/discover"
+            className="inline-flex h-12 w-full items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:scale-[1.01]"
+          >
+            Become Artist
+          </Link>
+
+          <p className="text-xs leading-6 text-white/45">
+            Upgrade your access to start uploading tracks and shaping your artist profile.
+          </p>
+        </>
+      )}
+    </div>
+  </section>
+
+  <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+    <h2 className="text-lg font-semibold text-white">Following</h2>
+    <p className="mt-2 text-sm text-white/60">
+      Artists and profiles you currently follow.
+    </p>
+
+    <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
+      <div className="text-sm text-white/45">Following count</div>
+      <div className="mt-1 text-2xl font-semibold text-white">
+        {loadingFollowing ? "..." : followingCount}
+      </div>
+    </div>
+
+    <div className="mt-4 space-y-3">
+      {loadingFollowing ? (
+        <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+          Loading following...
+        </div>
+      ) : followingProfiles.length === 0 ? (
+        <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+          You are not following anyone yet.
+        </div>
+      ) : (
+        followingProfiles.map((profile) => {
+          const href = profile.slug ? `/artists/${profile.slug}` : "#";
+          const avatar = getAvatarUrl(profile.avatar_url);
+
+          return (
+            <Link
+              key={profile.id}
+              href={href}
+              className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 p-3 transition hover:bg-white/8"
+            >
+              <div className="relative h-11 w-11 overflow-hidden rounded-full border border-white/10 bg-white/10">
+                {avatar ? (
+                  <Image
+                    src={avatar}
+                    alt={profile.display_name || "Profile"}
+                    fill
+                    className="object-cover"
+                    sizes="44px"
                   />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm text-white/75">Country</label>
-                  <input
-                    value={country}
-                    onChange={(e) => setCountry(e.target.value)}
-                    placeholder="Estonia"
-                    className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm text-white/75">Public profile URL</label>
-                  <div className="flex items-center rounded-2xl border border-white/10 bg-white/6 px-4">
-                    <span className="mr-2 text-sm text-white/35">/artists/</span>
-                    <input
-                      value={slug}
-                      onChange={(e) => setSlug(slugify(e.target.value))}
-                      placeholder="ai-artist"
-                      className="h-12 w-full bg-transparent text-white outline-none placeholder:text-white/30"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm text-white/75">Bio</label>
-                  <textarea
-                    value={bio}
-                    onChange={(e) => setBio(e.target.value)}
-                    placeholder="Tell listeners who you are..."
-                    rows={6}
-                    className="w-full rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
-                  />
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="inline-flex h-12 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {saving ? "Saving..." : "Save profile"}
-                </button>
-              </div>
-            </section>
-
-            <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold text-white">My Playlists</h2>
-                  <p className="mt-1 text-sm text-white/60">
-                    Open your saved playlists and play them from your account.
-                  </p>
-                </div>
-
-                <div className="text-sm font-medium text-white/55">
-                  {playlists.length} total
-                </div>
-              </div>
-
-              {loadingPlaylists ? (
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
-                  Loading playlists...
-                </div>
-              ) : playlists.length === 0 ? (
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
-                  You do not have playlists yet. Create one on Discover.
-                </div>
-              ) : (
-                <>
-                  <div className="mb-4 flex flex-wrap gap-2">
-                    {playlists.map((playlist) => {
-                      const active = playlist.id === selectedPlaylistId;
-
-                      return (
-                        <button
-                          key={playlist.id}
-                          type="button"
-                          onClick={() => setSelectedPlaylistId(playlist.id)}
-                          className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                            active
-                              ? "bg-cyan-400 text-white"
-                              : "border border-white/10 bg-white/8 text-white/80 hover:bg-white/12"
-                          }`}
-                        >
-                          {playlist.name}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <div className="text-sm text-white/45">Selected playlist</div>
-                    <div className="mt-1 text-base font-semibold text-white">
-                      {selectedPlaylist?.name || "—"}
-                    </div>
-                    <div className="mt-1 text-sm text-white/55">
-                      {selectedPlaylistTracks.length} track
-                      {selectedPlaylistTracks.length === 1 ? "" : "s"}
-                    </div>
-                  </div>
-
-                  {loadingSelectedPlaylistTracks ? (
-                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
-                      Loading playlist tracks...
-                    </div>
-                  ) : selectedPlaylistTracks.length === 0 ? (
-                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
-                      This playlist is empty.
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {selectedPlaylistTracks.map((track) => (
-                        <TrackCard
-                          key={track.id}
-                          track={track as any}
-                          allTracks={selectedPlaylistTracks as any}
-                          onPlay={() => {
-                            void playTrack(track as any, selectedPlaylistTracks as any);
-                          }}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
-            </section>
-
-            <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold text-white">My Likes</h2>
-                  <p className="mt-1 text-sm text-white/60">
-                    Tracks you have supported with likes.
-                  </p>
-                </div>
-
-                <div className="text-sm font-medium text-white/55">
-                  {likedTracks.length} total
-                </div>
-              </div>
-
-              {loadingLikedTracks ? (
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
-                  Loading liked tracks...
-                </div>
-              ) : likedTracks.length === 0 ? (
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
-                  You have not liked any tracks yet.
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {likedTracks.map((track) => (
-                    <TrackCard
-                      key={track.id}
-                      track={track as any}
-                      allTracks={likedTracks as any}
-                      onPlay={() => {
-                        void playTrack(track as any, likedTracks as any);
-                      }}
-                    />
-                  ))}
-                </div>
-              )}
-            </section>
-          </div>
-
-          <div className="min-w-0 space-y-6">
-            <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-              <h2 className="text-lg font-semibold text-white">Status</h2>
-
-              <div className="mt-5 space-y-3 text-sm text-white/75">
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <div className="text-white/45">Founding Artist</div>
-                  <div className="mt-1 font-medium text-white">
-                    {isFounding ? "Active" : "Not active"}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <div className="text-white/45">Role</div>
-                  <div className="mt-1 font-medium text-white">
-                    {isFounding ? "Founding Artist" : role === "artist" ? "Artist" : "Listener"}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <div className="text-white/45">Plan</div>
-                  <div className="mt-1 font-medium text-white">
-                    {plan === "premium"
-                      ? "Premium"
-                      : plan === "artist"
-                      ? "Artist"
-                      : plan === "lifetime"
-                      ? "Lifetime"
-                      : "Free"}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <div className="text-white/45">Likes access</div>
-                  <div className="mt-1 font-medium text-white">
-                    {canLikeTracks ? "Enabled" : "Upgrade required"}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <div className="text-white/45">Playlists</div>
-                  <div className="mt-1 font-medium text-white">
-                    {canCreatePlaylists ? "Enabled" : "Login required"}
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-              <h2 className="text-lg font-semibold text-white">Upload track</h2>
-              <p className="mt-2 text-sm text-white/65">
-                {canUpload
-                  ? "Publish a new song to your SoundioX profile and discovery feed."
-                  : "Unlock artist access to upload tracks and build your public SoundioX profile."}
-              </p>
-
-              <div className="mt-5 space-y-3">
-                {canUpload ? (
-                  <>
-                    <Link
-                      href="/upload"
-                      className="inline-flex h-12 w-full items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:scale-[1.01]"
-                    >
-                      Open upload page
-                    </Link>
-
-                    <p className="text-xs leading-6 text-white/45">
-                      Upload audio, cover art, title and genre to publish a new track.
-                    </p>
-                  </>
                 ) : (
-                  <>
-                    <Link
-                      href="/discover"
-                      className="inline-flex h-12 w-full items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:scale-[1.01]"
-                    >
-                      Become Artist
-                    </Link>
-
-                    <p className="text-xs leading-6 text-white/45">
-                      Upgrade your access to start uploading tracks and shaping your artist profile.
-                    </p>
-                  </>
+                  <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-white/70">
+                    {(profile.display_name || "A").charAt(0).toUpperCase()}
+                  </div>
                 )}
               </div>
-            </section>
-          </div>
-        </section>
-      </div>
-    </main>
+
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium text-white">
+                  {profile.display_name || "Artist"}
+                </div>
+                <div className="truncate text-xs text-white/45">
+                  {profile.slug ? `/artists/${profile.slug}` : "Profile"}
+                </div>
+              </div>
+            </Link>
+          );
+        })
+      )}
+    </div>
+  </section>
+</div>
+</section>
+</div>
+</main>
   );
 }
