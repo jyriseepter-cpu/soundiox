@@ -227,7 +227,7 @@ export default function JoinWavePage() {
                 href="/login"
                 className="rounded-2xl bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500 px-7 py-3 text-sm font-semibold text-white ring-1 ring-white/10 hover:opacity-95"
               >
-                Become a Founding Artist
+                Founding Artist
               </a>
   
               <a
