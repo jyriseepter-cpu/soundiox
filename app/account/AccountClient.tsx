@@ -7,6 +7,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import TrackCard from "@/app/components/TrackCard";
 import { usePlayer } from "@/app/components/PlayerContext";
+import {
+  normalizeAccessPlan,
+  shouldGrantLifetimeCampaignPlan,
+} from "@/lib/lifetimeCampaign";
 
 type ProfileRow = {
   id: string;
@@ -104,12 +108,6 @@ function deleteInviteCookie() {
   document.cookie = "soundiox_invite_token=; path=/; max-age=0; samesite=lax";
 }
 
-function normalizeProfilePlan(value: string | null | undefined) {
-  if (value === "premium") return "premium";
-  if (value === "artist") return "artist";
-  return "free";
-}
-
 function normalizeProfileRole(value: string | null | undefined) {
   if (value === "artist") return "artist";
   return "listener";
@@ -144,7 +142,7 @@ export default function AccountClient() {
   const [country, setCountry] = useState("");
   const [slug, setSlug] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
-  const [plan, setPlan] = useState<"free" | "premium" | "artist">("free");
+  const [plan, setPlan] = useState<"free" | "premium" | "artist" | "lifetime">("free");
   const [isFounding, setIsFounding] = useState(false);
 
   const [followingCount, setFollowingCount] = useState(0);
@@ -176,7 +174,11 @@ export default function AccountClient() {
   const canUpload = isArtistAccount;
   const canCreatePlaylists = Boolean(userId);
   const canLikeTracks =
-    isFounding || role === "artist" || plan === "premium" || plan === "artist";
+    isFounding ||
+    role === "artist" ||
+    plan === "premium" ||
+    plan === "artist" ||
+    plan === "lifetime";
 
   async function loadProfile(user: any, options?: { skipCreate?: boolean }) {
     const { data: profile, error: profileError } = await supabase
@@ -197,8 +199,13 @@ export default function AccountClient() {
     const nextDisplayName = profile?.display_name || defaultDisplayName;
     const nextSlug = profile?.slug || defaultSlug;
     const nextRole = normalizeProfileRole(profile?.role);
-    const nextPlan = normalizeProfilePlan(profile?.plan);
+    const nextPlan = normalizeAccessPlan(profile?.plan);
     const nextFounding = Boolean(profile?.is_founding);
+    const shouldGrantLifetime = shouldGrantLifetimeCampaignPlan({
+      plan: profile?.plan,
+      isFounding: nextFounding,
+    });
+    const effectivePlan = shouldGrantLifetime ? "lifetime" : nextPlan;
 
     setRole(nextRole);
     setDisplayName(nextDisplayName);
@@ -206,10 +213,28 @@ export default function AccountClient() {
     setCountry(profile?.country || "");
     setSlug(nextSlug);
     setAvatarUrl(profile?.avatar_url || "");
-    setPlan(nextPlan);
+    setPlan(effectivePlan);
     setIsFounding(nextFounding);
 
+    if (profile && shouldGrantLifetime) {
+      const { error: upgradeError } = await supabase
+        .from("profiles")
+        .update({ plan: "lifetime" })
+        .eq("id", user.id);
+
+      if (upgradeError) {
+        console.warn("lifetime campaign profile update warning:", upgradeError);
+      }
+    }
+
     if (!profile && !options?.skipCreate) {
+      const defaultPlan = shouldGrantLifetimeCampaignPlan({
+        plan: null,
+        isFounding: false,
+      })
+        ? "lifetime"
+        : "free";
+
       const insertPayload = {
         id: user.id,
         email: user.email ?? null,
@@ -219,7 +244,7 @@ export default function AccountClient() {
         country: null,
         avatar_url: null,
         slug: nextSlug,
-        plan: "free",
+        plan: defaultPlan,
         is_founding: false,
       };
 
@@ -237,7 +262,7 @@ export default function AccountClient() {
       setCountry("");
       setSlug(nextSlug);
       setAvatarUrl("");
-      setPlan("free");
+      setPlan(defaultPlan);
       setIsFounding(false);
     }
   }
@@ -546,7 +571,7 @@ export default function AccountClient() {
             }
 
             const refreshedRole = normalizeProfileRole(profileRow?.role);
-            const refreshedPlan = normalizeProfilePlan(profileRow?.plan);
+            const refreshedPlan = normalizeAccessPlan(profileRow?.plan);
             const refreshedFounding = Boolean(profileRow?.is_founding);
 
             if (refreshedFounding || refreshedRole === "artist" || refreshedPlan !== "free") {
@@ -883,6 +908,8 @@ export default function AccountClient() {
                     ? "Founding Artist"
                     : isArtistAccount
                     ? "Artist"
+                    : plan === "lifetime"
+                    ? "Lifetime"
                     : plan === "premium"
                     ? "Premium Listener"
                     : "Free Listener"}
@@ -910,7 +937,7 @@ export default function AccountClient() {
           </div>
         ) : null}
 
-        {!isFounding && !isArtistAccount ? (
+        {!isFounding && plan !== "lifetime" && !isArtistAccount ? (
           <section className="grid gap-4 md:grid-cols-2">
             <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
               <h2 className="text-lg font-semibold text-white">Artist access</h2>
@@ -1151,7 +1178,13 @@ export default function AccountClient() {
                 <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
                   <div className="text-white/45">Plan</div>
                   <div className="mt-1 font-medium text-white">
-                    {plan === "premium" ? "Premium" : plan === "artist" ? "Artist" : "Free"}
+                    {plan === "premium"
+                      ? "Premium"
+                      : plan === "artist"
+                      ? "Artist"
+                      : plan === "lifetime"
+                      ? "Lifetime"
+                      : "Free"}
                   </div>
                 </div>
 

@@ -10,6 +10,7 @@ import {
   type NormalizedArtistIdentity,
   type TrackWithResolvedArtist,
 } from "@/lib/artistIdentity";
+import { LIFETIME_CAMPAIGN_END } from "@/lib/lifetimeCampaign";
 
 type TrackRow = {
   id: string;
@@ -107,6 +108,20 @@ export default function HomeClient() {
               SoundioX is an AI-only social music platform where creators publish,
               listeners discover, and charts reward real engagement.
             </p>
+
+            <div className="mt-6 max-w-xl rounded-3xl border border-cyan-300/20 bg-[linear-gradient(135deg,rgba(34,211,238,0.16),rgba(217,70,239,0.14))] px-5 py-4 text-white shadow-[0_16px_50px_rgba(0,0,0,0.22)] ring-1 ring-white/10 backdrop-blur">
+              <div className="text-sm font-black uppercase tracking-[0.24em] text-cyan-100">
+                Launch Campaign
+              </div>
+              <div className="mt-2 text-xl font-bold leading-tight text-white">
+                Join this week — get lifetime access for free
+              </div>
+              <div className="mt-2 text-sm leading-6 text-white/70">
+                Create your SoundioX account before{" "}
+                <span className="font-semibold text-white">{LIFETIME_CAMPAIGN_END}</span> and
+                unlock lifetime access without Stripe during launch week.
+              </div>
+            </div>
 
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Link

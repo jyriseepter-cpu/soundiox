@@ -5,13 +5,27 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import {
+  shouldGrantLifetimeCampaignPlan,
+} from "@/lib/lifetimeCampaign";
 
 type ProfileRow = {
   id: string;
   role: string | null;
   slug: string | null;
   display_name: string | null;
+  plan?: string | null;
+  is_founding?: boolean | null;
 };
+
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+}
 
 export default function Header() {
   const router = useRouter();
@@ -42,12 +56,68 @@ export default function Header() {
 
         const { data: profileRow } = await supabase
           .from("profiles")
-          .select("id, role, slug, display_name")
+          .select("id, role, slug, display_name, plan, is_founding")
           .eq("id", user.id)
-          .maybeSingle();
+          .maybeSingle<ProfileRow>();
+
+        let effectiveProfile = profileRow ?? null;
+
+        if (!effectiveProfile) {
+          const emailFallback =
+            typeof user.email === "string" && user.email.includes("@")
+              ? user.email.split("@")[0]
+              : null;
+          const displayName = emailFallback || "AI Artist";
+          const slug = slugify(displayName) || `artist-${user.id.slice(0, 8)}`;
+          const defaultPlan = shouldGrantLifetimeCampaignPlan({
+            plan: null,
+            isFounding: false,
+          })
+            ? "lifetime"
+            : "free";
+
+          const insertPayload = {
+            id: user.id,
+            role: "listener",
+            slug,
+            display_name: displayName,
+            plan: defaultPlan,
+            is_founding: false,
+          };
+
+          const { data: insertedProfile, error: insertError } = await supabase
+            .from("profiles")
+            .upsert(insertPayload, { onConflict: "id" })
+            .select("id, role, slug, display_name, plan, is_founding")
+            .single<ProfileRow>();
+
+          if (insertError) {
+            console.error("header profile bootstrap error:", insertError);
+          } else {
+            effectiveProfile = insertedProfile;
+          }
+        } else if (
+          shouldGrantLifetimeCampaignPlan({
+            plan: effectiveProfile.plan,
+            isFounding: effectiveProfile.is_founding,
+          })
+        ) {
+          const { data: upgradedProfile, error: upgradeError } = await supabase
+            .from("profiles")
+            .update({ plan: "lifetime" })
+            .eq("id", user.id)
+            .select("id, role, slug, display_name, plan, is_founding")
+            .single<ProfileRow>();
+
+          if (upgradeError) {
+            console.error("header lifetime campaign update error:", upgradeError);
+          } else {
+            effectiveProfile = upgradedProfile;
+          }
+        }
 
         if (mounted) {
-          setProfile(profileRow ?? null);
+          setProfile(effectiveProfile ?? null);
           setLoading(false);
         }
       } catch (error) {

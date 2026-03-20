@@ -14,6 +14,7 @@ import {
   type NormalizedArtistIdentity,
   type TrackWithResolvedArtist,
 } from "@/lib/artistIdentity";
+import { normalizeAccessPlan } from "@/lib/lifetimeCampaign";
 
 type TrackRow = {
   id: string;
@@ -103,12 +104,6 @@ function normalizeGenre(value: string | null | undefined) {
   return raw;
 }
 
-function normalizePlan(value: string | null | undefined) {
-  if (value === "premium") return "premium";
-  if (value === "artist") return "artist";
-  return "free";
-}
-
 function normalizeRole(value: string | null | undefined) {
   if (value === "artist") return "artist";
   return "listener";
@@ -137,7 +132,9 @@ export default function DiscoverPage() {
   const [viewerLoggedIn, setViewerLoggedIn] = useState(false);
   const [viewerUserId, setViewerUserId] = useState<string | null>(null);
   const [viewerRole, setViewerRole] = useState<"listener" | "artist">("listener");
-  const [viewerPlan, setViewerPlan] = useState<"free" | "premium" | "artist">("free");
+  const [viewerPlan, setViewerPlan] = useState<"free" | "premium" | "artist" | "lifetime">(
+    "free"
+  );
   const [viewerIsFounding, setViewerIsFounding] = useState(false);
 
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
@@ -161,12 +158,15 @@ export default function DiscoverPage() {
   const authReadyRef = useRef(false);
 
   const viewerIsArtist =
-    viewerIsFounding || viewerRole === "artist" || viewerPlan === "artist";
+    viewerIsFounding ||
+    viewerRole === "artist" ||
+    viewerPlan === "artist";
   const viewerCanLike =
     viewerIsFounding ||
     viewerRole === "artist" ||
     viewerPlan === "premium" ||
-    viewerPlan === "artist";
+    viewerPlan === "artist" ||
+    viewerPlan === "lifetime";
   const viewerHasPaidPlan = viewerCanLike || viewerIsArtist;
 
   function showToast(text: string) {
@@ -355,7 +355,7 @@ export default function DiscoverPage() {
         if (!alive) return;
 
         setViewerRole(normalizeRole(profile?.role));
-        setViewerPlan(normalizePlan(profile?.plan));
+        setViewerPlan(normalizeAccessPlan(profile?.plan));
         setViewerIsFounding(Boolean(profile?.is_founding));
       } catch (error) {
         console.warn("discover viewer profile warning:", error);

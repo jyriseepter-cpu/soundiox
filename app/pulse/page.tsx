@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { usePlayer } from "@/app/components/PlayerContext";
 import CustomSelect from "@/app/components/CustomSelect";
+import { normalizeAccessPlan } from "@/lib/lifetimeCampaign";
 
 type SortKey = "plays_month" | "likes_month";
 type CategoryKey = "global" | "new_rising" | "estonia";
@@ -104,12 +105,6 @@ function normalizeRole(value: string | null | undefined) {
   return "listener";
 }
 
-function normalizePlan(value: string | null | undefined) {
-  if (value === "premium") return "premium";
-  if (value === "artist") return "artist";
-  return "free";
-}
-
 export default function PulsePage() {
   const router = useRouter();
   const { playTrack, currentTrack, isPlaying, toggle } = usePlayer();
@@ -123,7 +118,9 @@ export default function PulsePage() {
   const [followerCounts, setFollowerCounts] = useState<Map<string, number>>(new Map());
 
   const [viewerRole, setViewerRole] = useState<"listener" | "artist">("listener");
-  const [viewerPlan, setViewerPlan] = useState<"free" | "premium" | "artist">("free");
+  const [viewerPlan, setViewerPlan] = useState<"free" | "premium" | "artist" | "lifetime">(
+    "free"
+  );
   const [viewerIsFounding, setViewerIsFounding] = useState(false);
   const [viewerLikesUsed, setViewerLikesUsed] = useState(0);
 
@@ -140,7 +137,8 @@ export default function PulsePage() {
     viewerIsFounding ||
     viewerRole === "artist" ||
     viewerPlan === "premium" ||
-    viewerPlan === "artist";
+    viewerPlan === "artist" ||
+    viewerPlan === "lifetime";
 
   const likesRemaining = Math.max(0, MONTHLY_LIKE_LIMIT - viewerLikesUsed);
 
@@ -184,7 +182,7 @@ export default function PulsePage() {
       } else {
         if (!alive) return;
         setViewerRole(normalizeRole(profile?.role));
-        setViewerPlan(normalizePlan(profile?.plan));
+        setViewerPlan(normalizeAccessPlan(profile?.plan));
         setViewerIsFounding(Boolean(profile?.is_founding));
       }
 

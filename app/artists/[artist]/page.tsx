@@ -15,7 +15,6 @@ type ProfileArtistRow = {
   avatar_url: string | null;
   country: string | null;
   plan: string | null;
-  is_pro: boolean | null;
   is_founding: boolean | null;
   created_at?: string | null;
 };
@@ -282,7 +281,7 @@ export default function ArtistPage() {
       const { data: artistData, error: artistErr } = await supabase
         .from("profiles")
         .select(
-          "id, role, display_name, slug, bio, avatar_url, country, plan, is_pro, is_founding, created_at"
+          "id, role, display_name, slug, bio, avatar_url, country, plan, is_founding, created_at"
         )
         .eq("slug", slug)
         .eq("role", "artist")
