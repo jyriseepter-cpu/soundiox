@@ -4,6 +4,10 @@ import Stripe from "stripe";
 
 export const runtime = "nodejs";
 
+type ProfileAccessRow = {
+  lifetime_access: boolean | null;
+};
+
 function readEnv(...names: string[]) {
   for (const name of names) {
     const value = process.env[name];
@@ -52,13 +56,19 @@ function normalizePlan(input: unknown): "premium" | "artist" | null {
 
 export async function POST(req: NextRequest) {
   try {
-    const stripeSecretKey = readEnv("STRIPE_SECRET_KEY", "STRIPE_SECRET_KEY_LIVE");
+    const stripeSecretKey = readEnv(
+      "STRIPE_SECRET_KEY",
+      "STRIPE_SECRET_KEY_LIVE"
+    );
     const supabaseUrl = readEnv("NEXT_PUBLIC_SUPABASE_URL");
     const supabaseAnonKey = readEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
 
     if (!stripeSecretKey) {
       return NextResponse.json(
-        { error: "Missing STRIPE_SECRET_KEY (or STRIPE_SECRET_KEY_LIVE) in server env" },
+        {
+          error:
+            "Missing STRIPE_SECRET_KEY (or STRIPE_SECRET_KEY_LIVE) in server env",
+        },
         { status: 500 }
       );
     }
@@ -76,7 +86,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    console.log("SUBSCRIBE_ROUTE_MARKER_v3");
+    console.log("SUBSCRIBE_ROUTE_MARKER_v4");
     console.log(
       "STRIPE_KEY_PREFIX:",
       stripeSecretKey ? stripeSecretKey.slice(0, 7) : "MISSING_KEY"
@@ -108,6 +118,33 @@ export async function POST(req: NextRequest) {
 
     if (userError || !user?.id || !user.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { data: profile, error: profileError } = await authClient
+      .from("profiles")
+      .select("lifetime_access")
+      .eq("id", user.id)
+      .maybeSingle<ProfileAccessRow>();
+
+    if (profileError) {
+      return NextResponse.json(
+        {
+          error: "Failed to verify access",
+          message: profileError.message,
+        },
+        { status: 500 }
+      );
+    }
+
+    if (profile?.lifetime_access) {
+      return NextResponse.json(
+        {
+          error: "Lifetime access already active",
+          message:
+            "Your SoundioX account already has lifetime access. No payment is needed.",
+        },
+        { status: 400 }
+      );
     }
 
     const premiumPriceId = readEnv(
@@ -177,7 +214,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ url: checkoutSession.url });
   } catch (err: any) {
-    console.error("SUBSCRIBE_ROUTE_ERROR_v2", err?.message || err);
+    console.error("SUBSCRIBE_ROUTE_ERROR_v3", err?.message || err);
     console.error("Stripe Checkout Error:", err?.message || err, err);
 
     return NextResponse.json(
