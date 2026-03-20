@@ -9,6 +9,8 @@ import {
   type ArtistIdentityProfile,
 } from "@/lib/artistIdentity";
 
+const ARTIST_CAMPAIGN_DEADLINE_ISO = "2026-03-23T23:59:59Z";
+
 type FeaturedArtist = ReturnType<typeof normalizeArtistIdentity>;
 
 type Props = {
@@ -41,6 +43,10 @@ const glassBox = "rounded-2xl bg-white/8 ring-1 ring-white/10 p-3";
 const playBtnClass =
   "h-9 rounded-xl px-4 text-sm font-bold text-white ring-1 ring-white/15 " +
   "bg-gradient-to-r from-teal-500/70 to-fuchsia-500/70 hover:from-teal-500/85 hover:to-fuchsia-500/85";
+
+function isArtistCampaignActive() {
+  return Date.now() <= new Date(ARTIST_CAMPAIGN_DEADLINE_ISO).getTime();
+}
 
 export default function ArtistPanel(props: Props) {
   const {
@@ -150,6 +156,8 @@ export default function ArtistPanel(props: Props) {
   }
 
   const showUpgradeActions = user ? !viewerHasPaidPlan : true;
+  const artistCampaignActive = isArtistCampaignActive();
+  const artistCampaignHref = user ? "/account" : "/login";
 
   return (
     <div className="space-y-4">
@@ -246,13 +254,22 @@ export default function ArtistPanel(props: Props) {
             Premium unlocks monthly likes. Playlists are available to every logged-in user.
           </div>
 
-          <button
-            onClick={() => handleUpgrade("artist")}
-            disabled={upgradeLoading !== null || !user}
-            className="h-10 w-full rounded-xl bg-gradient-to-r from-cyan-400 to-fuchsia-500 font-bold text-white hover:opacity-95 disabled:opacity-60"
-          >
-            {upgradeLoading === "artist" ? "Opening..." : "Become Artist"}
-          </button>
+          {artistCampaignActive ? (
+            <Link
+              href={artistCampaignHref}
+              className="flex h-10 w-full items-center justify-center rounded-xl bg-gradient-to-r from-rose-500 to-orange-500 font-bold text-white hover:opacity-95"
+            >
+              Launch Campaign: Free Forever
+            </Link>
+          ) : (
+            <button
+              onClick={() => handleUpgrade("artist")}
+              disabled={upgradeLoading !== null || !user}
+              className="h-10 w-full rounded-xl bg-gradient-to-r from-cyan-400 to-fuchsia-500 font-bold text-white hover:opacity-95 disabled:opacity-60"
+            >
+              {upgradeLoading === "artist" ? "Opening..." : "Become Artist"}
+            </button>
+          )}
 
           <div className="text-center text-xs font-semibold text-white/55">
             Artist unlocks uploads and artist access.
