@@ -1,6 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { FFmpeg } from "@ffmpeg/ffmpeg";
+import { fetchFile, toBlobURL } from "@ffmpeg/util";
 import CustomSelect from "@/app/components/CustomSelect";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -21,6 +23,13 @@ const genreOptions = [
   { value: "Rock", label: "Rock" },
   { value: "Techno", label: "Techno" },
 ];
+
+type SupabaseErrorLike = {
+  code?: string | null;
+  message?: string | null;
+  details?: string | null;
+  hint?: string | null;
+};
 
 function normalizeIsrc(value: string) {
   return value.trim().toUpperCase().replace(/\s+/g, "");
@@ -59,12 +68,7 @@ function formatSelectedFile(file: File | null, fallback: string) {
   return size ? `${file.name} • ${size}` : file.name;
 }
 
-function formatSupabaseError(error: {
-  code?: string | null;
-  message?: string | null;
-  details?: string | null;
-  hint?: string | null;
-}) {
+function formatSupabaseError(error: SupabaseErrorLike) {
   const parts = [
     error.code ? `code=${error.code}` : null,
     error.message ? `message=${error.message}` : null,
@@ -73,6 +77,148 @@ function formatSupabaseError(error: {
   ].filter(Boolean);
 
   return parts.join(" | ");
+}
+
+function sanitizeBaseName(fileName: string) {
+  return fileName
+    .replace(/\.[^/.]+$/, "")
+    .replace(/[^a-zA-Z0-9-_]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function shouldCompressToMp3(file: File) {
+  const name = file.name.toLowerCase();
+  const type = (file.type || "").toLowerCase();
+
+  return (
+    type.includes("wav") ||
+    type.includes("wave") ||
+    type.includes("aiff") ||
+    type.includes("flac") ||
+    name.endsWith(".wav") ||
+    name.endsWith(".wave") ||
+    name.endsWith(".aif") ||
+    name.endsWith(".aiff") ||
+    name.endsWith(".flac")
+  );
+}
+
+function toArrayBuffer(
+  data: Uint8Array | ArrayBuffer | string
+): ArrayBuffer {
+  if (data instanceof Uint8Array) {
+    return data.slice().buffer;
+  }
+
+  if (data instanceof ArrayBuffer) {
+    return data.slice(0);
+  }
+
+  return new TextEncoder().encode(data).buffer;
+}
+
+let ffmpegSingleton: FFmpeg | null = null;
+let ffmpegLoadPromise: Promise<FFmpeg> | null = null;
+let currentTextSetter: ((value: string) => void) | null = null;
+let currentProgressSetter: ((value: number | null) => void) | null = null;
+
+async function getFfmpeg(setProcessingText?: (value: string) => void) {
+  if (ffmpegSingleton) {
+    currentTextSetter = setProcessingText ?? null;
+    return ffmpegSingleton;
+  }
+
+  if (!ffmpegLoadPromise) {
+    ffmpegLoadPromise = (async () => {
+      const ffmpeg = new FFmpeg();
+
+      ffmpeg.on("log", ({ message }) => {
+        if (message && currentTextSetter) {
+          currentTextSetter(message);
+        }
+      });
+
+      ffmpeg.on("progress", ({ progress }) => {
+        if (!currentProgressSetter) return;
+        const percent = Math.max(0, Math.min(100, Math.round((progress || 0) * 100)));
+        currentProgressSetter(percent);
+        if (currentTextSetter) {
+          currentTextSetter(`Compressing audio... ${percent}%`);
+        }
+      });
+
+      const baseURL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
+
+      await ffmpeg.load({
+        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
+        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
+      });
+
+      ffmpegSingleton = ffmpeg;
+      return ffmpeg;
+    })();
+  }
+
+  currentTextSetter = setProcessingText ?? null;
+  return ffmpegLoadPromise;
+}
+
+async function compressAudioToMp3(
+  inputFile: File,
+  setProcessingText: (value: string) => void,
+  setProcessingProgress: (value: number | null) => void
+) {
+  currentTextSetter = setProcessingText;
+  currentProgressSetter = setProcessingProgress;
+
+  const ffmpeg = await getFfmpeg(setProcessingText);
+
+  const safeBaseName = sanitizeBaseName(inputFile.name) || "track";
+  const inputExt = inputFile.name.split(".").pop()?.toLowerCase() || "wav";
+  const inputName = `input.${inputExt}`;
+  const outputName = `${safeBaseName}.mp3`;
+
+  setProcessingText("Preparing audio engine...");
+  setProcessingProgress(0);
+
+  await ffmpeg.writeFile(inputName, await fetchFile(inputFile));
+
+  setProcessingText("Converting to MP3 192 kbps...");
+
+  await ffmpeg.exec([
+    "-i",
+    inputName,
+    "-vn",
+    "-ar",
+    "44100",
+    "-ac",
+    "2",
+    "-b:a",
+    "192k",
+    outputName,
+  ]);
+
+  const outputData = await ffmpeg.readFile(outputName);
+  const outputBuffer = toArrayBuffer(outputData);
+
+  try {
+    await ffmpeg.deleteFile(inputName);
+  } catch {}
+
+  try {
+    await ffmpeg.deleteFile(outputName);
+  } catch {}
+
+  setProcessingProgress(100);
+  setProcessingText("Compression finished.");
+
+  currentProgressSetter = null;
+
+  return new File([outputBuffer], outputName, {
+    type: "audio/mpeg",
+    lastModified: Date.now(),
+  });
 }
 
 export default function UploadPage() {
@@ -86,6 +232,9 @@ export default function UploadPage() {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [artFile, setArtFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [processingAudio, setProcessingAudio] = useState(false);
+  const [processingText, setProcessingText] = useState("");
+  const [processingProgress, setProcessingProgress] = useState<number | null>(null);
 
   async function handleUpload() {
     const normalizedIsrc = normalizeIsrc(isrc);
@@ -116,6 +265,9 @@ export default function UploadPage() {
     }
 
     setUploading(true);
+    setProcessingAudio(false);
+    setProcessingText("");
+    setProcessingProgress(null);
 
     try {
       const { data: auth } = await supabase.auth.getUser();
@@ -140,18 +292,35 @@ export default function UploadPage() {
         typeof user.email === "string" && user.email.includes("@")
           ? user.email.split("@")[0]
           : null;
+
       const artistName =
         profile?.display_name?.trim() || emailFallback || `artist-${user.id.slice(0, 8)}`;
 
-      const audioExt = audioFile.name.split(".").pop();
-      const artExt = artFile.name.split(".").pop();
+      let uploadAudioFile = audioFile;
 
-      const audioFileName = `${Date.now()}.${audioExt}`;
-      const artFileName = `${Date.now()}-art.${artExt}`;
+      if (shouldCompressToMp3(audioFile)) {
+        setProcessingAudio(true);
+        setProcessingText("Preparing audio compression...");
+        uploadAudioFile = await compressAudioToMp3(
+          audioFile,
+          setProcessingText,
+          setProcessingProgress
+        );
+      }
+
+      const audioExt = uploadAudioFile.name.split(".").pop()?.toLowerCase() || "mp3";
+      const artExt = artFile.name.split(".").pop()?.toLowerCase() || "jpg";
+
+      const timestamp = Date.now();
+      const audioFileName = `${timestamp}.${audioExt}`;
+      const artFileName = `${timestamp}-art.${artExt}`;
 
       const { error: audioError } = await supabase.storage
         .from("tracks")
-        .upload(audioFileName, audioFile);
+        .upload(audioFileName, uploadAudioFile, {
+          contentType: uploadAudioFile.type || "audio/mpeg",
+          upsert: false,
+        });
 
       if (audioError) {
         const formattedAudioError = formatSupabaseError(audioError);
@@ -162,7 +331,10 @@ export default function UploadPage() {
 
       const { error: artError } = await supabase.storage
         .from("art")
-        .upload(artFileName, artFile);
+        .upload(artFileName, artFile, {
+          contentType: artFile.type || "image/jpeg",
+          upsert: false,
+        });
 
       if (artError) {
         const formattedArtError = formatSupabaseError(artError);
@@ -192,11 +364,7 @@ export default function UploadPage() {
         plays_this_month: 0,
       };
 
-      console.log("tracks insert payload:", insertPayload);
-
-      const { error: insertError } = await supabase
-        .from("tracks")
-        .insert(insertPayload);
+      const { error: insertError } = await supabase.from("tracks").insert(insertPayload);
 
       if (insertError) {
         const formattedInsertError = formatSupabaseError(insertError);
@@ -217,16 +385,29 @@ export default function UploadPage() {
       setGenre("");
       setAudioFile(null);
       setArtFile(null);
+      setProcessingAudio(false);
+      setProcessingText("");
+      setProcessingProgress(null);
 
       if (audioInputRef.current) audioInputRef.current.value = "";
       if (artInputRef.current) artInputRef.current.value = "";
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("unexpected upload error:", err);
-      alert(`Unexpected error: ${err?.message || String(err)}`);
+      const message = err instanceof Error ? err.message : String(err);
+      alert(`Unexpected error: ${message}`);
     } finally {
       setUploading(false);
+      setProcessingAudio(false);
+      currentProgressSetter = null;
+      currentTextSetter = null;
     }
   }
+
+  const actionLabel = processingAudio
+    ? "Processing audio..."
+    : uploading
+      ? "Uploading..."
+      : "Upload track";
 
   return (
     <main className="min-h-screen bg-[#07090f] px-4 py-10 text-white sm:px-6">
@@ -249,9 +430,7 @@ export default function UploadPage() {
             <section className="min-w-0">
               <div className="space-y-6 rounded-[28px] border border-white/10 bg-white/5 p-5 sm:p-6">
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-white/80">
-                    Title
-                  </label>
+                  <label className="mb-2 block text-sm font-semibold text-white/80">Title</label>
                   <input
                     type="text"
                     placeholder="Midnight Radio"
@@ -280,15 +459,11 @@ export default function UploadPage() {
                   <p className="mt-2 text-xs leading-6 text-white/45">
                     Leave blank to auto-create an internal release code.
                   </p>
-                  {isrcError ? (
-                    <p className="mt-1 text-sm text-rose-300">{isrcError}</p>
-                  ) : null}
+                  {isrcError ? <p className="mt-1 text-sm text-rose-300">{isrcError}</p> : null}
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-white/80">
-                    Genre
-                  </label>
+                  <label className="mb-2 block text-sm font-semibold text-white/80">Genre</label>
                   <CustomSelect
                     value={genre}
                     onChange={setGenre}
@@ -301,7 +476,7 @@ export default function UploadPage() {
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
                     <div className="mb-2 text-sm font-semibold text-white/85">Audio file</div>
                     <p className="mb-4 text-xs leading-6 text-white/50">
-                      Upload the master audio file that listeners will hear on SoundioX.
+                      WAV, AIFF and FLAC files are compressed to MP3 automatically before upload.
                     </p>
 
                     <input
@@ -315,7 +490,7 @@ export default function UploadPage() {
                     <button
                       type="button"
                       onClick={() => audioInputRef.current?.click()}
-                      className="inline-flex h-11 w-full items-center justify-center rounded-2xl border border-cyan-300/20 bg-cyan-400/10 px-4 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-400/15"
+                      className="inline-flex h-11 w-full cursor-pointer items-center justify-center rounded-2xl border border-cyan-300/20 bg-cyan-400/10 px-4 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-400/15"
                     >
                       {audioFile ? "Replace audio file" : "Choose audio file"}
                     </button>
@@ -323,6 +498,28 @@ export default function UploadPage() {
                     <div className="mt-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/70">
                       {formatSelectedFile(audioFile, "No audio file selected")}
                     </div>
+
+                    {processingAudio ? (
+                      <div className="mt-4 rounded-2xl border border-cyan-300/15 bg-cyan-400/10 p-3">
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100">
+                          Background processing
+                        </div>
+                        <div className="mt-2 text-sm text-cyan-50/90">
+                          {processingText || "Compressing audio..."}
+                        </div>
+                        <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 transition-all"
+                            style={{ width: `${processingProgress ?? 8}%` }}
+                          />
+                        </div>
+                        <div className="mt-2 text-xs text-cyan-50/70">
+                          {processingProgress !== null
+                            ? `${processingProgress}%`
+                            : "Preparing encoder..."}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
@@ -342,7 +539,7 @@ export default function UploadPage() {
                     <button
                       type="button"
                       onClick={() => artInputRef.current?.click()}
-                      className="inline-flex h-11 w-full items-center justify-center rounded-2xl border border-fuchsia-300/20 bg-fuchsia-400/10 px-4 text-sm font-semibold text-fuchsia-100 transition hover:bg-fuchsia-400/15"
+                      className="inline-flex h-11 w-full cursor-pointer items-center justify-center rounded-2xl border border-fuchsia-300/20 bg-fuchsia-400/10 px-4 text-sm font-semibold text-fuchsia-100 transition hover:bg-fuchsia-400/15"
                     >
                       {artFile ? "Replace artwork image" : "Choose artwork image"}
                     </button>
@@ -355,8 +552,8 @@ export default function UploadPage() {
 
                 <div className="flex flex-col gap-3 border-t border-white/10 pt-2 sm:flex-row sm:items-center sm:justify-between">
                   <p className="max-w-xl text-xs leading-6 text-white/45">
-                    Your upload will publish immediately after the files finish uploading and the
-                    track record is saved successfully.
+                    Large lossless audio files can take extra time because SoundioX now compresses
+                    them before upload.
                   </p>
 
                   <button
@@ -365,7 +562,7 @@ export default function UploadPage() {
                     disabled={uploading}
                     className="inline-flex h-12 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-8 text-sm font-semibold text-white transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {uploading ? "Uploading..." : "Upload track"}
+                    {actionLabel}
                   </button>
                 </div>
               </div>
