@@ -1,12 +1,71 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 type Tier = "premium_monthly";
 
+type ProfileRow = {
+  lifetime_access: boolean | null;
+};
+
 export default function UpgradeButtons() {
   const [loading, setLoading] = useState<Tier | null>(null);
+  const [checkingProfile, setCheckingProfile] = useState(true);
+  const [lifetimeAccess, setLifetimeAccess] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadProfile() {
+      try {
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
+
+        if (userError) {
+          throw userError;
+        }
+
+        if (!user?.id) {
+          if (mounted) {
+            setLifetimeAccess(false);
+          }
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("lifetime_access")
+          .eq("id", user.id)
+          .maybeSingle<ProfileRow>();
+
+        if (error) {
+          throw error;
+        }
+
+        if (mounted) {
+          setLifetimeAccess(Boolean(data?.lifetime_access));
+        }
+      } catch (error) {
+        console.error("Failed to load profile for upgrade buttons:", error);
+        if (mounted) {
+          setLifetimeAccess(false);
+        }
+      } finally {
+        if (mounted) {
+          setCheckingProfile(false);
+        }
+      }
+    }
+
+    loadProfile();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   async function startCheckout(tier: Tier) {
     try {
@@ -70,6 +129,25 @@ export default function UpgradeButtons() {
     "h-10 rounded-xl px-4 text-sm font-semibold text-white transition disabled:opacity-60";
   const premiumBtn =
     "bg-gradient-to-r from-yellow-300 via-amber-400 to-yellow-500 hover:opacity-95";
+  const statusBox =
+    "w-full rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-200";
+
+  if (checkingProfile) {
+    return (
+      <div className="space-y-3">
+        <div className={statusBox}>Checking access...</div>
+      </div>
+    );
+  }
+
+  if (lifetimeAccess) {
+    return (
+      <div className="space-y-3">
+        <div className={statusBox}>Lifetime Access Active</div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
       <button
