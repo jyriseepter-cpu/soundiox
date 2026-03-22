@@ -85,6 +85,25 @@ function getAvatarUrl(value: string | null | undefined) {
   return value;
 }
 
+function extractStoragePathFromPublicUrl(url: string | null) {
+  if (!url) return null;
+
+  try {
+    const parsed = new URL(url);
+    const marker = "/storage/v1/object/public/tracks/";
+    const idx = parsed.pathname.indexOf(marker);
+
+    if (idx === -1) return null;
+
+    const rawPath = parsed.pathname.slice(idx + marker.length);
+    if (!rawPath) return null;
+
+    return decodeURIComponent(rawPath);
+  } catch {
+    return null;
+  }
+}
+
 function getCookieValue(name: string) {
   if (typeof document === "undefined") return null;
 
@@ -174,6 +193,12 @@ export default function AccountClient() {
 
   const [likedTracks, setLikedTracks] = useState<TrackRow[]>([]);
   const [loadingLikedTracks, setLoadingLikedTracks] = useState(false);
+  const [myTracks, setMyTracks] = useState<TrackRow[]>([]);
+  const [loadingMyTracks, setLoadingMyTracks] = useState(false);
+  const [editingTrackId, setEditingTrackId] = useState<string>("");
+  const [editTitle, setEditTitle] = useState("");
+  const [savingTrackId, setSavingTrackId] = useState<string>("");
+  const [deletingTrackId, setDeletingTrackId] = useState<string>("");
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -481,6 +506,130 @@ export default function AccountClient() {
     }
   }
 
+  async function loadMyTracks(ownerId: string) {
+    setLoadingMyTracks(true);
+
+    try {
+      const { data, error } = await supabase
+        .from("tracks")
+        .select(
+          "id,title,artist,genre,artwork_url,audio_url,created_at,plays_all_time,plays_this_month,user_id"
+        )
+        .eq("user_id", ownerId)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      setMyTracks((data ?? []) as TrackRow[]);
+    } catch (err) {
+      console.error("my tracks load error:", err);
+      setMyTracks([]);
+    } finally {
+      setLoadingMyTracks(false);
+    }
+  }
+
+  function startEditingTrack(track: TrackRow) {
+    setEditingTrackId(track.id);
+    setEditTitle(track.title || "");
+  }
+
+  function cancelEditingTrack() {
+    setEditingTrackId("");
+    setEditTitle("");
+  }
+
+  async function saveTrackTitle(trackId: string) {
+    if (!userId) return;
+
+    const nextTitle = editTitle.trim();
+
+    if (!nextTitle) {
+      setError("Track title cannot be empty.");
+      return;
+    }
+
+    setSavingTrackId(trackId);
+    setError("");
+    setMessage("");
+
+    try {
+      const { error } = await supabase
+        .from("tracks")
+        .update({ title: nextTitle })
+        .eq("id", trackId)
+        .eq("user_id", userId);
+
+      if (error) throw error;
+
+      setMyTracks((prev) =>
+        prev.map((track) =>
+          track.id === trackId ? { ...track, title: nextTitle } : track
+        )
+      );
+      setEditingTrackId("");
+      setEditTitle("");
+      setMessage("Track title updated.");
+    } catch (err: any) {
+      setError(err?.message || "Track update failed.");
+    } finally {
+      setSavingTrackId("");
+    }
+  }
+
+  async function deleteTrack(track: TrackRow) {
+    if (!userId) return;
+
+    const confirmed = window.confirm(
+      `Delete "${track.title || "Untitled"}"? This cannot be undone.`
+    );
+
+    if (!confirmed) return;
+
+    setDeletingTrackId(track.id);
+    setError("");
+    setMessage("");
+
+    try {
+      const { error } = await supabase
+        .from("tracks")
+        .delete()
+        .eq("id", track.id)
+        .eq("user_id", userId);
+
+      if (error) throw error;
+
+      const storagePaths = [
+        extractStoragePathFromPublicUrl(track.audio_url || null),
+        extractStoragePathFromPublicUrl(track.artwork_url || null),
+      ].filter((value, index, array): value is string => {
+        return Boolean(value) && array.indexOf(value) === index;
+      });
+
+      if (storagePaths.length > 0) {
+        const { error: storageError } = await supabase.storage
+          .from("tracks")
+          .remove(storagePaths);
+
+        if (storageError) {
+          console.warn("track storage cleanup warning:", storageError);
+        }
+      }
+
+      setMyTracks((prev) => prev.filter((item) => item.id !== track.id));
+
+      if (editingTrackId === track.id) {
+        cancelEditingTrack();
+      }
+
+      setMessage("Track deleted.");
+    } catch (err: any) {
+      setError(err?.message || "Track deletion failed.");
+    } finally {
+      setDeletingTrackId("");
+    }
+  }
+
   useEffect(() => {
     let mounted = true;
 
@@ -512,6 +661,7 @@ export default function AccountClient() {
           loadFollowing(user.id),
           loadPlaylists(user.id),
           loadLikedTracks(user.id),
+          loadMyTracks(user.id),
         ]);
       } catch (err: any) {
         setError(err?.message || "Account page failed to load.");
@@ -538,6 +688,7 @@ export default function AccountClient() {
         loadFollowing(session.user.id),
         loadPlaylists(session.user.id),
         loadLikedTracks(session.user.id),
+        loadMyTracks(session.user.id),
       ]);
     });
 
@@ -697,6 +848,7 @@ export default function AccountClient() {
           loadFollowing(session.user.id),
           loadPlaylists(session.user.id),
           loadLikedTracks(session.user.id),
+          loadMyTracks(session.user.id),
         ]);
         setMessage("Welcome, Founding Artist.");
         router.replace("/account?welcome=founding");
@@ -1278,6 +1430,126 @@ export default function AccountClient() {
           }}
         />
       ))}
+    </div>
+  )}
+</section>
+
+<section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+  <div className="mb-4 flex items-center justify-between gap-3">
+    <div>
+      <h2 className="text-lg font-semibold text-white">My Tracks</h2>
+      <p className="mt-1 text-sm text-white/60">
+        Manage your uploaded tracks.
+      </p>
+    </div>
+
+    <div className="text-sm font-medium text-white/55">{myTracks.length} total</div>
+  </div>
+
+  {loadingMyTracks ? (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+      Loading tracks...
+    </div>
+  ) : myTracks.length === 0 ? (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+      No tracks uploaded yet.
+    </div>
+  ) : (
+    <div className="space-y-3">
+      {myTracks.map((track) => {
+        const isEditing = editingTrackId === track.id;
+        const isSaving = savingTrackId === track.id;
+        const isDeleting = deletingTrackId === track.id;
+        const artworkSrc = getAvatarUrl(track.artwork_url) || "/logo-new.png";
+
+        return (
+          <div
+            key={track.id}
+            className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-black/20 p-4 md:flex-row md:items-center md:justify-between"
+          >
+            <div className="flex min-w-0 items-center gap-4">
+              <div className="relative h-14 w-14 overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+                <Image
+                  src={artworkSrc}
+                  alt={track.title || "Track artwork"}
+                  fill
+                  className="object-cover"
+                  sizes="56px"
+                />
+              </div>
+
+              <div className="min-w-0">
+                {isEditing ? (
+                  <input
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    className="h-11 w-full max-w-md rounded-2xl border border-white/10 bg-white/6 px-4 text-sm font-medium text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
+                    placeholder="Track title"
+                  />
+                ) : (
+                  <div className="truncate text-base font-semibold text-white">
+                    {track.title || "Untitled"}
+                  </div>
+                )}
+
+                <div className="mt-1 truncate text-sm text-white/55">
+                  {(track.artist || displayName || "AI Artist") + " • "}
+                  {track.genre || "No genre"}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href={`/track/${track.id}`}
+                className="inline-flex h-10 items-center justify-center rounded-full border border-white/15 bg-white/8 px-4 text-sm font-medium text-white transition hover:bg-white/12"
+              >
+                View
+              </Link>
+
+              {isEditing ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => saveTrackTitle(track.id)}
+                    disabled={isSaving}
+                    className="inline-flex h-10 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-4 text-sm font-medium text-white transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isSaving ? "Saving..." : "Save"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={cancelEditingTrack}
+                    disabled={isSaving}
+                    className="inline-flex h-10 items-center justify-center rounded-full border border-white/15 bg-white/8 px-4 text-sm font-medium text-white transition hover:bg-white/12 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => startEditingTrack(track)}
+                  disabled={Boolean(editingTrackId) || isDeleting}
+                  className="inline-flex h-10 items-center justify-center rounded-full border border-cyan-300/20 bg-cyan-400/10 px-4 text-sm font-medium text-cyan-100 transition hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Edit
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => deleteTrack(track)}
+                disabled={isDeleting || isSaving}
+                className="inline-flex h-10 items-center justify-center rounded-full border border-rose-300/20 bg-rose-500/10 px-4 text-sm font-medium text-rose-200 transition hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isDeleting ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        );
+      })}
     </div>
   )}
 </section>
