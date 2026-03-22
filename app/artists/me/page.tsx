@@ -28,8 +28,30 @@ function isAbsoluteUrl(u: string) {
 function toPublicUrlMaybe(raw: string | null) {
   if (!raw) return null;
   if (isAbsoluteUrl(raw)) return raw;
-  // kui sul on DB-s relative path (nt /art/xx.jpg), jäta nii — browser leiab kui see on public path
   return raw;
+}
+
+function extractStoragePathFromPublicUrl(url: string | null) {
+  if (!url) return null;
+  if (!isAbsoluteUrl(url)) return null;
+
+  try {
+    const parsed = new URL(url);
+    const marker = "/storage/v1/object/public/";
+    const idx = parsed.pathname.indexOf(marker);
+
+    if (idx === -1) return null;
+
+    const afterMarker = parsed.pathname.slice(idx + marker.length);
+    const slashIndex = afterMarker.indexOf("/");
+
+    if (slashIndex === -1) return null;
+
+    const encodedPath = afterMarker.slice(slashIndex + 1);
+    return decodeURIComponent(encodedPath);
+  } catch {
+    return null;
+  }
 }
 
 export default function MyArtistPage() {
@@ -40,18 +62,21 @@ export default function MyArtistPage() {
   const [tracks, setTracks] = useState<TrackRow[]>([]);
   const [err, setErr] = useState<string | null>(null);
 
-  // edit profile form
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
   const [country, setCountry] = useState("");
 
-  // upload form
   const [upTitle, setUpTitle] = useState("");
   const [upGenre, setUpGenre] = useState("");
   const [upAudio, setUpAudio] = useState<File | null>(null);
   const [upArtwork, setUpArtwork] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
+
+  const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [savingTrackId, setSavingTrackId] = useState<string | null>(null);
+  const [deletingTrackId, setDeletingTrackId] = useState<string | null>(null);
 
   const canUpload = useMemo(() => {
     return !!upTitle.trim() && !!upGenre.trim() && !!upAudio && !!userId;
@@ -75,7 +100,6 @@ export default function MyArtistPage() {
 
     setUserId(uid);
 
-    // load profile
     const { data: p, error: pErr } = await supabase
       .from("profiles")
       .select("id,display_name,bio,country")
@@ -91,7 +115,6 @@ export default function MyArtistPage() {
       setCountry((p?.country ?? "").toString());
     }
 
-    // load my tracks
     const { data: t, error: tErr } = await supabase
       .from("tracks")
       .select("id,title,genre,audio_url,artwork_url,created_at,is_published")
@@ -134,15 +157,14 @@ export default function MyArtistPage() {
 
   async function uploadTrack() {
     if (!userId || !canUpload || !upAudio) return;
+
     setUploading(true);
     setUploadMsg(null);
     setErr(null);
 
     try {
-      // 1) upload AUDIO
-      // Muuda bucket name’i vastavalt: "tracks" / "audio" jne
-     const audioBucket = "tracks";
-const artBucket = "tracks"; // kasutame sama bucketit
+      const audioBucket = "tracks";
+      const artBucket = "tracks";
 
       const audioExt = upAudio.name.split(".").pop() || "mp3";
       const audioPath = `audio/${userId}/${Date.now()}-${crypto.randomUUID()}.${audioExt}`;
@@ -159,7 +181,6 @@ const artBucket = "tracks"; // kasutame sama bucketit
 
       const audioPublic = supabase.storage.from(audioBucket).getPublicUrl(audioPath).data.publicUrl;
 
-      // 2) upload ARTWORK (optional)
       let artworkPublic: string | null = null;
 
       if (upArtwork) {
@@ -179,7 +200,6 @@ const artBucket = "tracks"; // kasutame sama bucketit
         artworkPublic = supabase.storage.from(artBucket).getPublicUrl(artPath).data.publicUrl;
       }
 
-      // 3) insert TRACK row
       const { error: insErr } = await supabase.from("tracks").insert({
         title: upTitle.trim(),
         genre: upGenre.trim(),
@@ -198,10 +218,115 @@ const artBucket = "tracks"; // kasutame sama bucketit
       setUploadMsg("Uploaded ✅");
 
       await loadAll();
-    } catch (e: any) {
-      setErr(e?.message ?? "Upload failed");
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Upload failed";
+      setErr(message);
     } finally {
       setUploading(false);
+    }
+  }
+
+  function startEditingTrack(track: TrackRow) {
+    setEditingTrackId(track.id);
+    setEditTitle((track.title ?? "").toString());
+    setErr(null);
+    setUploadMsg(null);
+  }
+
+  function cancelEditingTrack() {
+    setEditingTrackId(null);
+    setEditTitle("");
+  }
+
+  async function saveTrackTitle(trackId: string) {
+    if (!userId) return;
+    if (!editTitle.trim()) {
+      setErr("Track title cannot be empty.");
+      return;
+    }
+
+    setSavingTrackId(trackId);
+    setErr(null);
+
+    const { error } = await supabase
+      .from("tracks")
+      .update({ title: editTitle.trim() })
+      .eq("id", trackId)
+      .eq("user_id", userId);
+
+    if (error) {
+      setErr(error.message);
+      setSavingTrackId(null);
+      return;
+    }
+
+    setTracks((prev) =>
+      prev.map((track) =>
+        track.id === trackId ? { ...track, title: editTitle.trim() } : track
+      )
+    );
+
+    setEditingTrackId(null);
+    setEditTitle("");
+    setSavingTrackId(null);
+  }
+
+  async function deleteTrack(track: TrackRow) {
+    if (!userId) return;
+
+    const confirmDelete = window.confirm(
+      `Delete "${(track.title ?? "Untitled").toString()}"? This cannot be undone.`
+    );
+
+    if (!confirmDelete) return;
+
+    setDeletingTrackId(track.id);
+    setErr(null);
+
+    try {
+      const audioPath = extractStoragePathFromPublicUrl(track.audio_url);
+      const artworkPath = extractStoragePathFromPublicUrl(track.artwork_url);
+
+      const { error: deleteRowError } = await supabase
+        .from("tracks")
+        .delete()
+        .eq("id", track.id)
+        .eq("user_id", userId);
+
+      if (deleteRowError) {
+        throw new Error(deleteRowError.message);
+      }
+
+      if (audioPath) {
+        const { error: audioRemoveError } = await supabase.storage
+          .from("tracks")
+          .remove([audioPath]);
+
+        if (audioRemoveError) {
+          console.warn("audio storage delete warning:", audioRemoveError.message);
+        }
+      }
+
+      if (artworkPath) {
+        const { error: artworkRemoveError } = await supabase.storage
+          .from("tracks")
+          .remove([artworkPath]);
+
+        if (artworkRemoveError) {
+          console.warn("artwork storage delete warning:", artworkRemoveError.message);
+        }
+      }
+
+      setTracks((prev) => prev.filter((item) => item.id !== track.id));
+
+      if (editingTrackId === track.id) {
+        cancelEditingTrack();
+      }
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Delete failed";
+      setErr(message);
+    } finally {
+      setDeletingTrackId(null);
     }
   }
 
@@ -219,7 +344,7 @@ const artBucket = "tracks"; // kasutame sama bucketit
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-semibold text-white">My Artist Profile</h1>
-            <div className="mt-1 text-white/60 text-sm">
+            <div className="mt-1 text-sm text-white/60">
               Manage your bio and upload tracks from here.
             </div>
           </div>
@@ -240,7 +365,6 @@ const artBucket = "tracks"; // kasutame sama bucketit
           </div>
         ) : null}
 
-        {/* PROFILE */}
         <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div className="rounded-3xl bg-white/10 p-6 ring-1 ring-white/10 backdrop-blur">
             <div className="text-white">
@@ -282,8 +406,7 @@ const artBucket = "tracks"; // kasutame sama bucketit
 
               <button
                 onClick={() => void saveProfile()}
-                className="rounded-xl px-5 py-2.5 font-semibold text-white transition
-                           bg-white/10 ring-1 ring-white/10 hover:bg-white/15"
+                className="rounded-xl bg-white/10 px-5 py-2.5 font-semibold text-white transition ring-1 ring-white/10 hover:bg-white/15"
                 disabled={!userId}
               >
                 Save Profile
@@ -291,7 +414,6 @@ const artBucket = "tracks"; // kasutame sama bucketit
             </div>
           </div>
 
-          {/* UPLOAD */}
           <div className="rounded-3xl bg-white/10 p-6 ring-1 ring-white/10 backdrop-blur">
             <div className="text-white">
               <div className="text-lg font-semibold">Upload new track</div>
@@ -342,9 +464,7 @@ const artBucket = "tracks"; // kasutame sama bucketit
               <button
                 onClick={() => void uploadTrack()}
                 disabled={!canUpload || uploading}
-                className="rounded-xl px-5 py-2.5 font-semibold text-white transition
-                           bg-gradient-to-r from-cyan-400 via-sky-500 to-fuchsia-500
-                           hover:brightness-110 active:brightness-95 disabled:opacity-50"
+                className="rounded-xl bg-gradient-to-r from-cyan-400 via-sky-500 to-fuchsia-500 px-5 py-2.5 font-semibold text-white transition hover:brightness-110 active:brightness-95 disabled:opacity-50"
               >
                 {uploading ? "Uploading…" : "Upload"}
               </button>
@@ -352,14 +472,12 @@ const artBucket = "tracks"; // kasutame sama bucketit
               {uploadMsg ? <div className="text-sm text-white/70">{uploadMsg}</div> : null}
 
               <div className="text-xs text-white/50">
-                Note: bucket names are set to <b>tracks</b> (audio) and <b>artwork</b> (image). If your buckets are different,
-                tell me their names and I’ll adjust.
+                Note: bucket names are set to <b>tracks</b> for both audio and artwork.
               </div>
             </div>
           </div>
         </div>
 
-        {/* MY TRACKS */}
         <div className="mt-8 rounded-3xl bg-white/10 p-6 ring-1 ring-white/10 backdrop-blur">
           <div className="flex items-center justify-between">
             <div className="text-white">
@@ -374,33 +492,98 @@ const artBucket = "tracks"; // kasutame sama bucketit
             {tracks.length === 0 ? (
               <div className="text-sm text-white/70">No tracks yet. Upload your first one.</div>
             ) : (
-              tracks.map((t) => (
-                <div
-                  key={t.id}
-                  className="flex items-center justify-between rounded-2xl bg-black/20 px-4 py-3 ring-1 ring-white/10"
-                >
-                  <div className="flex items-center gap-3">
-                    <img
-                      src={toPublicUrlMaybe(t.artwork_url) ?? "/logo-new.png"}
-                      alt=""
-                      className="h-10 w-10 rounded-xl object-cover ring-1 ring-white/10"
-                    />
-                    <div className="leading-tight">
-                      <div className="text-sm font-semibold text-white">{(t.title ?? "Untitled").toString()}</div>
-                      <div className="text-xs text-white/70">
-                        {(profile?.display_name ?? "Artist").toString()} • {(t.genre ?? "—").toString()}
+              tracks.map((t) => {
+                const isEditing = editingTrackId === t.id;
+                const isSaving = savingTrackId === t.id;
+                const isDeleting = deletingTrackId === t.id;
+
+                return (
+                  <div
+                    key={t.id}
+                    className="rounded-2xl bg-black/20 px-4 py-3 ring-1 ring-white/10"
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <img
+                          src={toPublicUrlMaybe(t.artwork_url) ?? "/logo-new.png"}
+                          alt=""
+                          className="h-10 w-10 rounded-xl object-cover ring-1 ring-white/10"
+                        />
+                        <div className="min-w-0 leading-tight">
+                          {isEditing ? (
+                            <input
+                              value={editTitle}
+                              onChange={(e) => setEditTitle(e.target.value)}
+                              className="w-full rounded-xl bg-white/10 px-3 py-2 text-sm font-semibold text-white ring-1 ring-white/10 outline-none"
+                              placeholder="Track title"
+                            />
+                          ) : (
+                            <div className="truncate text-sm font-semibold text-white">
+                              {(t.title ?? "Untitled").toString()}
+                            </div>
+                          )}
+
+                          <div className="truncate text-xs text-white/70">
+                            {(profile?.display_name ?? "Artist").toString()} •{" "}
+                            {(t.genre ?? "—").toString()}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex shrink-0 items-center gap-2">
+                        {isEditing ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => void saveTrackTitle(t.id)}
+                              disabled={isSaving}
+                              className="rounded-xl bg-cyan-400/15 px-3 py-2 text-sm font-semibold text-cyan-100 ring-1 ring-cyan-300/20 transition hover:bg-cyan-400/20 disabled:opacity-60"
+                            >
+                              {isSaving ? "Saving..." : "Save"}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={cancelEditingTrack}
+                              disabled={isSaving}
+                              className="rounded-xl bg-white/10 px-3 py-2 text-sm font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:opacity-60"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => startEditingTrack(t)}
+                              disabled={isDeleting}
+                              className="rounded-xl bg-white/10 px-3 py-2 text-sm font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:opacity-60"
+                            >
+                              Edit
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => void deleteTrack(t)}
+                              disabled={isDeleting}
+                              className="rounded-xl bg-rose-500/15 px-3 py-2 text-sm font-semibold text-rose-100 ring-1 ring-rose-300/20 transition hover:bg-rose-500/20 disabled:opacity-60"
+                            >
+                              {isDeleting ? "Deleting..." : "Delete"}
+                            </button>
+
+                            <Link
+                              href="/discover"
+                              className="rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-white/15"
+                            >
+                              View
+                            </Link>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
-
-                  <Link
-                    href="/discover"
-                    className="rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-white/15"
-                  >
-                    View
-                  </Link>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
