@@ -3,31 +3,32 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-const STORAGE_KEY = "soundiox_cookie_consent";
+const STORAGE_KEY = "cookies";
 
 export default function CookieBanner() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     try {
-      const v = localStorage.getItem(STORAGE_KEY);
-      if (!v) setVisible(true);
+      const value = localStorage.getItem(STORAGE_KEY);
+      if (!value) {
+        setVisible(true);
+      }
     } catch {
       setVisible(true);
     }
   }, []);
 
-  const accept = () => {
+  function handleChoice(value: "accepted" | "rejected") {
     try {
-      localStorage.setItem(STORAGE_KEY, "accepted");
+      localStorage.setItem(STORAGE_KEY, value);
     } catch {}
+
     setVisible(false);
-  };
+  }
 
   if (!visible) return null;
 
-  // Header on suur (py-8 + logo h-13) — paneme bannu alati headeri ALT.
-  // Kui tahad 5–10px rohkem/ vähem, muuda seda numbrit.
   const topOffset = "calc(env(safe-area-inset-top) + 120px)";
 
   return (
@@ -36,8 +37,12 @@ export default function CookieBanner() {
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="text-sm text-white/85">
             We use essential cookies to make SoundioX work (login, security).
-            Optional cookies may be used later (e.g. analytics) only with your consent.{" "}
-            <Link href="/legal/cookies" className="underline text-white/90 hover:text-white">
+            Optional cookies may be used later (e.g. analytics) only with your
+            consent.{" "}
+            <Link
+              href="/legal/cookies"
+              className="underline text-white/90 hover:text-white"
+            >
               Learn more
             </Link>
             .
@@ -46,7 +51,15 @@ export default function CookieBanner() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={accept}
+              onClick={() => handleChoice("rejected")}
+              className="rounded-2xl bg-white/10 px-5 py-2 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-white/15"
+            >
+              Reject
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleChoice("accepted")}
               className="rounded-2xl bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500 px-5 py-2 text-sm font-semibold text-white ring-1 ring-white/10 hover:opacity-95"
             >
               Accept
