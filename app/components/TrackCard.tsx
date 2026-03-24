@@ -144,7 +144,7 @@ export default function TrackCard({
 
   return (
     <div
-      className={`flex flex-col gap-3 overflow-hidden rounded-2xl px-4 py-3 ring-1 transition sm:flex-row sm:items-center sm:justify-between ${
+      className={`flex flex-col gap-3 overflow-hidden rounded-2xl px-4 py-3 ring-1 transition lg:flex-row lg:items-center lg:justify-between ${
         active
           ? "bg-gradient-to-r from-purple-500/15 to-fuchsia-500/15 ring-purple-400/40"
           : "bg-white/8 ring-white/10"
@@ -171,8 +171,8 @@ export default function TrackCard({
           ) : null}
         </div>
 
-        <div className="min-w-0">
-          <div className="truncate text-base font-bold text-white sm:text-lg">
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-base font-bold text-white lg:text-lg">
             {getTitle(track)}
           </div>
 
@@ -193,13 +193,13 @@ export default function TrackCard({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 sm:ml-4 sm:justify-end">
+      <div className="flex w-full flex-wrap items-center gap-2 lg:ml-4 lg:w-auto lg:justify-end">
         {showFollowButton ? (
           <button
             type="button"
             onClick={handleFollowClick}
             disabled={followLoading}
-            className={`rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition ${
+            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition ${
               isFollowing
                 ? "bg-white/10 text-white ring-white/10 hover:bg-white/14"
                 : "bg-cyan-400/10 text-cyan-100 ring-cyan-300/20 hover:bg-cyan-400/15"
@@ -214,7 +214,7 @@ export default function TrackCard({
           onClick={handleLikeClick}
           disabled={!canLike || likeLoading}
           title={canLike ? "Like track" : "Upgrade to like tracks"}
-          className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-2 text-sm font-semibold transition ${
+          className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-2 text-sm font-semibold transition ${
             canLike
               ? isLiked
                 ? "text-pink-200 hover:bg-white/10"
@@ -229,7 +229,7 @@ export default function TrackCard({
         <button
           type="button"
           onClick={handleShareClick}
-          className="rounded-xl bg-white/8 px-3 py-2 text-sm font-semibold text-white/75 ring-1 ring-white/10 transition hover:bg-white/12 hover:text-white"
+          className="shrink-0 rounded-xl bg-white/8 px-3 py-2 text-sm font-semibold text-white/75 ring-1 ring-white/10 transition hover:bg-white/12 hover:text-white"
         >
           {shareCopied ? "Copied" : "Share"}
         </button>
@@ -237,7 +237,7 @@ export default function TrackCard({
         <button
           type="button"
           onClick={handleAddClick}
-          className="rounded-xl bg-gradient-to-r from-cyan-300 to-cyan-400 px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 sm:px-4 sm:text-base"
+          className="shrink-0 rounded-xl bg-gradient-to-r from-cyan-300 to-cyan-400 px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 lg:px-4 lg:text-base"
         >
           Add
         </button>
@@ -245,7 +245,7 @@ export default function TrackCard({
         <button
           type="button"
           onClick={handlePlayClick}
-          className="ml-auto rounded-xl bg-gradient-to-r from-purple-500 to-fuchsia-500 px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 sm:ml-0 sm:px-4 sm:text-base"
+          className="shrink-0 rounded-xl bg-gradient-to-r from-purple-500 to-fuchsia-500 px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 lg:px-4 lg:text-base"
         >
           {showPause ? "Pause" : "Play"}
         </button>

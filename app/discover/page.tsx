@@ -918,7 +918,7 @@ export default function DiscoverPage() {
   }));
 
   return (
-    <div className="mx-auto w-full max-w-6xl overflow-x-hidden px-4 pb-40 pt-4 sm:pt-6">
+    <div className="mx-auto w-full max-w-6xl overflow-x-hidden px-4 pb-40 pt-4 sm:pt-6 md:pb-40">
       {toast ? (
         <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-black/80 px-4 py-2 text-sm font-semibold text-white shadow-lg backdrop-blur">
           {toast}
