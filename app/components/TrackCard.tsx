@@ -245,7 +245,7 @@ export default function TrackCard({
         <button
           type="button"
           onClick={handlePlayClick}
-          className="shrink-0 rounded-xl bg-gradient-to-r from-purple-500 to-fuchsia-500 px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 lg:px-4 lg:text-base"
+          className="shrink-0 rounded-xl bg-gradient-to-r from-purple-500 to-fuchsia-500 px-2.5 py-2 text-xs font-semibold text-white transition hover:opacity-90 lg:px-4 lg:text-base lg:text-sm"
         >
           {showPause ? "Pause" : "Play"}
         </button>
