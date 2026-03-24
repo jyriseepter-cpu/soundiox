@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { usePlayer } from "@/app/components/PlayerContext";
 import CustomSelect from "@/app/components/CustomSelect";
+import { SOUNDIOX_GENRES, isSoundioXGenre } from "@/lib/genres";
 import { normalizeAccessPlan } from "@/lib/lifetimeCampaign";
 
 type SortKey = "plays_month" | "likes_month";
@@ -82,22 +83,9 @@ function getArtworkSrc(t: Partial<PulseTrack>) {
   return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${s}`;
 }
 
-function normalizeGenre(value: string | null | undefined) {
+function getOfficialGenreLabel(value: string | null | undefined) {
   const raw = safeStr(value).trim();
-  if (!raw) return "";
-
-  const lower = raw.toLowerCase();
-
-  if (
-    lower === "classical / cine" ||
-    lower === "classical/cine" ||
-    lower === "classical / cinematic" ||
-    lower === "classical/cinematic"
-  ) {
-    return "Classical / Cinematic";
-  }
-
-  return raw;
+  return isSoundioXGenre(raw) ? raw : "";
 }
 
 function normalizeRole(value: string | null | undefined) {
@@ -385,14 +373,10 @@ export default function PulsePage() {
     return sum;
   }, [likesMonth]);
 
-  const availableGenres = useMemo(() => {
-    const set = new Set<string>();
-    for (const t of tracks) {
-      const g = normalizeGenre(t.genre);
-      if (g) set.add(g);
-    }
-    return ["All genres", ...Array.from(set).sort((a, b) => a.localeCompare(b))];
-  }, [tracks]);
+  const availableGenres = useMemo(
+    () => ["All genres", ...SOUNDIOX_GENRES],
+    []
+  );
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -406,7 +390,7 @@ export default function PulsePage() {
         }
       }
 
-      if (genre !== "All genres" && normalizeGenre(t.genre) !== genre) {
+      if (genre !== "All genres" && getOfficialGenreLabel(t.genre) !== genre) {
         return false;
       }
 
@@ -416,7 +400,7 @@ export default function PulsePage() {
 
       const hay = `${safeStr(t.title)} ${safeStr(t.artistDisplayName)} ${safeStr(
         t.artist
-      )} ${normalizeGenre(t.genre)}`.toLowerCase();
+      )} ${getOfficialGenreLabel(t.genre)}`.toLowerCase();
 
       return hay.includes(s);
     });
@@ -791,7 +775,7 @@ export default function PulsePage() {
                         ) : null}
 
                         {" · "}
-                        {normalizeGenre(t.genre) || "-"}
+                        {getOfficialGenreLabel(t.genre) || "-"}
                       </div>
                     </div>
                   </div>

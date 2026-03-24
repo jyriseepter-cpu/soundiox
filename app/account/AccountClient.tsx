@@ -11,6 +11,7 @@ import {
   normalizeAccessPlan,
   shouldGrantLifetimeCampaignPlan,
 } from "@/lib/lifetimeCampaign";
+import { isSoundioXGenre } from "@/lib/genres";
 
 type ProfileRow = {
   id: string;
@@ -139,6 +140,11 @@ function normalizeProfileRole(value: string | null | undefined) {
 
 function isArtistCampaignActive() {
   return Date.now() <= new Date(ARTIST_CAMPAIGN_DEADLINE_ISO).getTime();
+}
+
+function getOfficialGenreLabel(value: string | null | undefined) {
+  const raw = (value ?? "").trim();
+  return isSoundioXGenre(raw) ? raw : "";
 }
 
 export default function AccountClient() {
@@ -1494,7 +1500,7 @@ export default function AccountClient() {
 
                 <div className="mt-1 truncate text-sm text-white/55">
                   {(track.artist || displayName || "AI Artist") + " • "}
-                  {track.genre || "No genre"}
+                  {getOfficialGenreLabel(track.genre) || "No genre"}
                 </div>
               </div>
             </div>

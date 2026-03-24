@@ -5,24 +5,11 @@ import { FFmpeg } from "@ffmpeg/ffmpeg";
 import { fetchFile, toBlobURL } from "@ffmpeg/util";
 import CustomSelect from "@/app/components/CustomSelect";
 import { supabase } from "@/lib/supabaseClient";
-
-const genreOptions = [
-  { value: "", label: "Select genre" },
-  { value: "Ambient", label: "Ambient" },
-  { value: "Classical / Cinematic", label: "Classical / Cinematic" },
-  { value: "Dance", label: "Dance" },
-  { value: "Electronic", label: "Electronic" },
-  { value: "Experimental", label: "Experimental" },
-  { value: "Hip-Hop", label: "Hip-Hop" },
-  { value: "House", label: "House" },
-  { value: "Indie", label: "Indie" },
-  { value: "Jazz", label: "Jazz" },
-  { value: "Lo-fi", label: "Lo-fi" },
-  { value: "Pop", label: "Pop" },
-  { value: "R&B", label: "R&B" },
-  { value: "Rock", label: "Rock" },
-  { value: "Techno", label: "Techno" },
-];
+import {
+  SOUNDIOX_GENRES,
+  SOUNDIOX_GENRE_OPTIONS,
+  isSoundioXGenre,
+} from "@/lib/genres";
 
 type SupabaseErrorLike = {
   code?: string | null;
@@ -104,9 +91,7 @@ function shouldCompressToMp3(file: File) {
   );
 }
 
-function toArrayBuffer(
-  data: Uint8Array | ArrayBuffer | string
-): ArrayBuffer {
+function toArrayBuffer(data: Uint8Array | ArrayBuffer | string): ArrayBuffer {
   if (data instanceof Uint8Array) {
     return data.slice().buffer;
   }
@@ -141,18 +126,28 @@ async function getFfmpeg(setProcessingText?: (value: string) => void) {
 
       ffmpeg.on("progress", ({ progress }) => {
         if (!currentProgressSetter) return;
-        const percent = Math.max(0, Math.min(100, Math.round((progress || 0) * 100)));
+        const percent = Math.max(
+          0,
+          Math.min(100, Math.round((progress || 0) * 100))
+        );
         currentProgressSetter(percent);
         if (currentTextSetter) {
           currentTextSetter(`Compressing audio... ${percent}%`);
         }
       });
 
-      const baseURL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
+      const baseURL =
+        "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
 
       await ffmpeg.load({
-        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
-        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
+        coreURL: await toBlobURL(
+          `${baseURL}/ffmpeg-core.js`,
+          "text/javascript"
+        ),
+        wasmURL: await toBlobURL(
+          `${baseURL}/ffmpeg-core.wasm`,
+          "application/wasm"
+        ),
       });
 
       ffmpegSingleton = ffmpeg;
@@ -234,7 +229,9 @@ export default function UploadPage() {
   const [uploading, setUploading] = useState(false);
   const [processingAudio, setProcessingAudio] = useState(false);
   const [processingText, setProcessingText] = useState("");
-  const [processingProgress, setProcessingProgress] = useState<number | null>(null);
+  const [processingProgress, setProcessingProgress] = useState<number | null>(
+    null
+  );
 
   async function handleUpload() {
     const normalizedIsrc = normalizeIsrc(isrc);
@@ -251,14 +248,24 @@ export default function UploadPage() {
       alert("Please enter a title.");
       return;
     }
+
     if (!genre.trim()) {
       alert("Please choose a genre.");
       return;
     }
+
+    if (!isSoundioXGenre(genre.trim())) {
+      alert(
+        `Invalid genre selected. Allowed genres: ${SOUNDIOX_GENRES.join(", ")}`
+      );
+      return;
+    }
+
     if (!audioFile) {
       alert("Please choose an audio file.");
       return;
     }
+
     if (!artFile) {
       alert("Please choose an artwork image.");
       return;
@@ -294,7 +301,9 @@ export default function UploadPage() {
           : null;
 
       const artistName =
-        profile?.display_name?.trim() || emailFallback || `artist-${user.id.slice(0, 8)}`;
+        profile?.display_name?.trim() ||
+        emailFallback ||
+        `artist-${user.id.slice(0, 8)}`;
 
       let uploadAudioFile = audioFile;
 
@@ -308,7 +317,8 @@ export default function UploadPage() {
         );
       }
 
-      const audioExt = uploadAudioFile.name.split(".").pop()?.toLowerCase() || "mp3";
+      const audioExt =
+        uploadAudioFile.name.split(".").pop()?.toLowerCase() || "mp3";
       const artExt = artFile.name.split(".").pop()?.toLowerCase() || "jpg";
 
       const timestamp = Date.now();
@@ -325,7 +335,9 @@ export default function UploadPage() {
       if (audioError) {
         const formattedAudioError = formatSupabaseError(audioError);
         console.error("audio upload error:", audioError);
-        alert(`Audio upload failed: ${formattedAudioError || "Unknown storage error."}`);
+        alert(
+          `Audio upload failed: ${formattedAudioError || "Unknown storage error."}`
+        );
         return;
       }
 
@@ -339,7 +351,9 @@ export default function UploadPage() {
       if (artError) {
         const formattedArtError = formatSupabaseError(artError);
         console.error("artwork upload error:", artError);
-        alert(`Artwork upload failed: ${formattedArtError || "Unknown storage error."}`);
+        alert(
+          `Artwork upload failed: ${formattedArtError || "Unknown storage error."}`
+        );
         return;
       }
 
@@ -364,14 +378,17 @@ export default function UploadPage() {
         plays_this_month: 0,
       };
 
-      const { error: insertError } = await supabase.from("tracks").insert(insertPayload);
+      const { error: insertError } = await supabase
+        .from("tracks")
+        .insert(insertPayload);
 
       if (insertError) {
         const formattedInsertError = formatSupabaseError(insertError);
         console.error("tracks insert error:", insertError);
         alert(
           `Database insert failed: ${
-            formattedInsertError || "Unknown Supabase error. This may be an RLS policy issue."
+            formattedInsertError ||
+            "Unknown Supabase error. This may be an RLS policy issue."
           }`
         );
         return;
@@ -421,8 +438,9 @@ export default function UploadPage() {
               Release a new SoundioX track
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-white/65 sm:text-base">
-              Add your title, choose a genre, upload your audio and artwork, then publish it to
-              your profile and the discovery feed.
+              Add your title, choose one of the eight official SoundioX genres,
+              upload your audio and artwork, then publish it to your profile and
+              the discovery feed.
             </p>
           </div>
 
@@ -430,7 +448,9 @@ export default function UploadPage() {
             <section className="min-w-0">
               <div className="space-y-6 rounded-[28px] border border-white/10 bg-white/5 p-5 sm:p-6">
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-white/80">Title</label>
+                  <label className="mb-2 block text-sm font-semibold text-white/80">
+                    Title
+                  </label>
                   <input
                     type="text"
                     placeholder="Midnight Radio"
@@ -459,24 +479,34 @@ export default function UploadPage() {
                   <p className="mt-2 text-xs leading-6 text-white/45">
                     Leave blank to auto-create an internal release code.
                   </p>
-                  {isrcError ? <p className="mt-1 text-sm text-rose-300">{isrcError}</p> : null}
+                  {isrcError ? (
+                    <p className="mt-1 text-sm text-rose-300">{isrcError}</p>
+                  ) : null}
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-white/80">Genre</label>
+                  <label className="mb-2 block text-sm font-semibold text-white/80">
+                    Genre
+                  </label>
                   <CustomSelect
                     value={genre}
                     onChange={setGenre}
-                    options={genreOptions}
+                    options={SOUNDIOX_GENRE_OPTIONS}
                     className="w-full"
                   />
+                  <p className="mt-2 text-xs leading-6 text-white/45">
+                    Only the 8 official SoundioX genres are allowed.
+                  </p>
                 </div>
 
                 <div className="grid gap-5 lg:grid-cols-2">
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <div className="mb-2 text-sm font-semibold text-white/85">Audio file</div>
+                    <div className="mb-2 text-sm font-semibold text-white/85">
+                      Audio file
+                    </div>
                     <p className="mb-4 text-xs leading-6 text-white/50">
-                      WAV, AIFF and FLAC files are compressed to MP3 automatically before upload.
+                      WAV, AIFF and FLAC files are compressed to MP3
+                      automatically before upload.
                     </p>
 
                     <input
@@ -523,9 +553,12 @@ export default function UploadPage() {
                   </div>
 
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <div className="mb-2 text-sm font-semibold text-white/85">Artwork image</div>
+                    <div className="mb-2 text-sm font-semibold text-white/85">
+                      Artwork image
+                    </div>
                     <p className="mb-4 text-xs leading-6 text-white/50">
-                      Add cover art to make the track feel complete in profiles and feeds.
+                      Add cover art to make the track feel complete in profiles
+                      and feeds.
                     </p>
 
                     <input
@@ -552,8 +585,8 @@ export default function UploadPage() {
 
                 <div className="flex flex-col gap-3 border-t border-white/10 pt-2 sm:flex-row sm:items-center sm:justify-between">
                   <p className="max-w-xl text-xs leading-6 text-white/45">
-                    Large lossless audio files can take extra time because SoundioX now compresses
-                    them before upload.
+                    Large lossless audio files can take extra time because
+                    SoundioX now compresses them before upload.
                   </p>
 
                   <button
@@ -579,7 +612,7 @@ export default function UploadPage() {
                       Add a clear track title
                     </div>
                     <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-                      Pick the closest genre
+                      Pick one of the 8 official genres
                     </div>
                     <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
                       Upload audio and cover art
@@ -588,10 +621,13 @@ export default function UploadPage() {
                 </div>
 
                 <div className="rounded-2xl border border-cyan-300/15 bg-cyan-400/10 p-4">
-                  <div className="text-sm font-semibold text-cyan-100">Ready for release</div>
+                  <div className="text-sm font-semibold text-cyan-100">
+                    Locked genre system
+                  </div>
                   <p className="mt-2 text-xs leading-6 text-cyan-50/80">
-                    SoundioX works best with polished artwork, a strong title, and a finished
-                    audio file you are ready to publish.
+                    SoundioX accepts only the official genre set:
+                    {" "}
+                    {SOUNDIOX_GENRES.join(", ")}.
                   </p>
                 </div>
               </div>

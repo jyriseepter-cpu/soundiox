@@ -14,6 +14,10 @@ import {
   type NormalizedArtistIdentity,
   type TrackWithResolvedArtist,
 } from "@/lib/artistIdentity";
+import {
+  SOUNDIOX_GENRES,
+  isSoundioXGenre,
+} from "@/lib/genres";
 import { normalizeAccessPlan } from "@/lib/lifetimeCampaign";
 
 type TrackRow = {
@@ -75,7 +79,7 @@ function pickArtist(t: DiscoverTrack) {
 }
 
 function pickGenre(t: DiscoverTrack) {
-  return normalizeGenre((t.genre ?? "-").toString());
+  return getOfficialGenreLabel(t.genre) || "-";
 }
 
 function getArtworkSrc(t: DiscoverTrack) {
@@ -86,22 +90,9 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function normalizeGenre(value: string | null | undefined) {
+function getOfficialGenreLabel(value: string | null | undefined) {
   const raw = (value ?? "").trim();
-  if (!raw) return "";
-
-  const lower = raw.toLowerCase();
-
-  if (
-    lower === "classical / cine" ||
-    lower === "classical/cine" ||
-    lower === "classical / cinematic" ||
-    lower === "classical/cinematic"
-  ) {
-    return "Classical / Cinematic";
-  }
-
-  return raw;
+  return isSoundioXGenre(raw) ? raw : "";
 }
 
 function normalizeRole(value: string | null | undefined) {
@@ -626,26 +617,22 @@ export default function DiscoverPage() {
     };
   }, [selectedPlaylistId]);
 
-  const genreOptions = useMemo(() => {
-    const set = new Set<string>();
-
-    for (const t of tracks) {
-      const g = normalizeGenre(t.genre);
-      if (g) set.add(g);
-    }
-
-    return ["All genres", ...Array.from(set).sort((a, b) => a.localeCompare(b))];
-  }, [tracks]);
+  const genreOptions = useMemo(
+    () => ["All genres", ...SOUNDIOX_GENRES],
+    []
+  );
 
   const displayedTracks = useMemo(() => {
     const q = search.trim().toLowerCase();
 
     return tracks.filter((t) => {
-      if (genre !== "All genres" && normalizeGenre(t.genre) !== genre) return false;
+      if (genre !== "All genres" && getOfficialGenreLabel(t.genre) !== genre) {
+        return false;
+      }
 
       if (!q) return true;
 
-      const hay = `${t.title ?? ""} ${t.artistDisplayName ?? ""} ${normalizeGenre(
+      const hay = `${t.title ?? ""} ${t.artistDisplayName ?? ""} ${getOfficialGenreLabel(
         t.genre
       )}`.toLowerCase();
 
@@ -924,9 +911,9 @@ export default function DiscoverPage() {
     }
   }
 
-  const customGenreOptions = genreOptions.map((g) => ({
-    value: g,
-    label: g,
+  const customGenreOptions = genreOptions.map((genreValue) => ({
+    value: genreValue,
+    label: genreValue,
   }));
 
   return (

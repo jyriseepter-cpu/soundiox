@@ -3,6 +3,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import CustomSelect from "@/app/components/CustomSelect";
+import { SOUNDIOX_GENRE_OPTIONS, isSoundioXGenre } from "@/lib/genres";
 
 type ProfileRow = {
   id: string;
@@ -52,6 +54,11 @@ function extractStoragePathFromPublicUrl(url: string | null) {
   } catch {
     return null;
   }
+}
+
+function getOfficialGenreLabel(value: string | null | undefined) {
+  const raw = (value ?? "").trim();
+  return isSoundioXGenre(raw) ? raw : "";
 }
 
 export default function MyArtistPage() {
@@ -163,6 +170,10 @@ export default function MyArtistPage() {
     setErr(null);
 
     try {
+      if (!isSoundioXGenre(upGenre.trim())) {
+        throw new Error("Please select one of the 8 official SoundioX genres.");
+      }
+
       const audioBucket = "tracks";
       const artBucket = "tracks";
 
@@ -415,10 +426,10 @@ export default function MyArtistPage() {
           </div>
 
           <div className="rounded-3xl bg-white/10 p-6 ring-1 ring-white/10 backdrop-blur">
-            <div className="text-white">
-              <div className="text-lg font-semibold">Upload new track</div>
-              <div className="text-sm text-white/70">Title + Genre are required.</div>
-            </div>
+      <div className="text-white">
+        <div className="text-lg font-semibold">Upload new track</div>
+        <div className="text-sm text-white/70">Title + Genre are required.</div>
+      </div>
 
             <div className="mt-5 space-y-4">
               <div>
@@ -433,12 +444,17 @@ export default function MyArtistPage() {
 
               <div>
                 <label className="text-xs text-white/60">Genre</label>
-                <input
-                  value={upGenre}
-                  onChange={(e) => setUpGenre(e.target.value)}
-                  className="mt-1 w-full rounded-xl bg-black/20 px-4 py-3 text-white ring-1 ring-white/10 outline-none"
-                  placeholder="e.g. Pop / Metal / Electronic..."
-                />
+                <div className="mt-1">
+                  <CustomSelect
+                    value={upGenre}
+                    onChange={setUpGenre}
+                    options={SOUNDIOX_GENRE_OPTIONS}
+                    className="w-full"
+                  />
+                </div>
+                <div className="mt-2 text-xs text-white/50">
+                  Choose one of the 8 official SoundioX genres.
+                </div>
               </div>
 
               <div>
@@ -525,7 +541,7 @@ export default function MyArtistPage() {
 
                           <div className="truncate text-xs text-white/70">
                             {(profile?.display_name ?? "Artist").toString()} •{" "}
-                            {(t.genre ?? "—").toString()}
+                            {getOfficialGenreLabel(t.genre) || "—"}
                           </div>
                         </div>
                       </div>
