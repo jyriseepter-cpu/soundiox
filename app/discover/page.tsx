@@ -953,7 +953,7 @@ export default function DiscoverPage() {
         />
       </div>
 
-      <div className="mb-4 rounded-2xl bg-white/8 p-4 ring-1 ring-white/10">
+      <div className="block lg:hidden mb-4 rounded-2xl bg-white/8 p-4 ring-1 ring-white/10">
         <div className="mb-3">
           <div className="text-base font-semibold text-white">Unlock more on SoundioX</div>
           <div className="text-sm text-white/60">

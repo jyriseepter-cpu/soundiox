@@ -190,16 +190,18 @@ export default function ArtistPanel(props: Props) {
       </div>
 
       {showUpgradeActions ? (
-        <div className="space-y-3">
-          {!user ? (
-            <div className="rounded-2xl bg-white/8 px-4 py-3 text-center text-sm font-semibold text-white/70 ring-1 ring-white/10">
-              Log in to create playlists, upgrade, and unlock more features.
-            </div>
-          ) : null}
-          <UpgradeButtons
-            onUpgradePlan={onUpgradePlan}
-            viewerHasPaidPlan={viewerHasPaidPlan}
-          />
+        <div className="hidden lg:block">
+          <div className="space-y-3">
+            {!user ? (
+              <div className="rounded-2xl bg-white/8 px-4 py-3 text-center text-sm font-semibold text-white/70 ring-1 ring-white/10">
+                Log in to create playlists, upgrade, and unlock more features.
+              </div>
+            ) : null}
+            <UpgradeButtons
+              onUpgradePlan={onUpgradePlan}
+              viewerHasPaidPlan={viewerHasPaidPlan}
+            />
+          </div>
         </div>
       ) : null}
 

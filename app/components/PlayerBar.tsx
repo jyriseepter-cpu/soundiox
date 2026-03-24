@@ -40,10 +40,10 @@ export default function PlayerBar() {
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/10 bg-[rgba(7,10,20,0.9)] shadow-[0_-8px_30px_rgba(0,0,0,0.6)] backdrop-blur-xl md:bottom-[5mm]">
       <div
-        className="mx-auto max-w-6xl px-4 py-3"
-        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}
+        className="mx-auto max-w-6xl px-4 py-2 md:py-3"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.5rem)" }}
       >
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-4">
           <div className="min-w-0 md:flex-1">
             <div className="truncate text-sm font-semibold text-white">
               {title}
@@ -54,7 +54,7 @@ export default function PlayerBar() {
           <div className="flex items-center justify-between gap-2 sm:justify-start">
             <button
               onClick={prev}
-              className="rounded-xl bg-white/10 px-3 py-2 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-white/15"
+              className="rounded-xl bg-white/10 px-3 py-1.5 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-white/15 md:px-3 md:py-2"
               aria-label="Previous"
               type="button"
             >
@@ -63,7 +63,7 @@ export default function PlayerBar() {
 
             <button
               onClick={toggle}
-              className="min-w-[84px] rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-white/15"
+              className="min-w-[78px] rounded-xl bg-white/10 px-4 py-1.5 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-white/15 md:min-w-[84px] md:py-2"
               aria-label={isPlaying ? "Pause" : "Play"}
               type="button"
             >
@@ -72,7 +72,7 @@ export default function PlayerBar() {
 
             <button
               onClick={next}
-              className="rounded-xl bg-white/10 px-3 py-2 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-white/15"
+              className="rounded-xl bg-white/10 px-3 py-1.5 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-white/15 md:px-3 md:py-2"
               aria-label="Next"
               type="button"
             >
@@ -80,7 +80,7 @@ export default function PlayerBar() {
             </button>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 md:gap-3">
             <div className="w-10 text-right text-[11px] text-white/70 md:w-12 md:text-xs">
               {formatTime(currentTime ?? 0)}
             </div>

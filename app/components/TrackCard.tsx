@@ -144,7 +144,7 @@ export default function TrackCard({
 
   return (
     <div
-      className={`flex flex-col gap-3 rounded-2xl px-4 py-3 ring-1 transition sm:flex-row sm:items-center sm:justify-between ${
+      className={`flex flex-col gap-3 overflow-hidden rounded-2xl px-4 py-3 ring-1 transition sm:flex-row sm:items-center sm:justify-between ${
         active
           ? "bg-gradient-to-r from-purple-500/15 to-fuchsia-500/15 ring-purple-400/40"
           : "bg-white/8 ring-white/10"
@@ -245,7 +245,7 @@ export default function TrackCard({
         <button
           type="button"
           onClick={handlePlayClick}
-          className="rounded-xl bg-gradient-to-r from-purple-500 to-fuchsia-500 px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 sm:px-4 sm:text-base"
+          className="ml-auto rounded-xl bg-gradient-to-r from-purple-500 to-fuchsia-500 px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 sm:ml-0 sm:px-4 sm:text-base"
         >
           {showPause ? "Pause" : "Play"}
         </button>
