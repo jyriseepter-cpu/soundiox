@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabaseClient";
 import ArtistPanel from "@/app/components/ArtistPanel";
 import TrackCard from "@/app/components/TrackCard";
 import CustomSelect from "@/app/components/CustomSelect";
+import UpgradeButtons from "@/app/components/UpgradeButtons";
 import { usePlayer } from "@/app/components/PlayerContext";
 import {
   createArtistIdentityMap,
@@ -917,7 +918,7 @@ export default function DiscoverPage() {
   }));
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 pb-28 pt-6">
+    <div className="mx-auto w-full max-w-6xl overflow-x-hidden px-4 pb-40 pt-4 sm:pt-6">
       {toast ? (
         <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-black/80 px-4 py-2 text-sm font-semibold text-white shadow-lg backdrop-blur">
           {toast}
@@ -942,24 +943,42 @@ export default function DiscoverPage() {
         </div>
       ) : null}
 
-      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div className="mb-4">
         <input
-          className="h-10 w-full rounded-xl bg-white/10 px-4 text-white placeholder-white/50 ring-1 ring-white/10 outline-none focus:ring-white/20 md:max-w-[420px]"
+          className="h-10 w-full rounded-xl bg-white/10 px-4 text-white placeholder-white/50 ring-1 ring-white/10 outline-none focus:ring-white/20"
           placeholder="Search tracks, artists, genres..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           autoComplete="off"
         />
+      </div>
 
-        <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center">
+      <div className="mb-4 rounded-2xl bg-white/8 p-4 ring-1 ring-white/10">
+        <div className="mb-3">
+          <div className="text-base font-semibold text-white">Unlock more on SoundioX</div>
+          <div className="text-sm text-white/60">
+            Upgrade or join the artist campaign without scrolling through the full track list.
+          </div>
+        </div>
+
+        <UpgradeButtons
+          onUpgradePlan={handleUpgradePlan}
+          viewerHasPaidPlan={viewerHasPaidPlan}
+        />
+      </div>
+
+      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="hidden lg:block" />
+
+        <div className="flex w-full flex-col gap-3 lg:w-auto lg:flex-row lg:items-center">
           <CustomSelect
             value={genre}
             onChange={setGenre}
             options={customGenreOptions}
-            className="w-full md:w-[220px]"
+            className="w-full lg:w-[220px]"
           />
 
-          <div className="relative w-full md:w-[240px]">
+          <div className="relative w-full lg:w-[240px]">
             <button
               type="button"
               onClick={() => setPlaylistMenuOpen((prev) => !prev)}
@@ -1010,7 +1029,7 @@ export default function DiscoverPage() {
                       )}
                     </div>
 
-                    <div className="flex gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row">
                       <input
                         value={newPlaylistName}
                         onChange={(e) => setNewPlaylistName(e.target.value)}
@@ -1064,7 +1083,7 @@ export default function DiscoverPage() {
               {selectedPlaylistTracks.map((track) => (
                 <div
                   key={track.id}
-                  className="flex items-center justify-between rounded-xl bg-white/8 px-3 py-2"
+                  className="flex flex-col gap-3 rounded-xl bg-white/8 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="min-w-0">
                     <div className="truncate text-sm font-bold text-white">
@@ -1081,7 +1100,7 @@ export default function DiscoverPage() {
                       setSelectedTrack(track);
                       void playTrack(track as any, selectedPlaylistTracks as any);
                     }}
-                    className="rounded-xl bg-gradient-to-r from-purple-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90"
+                    className="self-start rounded-xl bg-gradient-to-r from-purple-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 sm:self-auto"
                   >
                     Play
                   </button>

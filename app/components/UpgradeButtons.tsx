@@ -1,18 +1,55 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-type Tier = "premium_monthly";
+type UpgradeTier = "premium" | "artist";
 
 type ProfileRow = {
-  lifetime_access: boolean | null;
+  plan: string | null;
+  is_founding: boolean | null;
+  role: string | null;
 };
 
-export default function UpgradeButtons() {
-  const [loading, setLoading] = useState<Tier | null>(null);
+type Props = {
+  onUpgradePlan?: (plan: UpgradeTier) => Promise<void>;
+  viewerHasPaidPlan?: boolean;
+  className?: string;
+};
+
+const ARTIST_CAMPAIGN_DEADLINE_ISO = "2026-03-29T23:59:59Z";
+
+function isArtistCampaignActive() {
+  return Date.now() <= new Date(ARTIST_CAMPAIGN_DEADLINE_ISO).getTime();
+}
+
+function normalizeRole(value: string | null | undefined) {
+  return value === "artist" ? "artist" : "listener";
+}
+
+function normalizePlan(value: string | null | undefined) {
+  if (value === "premium") return "premium";
+  if (value === "artist") return "artist";
+  if (value === "lifetime") return "lifetime";
+  return "free";
+}
+
+export default function UpgradeButtons({
+  onUpgradePlan,
+  viewerHasPaidPlan = false,
+  className = "",
+}: Props) {
+  const router = useRouter();
+
+  const [loading, setLoading] = useState<UpgradeTier | null>(null);
   const [checkingProfile, setCheckingProfile] = useState(true);
-  const [lifetimeAccess, setLifetimeAccess] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [viewerRole, setViewerRole] = useState<"listener" | "artist">("listener");
+  const [viewerPlan, setViewerPlan] = useState<"free" | "premium" | "artist" | "lifetime">(
+    "free"
+  );
+  const [viewerIsFounding, setViewerIsFounding] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -30,14 +67,17 @@ export default function UpgradeButtons() {
 
         if (!user?.id) {
           if (mounted) {
-            setLifetimeAccess(false);
+            setUserId(null);
+            setViewerRole("listener");
+            setViewerPlan("free");
+            setViewerIsFounding(false);
           }
           return;
         }
 
         const { data, error } = await supabase
           .from("profiles")
-          .select("lifetime_access")
+          .select("plan, is_founding, role")
           .eq("id", user.id)
           .maybeSingle<ProfileRow>();
 
@@ -46,12 +86,18 @@ export default function UpgradeButtons() {
         }
 
         if (mounted) {
-          setLifetimeAccess(Boolean(data?.lifetime_access));
+          setUserId(user.id);
+          setViewerRole(normalizeRole(data?.role));
+          setViewerPlan(normalizePlan(data?.plan));
+          setViewerIsFounding(Boolean(data?.is_founding));
         }
       } catch (error) {
         console.error("Failed to load profile for upgrade buttons:", error);
         if (mounted) {
-          setLifetimeAccess(false);
+          setUserId(null);
+          setViewerRole("listener");
+          setViewerPlan("free");
+          setViewerIsFounding(false);
         }
       } finally {
         if (mounted) {
@@ -60,106 +106,124 @@ export default function UpgradeButtons() {
       }
     }
 
-    loadProfile();
+    void loadProfile();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(() => {
+      void loadProfile();
+    });
 
     return () => {
       mounted = false;
+      subscription.unsubscribe();
     };
   }, []);
 
-  async function startCheckout(tier: Tier) {
+  async function handlePremiumClick() {
+    if (!userId) {
+      router.push("/login");
+      return;
+    }
+
+    if (!onUpgradePlan) {
+      router.push("/account");
+      return;
+    }
+
     try {
-      setLoading(tier);
-
-      const {
-        data: { session },
-        error: sessionError,
-      } = await supabase.auth.getSession();
-
-      if (sessionError) {
-        throw sessionError;
-      }
-
-      if (!session?.access_token) {
-        throw new Error("Please log in to start checkout.");
-      }
-
-      const res = await fetch("/api/stripe/subscribe", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          tier,
-        }),
-      });
-
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        alert(
-          data?.message ||
-            data?.error ||
-            JSON.stringify(data) ||
-            "Stripe checkout failed"
-        );
-        return;
-      }
-
-      if (data?.url) {
-        window.location.href = data.url;
-        return;
-      }
-
-      alert(
-        data?.message ||
-          data?.error ||
-          JSON.stringify(data) ||
-          "Checkout URL missing"
-      );
-    } catch (e: any) {
-      alert(e?.message || "Checkout failed");
+      setLoading("premium");
+      await onUpgradePlan("premium");
     } finally {
       setLoading(null);
     }
   }
 
+  async function handleArtistClick() {
+    const campaignActive = isArtistCampaignActive();
+
+    if (!userId) {
+      router.push("/login");
+      return;
+    }
+
+    if (campaignActive) {
+      router.push("/account");
+      return;
+    }
+
+    if (!onUpgradePlan) {
+      router.push("/account");
+      return;
+    }
+
+    try {
+      setLoading("artist");
+      await onUpgradePlan("artist");
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  const campaignActive = isArtistCampaignActive();
+  const hasArtistAccess =
+    viewerIsFounding || viewerRole === "artist" || viewerPlan === "artist";
+  const hasPaidAccess = viewerHasPaidPlan || viewerPlan === "premium" || hasArtistAccess;
+  const statusActiveLabel = hasArtistAccess
+    ? "Artist access active"
+    : hasPaidAccess
+      ? "Premium access active"
+      : null;
+
   const baseBtn =
-    "h-10 rounded-xl px-4 text-sm font-semibold text-white transition disabled:opacity-60";
+    "flex h-11 w-full items-center justify-center rounded-xl px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60";
   const premiumBtn =
-    "bg-gradient-to-r from-yellow-300 via-amber-400 to-yellow-500 hover:opacity-95";
+    "bg-yellow-400 text-black hover:bg-yellow-300";
+  const artistBtn = campaignActive
+    ? "bg-gradient-to-r from-rose-500 to-orange-500 text-white hover:opacity-95"
+    : "bg-gradient-to-r from-cyan-400 to-fuchsia-500 text-white hover:opacity-95";
   const statusBox =
-    "w-full rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-200";
-
-  if (checkingProfile) {
-    return (
-      <div className="space-y-3">
-        <div className={statusBox}>Checking access...</div>
-      </div>
-    );
-  }
-
-  if (lifetimeAccess) {
-    return (
-      <div className="space-y-3">
-        <div className={statusBox}>Lifetime Access Active</div>
-      </div>
-    );
-  }
+    "w-full rounded-xl border border-white/10 bg-white/8 px-4 py-3 text-sm font-semibold text-white/80";
 
   return (
-    <div className="space-y-3">
+    <div className={`space-y-3 ${className}`.trim()}>
+      {checkingProfile ? (
+        <div className={statusBox}>Checking access...</div>
+      ) : statusActiveLabel ? (
+        <div className={statusBox}>{statusActiveLabel}</div>
+      ) : null}
+
       <button
         type="button"
-        onClick={() => startCheckout("premium_monthly")}
+        onClick={handlePremiumClick}
         disabled={loading !== null}
-        className={`${baseBtn} ${premiumBtn} w-full`}
+        className={`${baseBtn} ${premiumBtn}`}
       >
-        {loading === "premium_monthly"
-          ? "Loading..."
-          : "30 days free, then EUR 5.99/month"}
+        {loading === "premium" ? "Opening..." : "Upgrade to Premium"}
       </button>
+
+      <div className="text-center text-xs font-semibold text-white/55">
+        Premium unlocks monthly likes. Playlists stay available for logged-in users.
+      </div>
+
+      <button
+        type="button"
+        onClick={handleArtistClick}
+        disabled={loading !== null}
+        className={`${baseBtn} ${artistBtn}`}
+      >
+        {loading === "artist"
+          ? "Opening..."
+          : campaignActive
+            ? "Launch Campaign: Free Forever"
+            : "Become Artist"}
+      </button>
+
+      <div className="text-center text-xs font-semibold text-white/55">
+        {campaignActive
+          ? "Campaign active through March 29, 2026. Free forever during launch."
+          : "Artist unlocks uploads and artist access."}
+      </div>
     </div>
   );
 }

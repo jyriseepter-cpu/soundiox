@@ -38,22 +38,20 @@ export default function PlayerBar() {
   };
 
   return (
-    <div className="fixed left-0 right-0 z-50 bottom-0 md:bottom-[5mm] border-t border-white/10 bg-[rgba(7,10,20,0.9)] shadow-[0_-8px_30px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+    <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/10 bg-[rgba(7,10,20,0.9)] shadow-[0_-8px_30px_rgba(0,0,0,0.6)] backdrop-blur-xl md:bottom-[5mm]">
       <div
         className="mx-auto max-w-6xl px-4 py-3"
         style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}
       >
-        <div className="flex items-center gap-3 md:gap-4">
-          {/* LEFT: track meta */}
-          <div className="min-w-0 flex-1">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
+          <div className="min-w-0 md:flex-1">
             <div className="truncate text-sm font-semibold text-white">
               {title}
             </div>
             <div className="truncate text-xs text-white/70">{artist}</div>
           </div>
 
-          {/* CONTROLS */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-2 sm:justify-start">
             <button
               onClick={prev}
               className="rounded-xl bg-white/10 px-3 py-2 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-white/15"
@@ -65,7 +63,7 @@ export default function PlayerBar() {
 
             <button
               onClick={toggle}
-              className="rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-white/15"
+              className="min-w-[84px] rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-white/15"
               aria-label={isPlaying ? "Pause" : "Play"}
               type="button"
             >
@@ -82,14 +80,13 @@ export default function PlayerBar() {
             </button>
           </div>
 
-          {/* TIME + SEEK */}
-          <div className="hidden items-center gap-3 md:flex">
-            <div className="w-12 text-right text-xs text-white/70">
+          <div className="flex items-center gap-3">
+            <div className="w-10 text-right text-[11px] text-white/70 md:w-12 md:text-xs">
               {formatTime(currentTime ?? 0)}
             </div>
 
             <div
-              className="relative h-2 w-64 cursor-pointer rounded-full bg-white/10"
+              className="relative h-2 flex-1 cursor-pointer rounded-full bg-white/10 md:w-64 md:flex-none"
               onClick={onSeekBarClick}
               role="slider"
               aria-label="Seek"
@@ -104,7 +101,7 @@ export default function PlayerBar() {
               />
             </div>
 
-            <div className="w-12 text-xs text-white/70">
+            <div className="w-10 text-[11px] text-white/70 md:w-12 md:text-xs">
               {formatTime(duration ?? 0)}
             </div>
           </div>

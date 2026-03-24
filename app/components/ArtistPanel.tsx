@@ -4,12 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import type { Track } from "@/app/components/PlayerContext";
+import UpgradeButtons from "@/app/components/UpgradeButtons";
 import {
   normalizeArtistIdentity,
   type ArtistIdentityProfile,
 } from "@/lib/artistIdentity";
-
-const ARTIST_CAMPAIGN_DEADLINE_ISO = "2026-03-23T23:59:59Z";
 
 type FeaturedArtist = ReturnType<typeof normalizeArtistIdentity>;
 
@@ -44,10 +43,6 @@ const playBtnClass =
   "h-9 rounded-xl px-4 text-sm font-bold text-white ring-1 ring-white/15 " +
   "bg-gradient-to-r from-teal-500/70 to-fuchsia-500/70 hover:from-teal-500/85 hover:to-fuchsia-500/85";
 
-function isArtistCampaignActive() {
-  return Date.now() <= new Date(ARTIST_CAMPAIGN_DEADLINE_ISO).getTime();
-}
-
 export default function ArtistPanel(props: Props) {
   const {
     artistName,
@@ -69,7 +64,6 @@ export default function ArtistPanel(props: Props) {
   } = props;
 
   const [user, setUser] = useState<any>(null);
-  const [upgradeLoading, setUpgradeLoading] = useState<"premium" | "artist" | null>(null);
 
   const [featuredArtists, setFeaturedArtists] = useState<FeaturedArtist[]>([]);
   const [featuredLoading, setFeaturedLoading] = useState(true);
@@ -139,16 +133,7 @@ export default function ArtistPanel(props: Props) {
     };
   }, []);
 
-  const topTracks = useMemo(() => tracks.slice(0, 8), [tracks]);
-
-  async function handleUpgrade(plan: "premium" | "artist") {
-    try {
-      setUpgradeLoading(plan);
-      await onUpgradePlan(plan);
-    } finally {
-      setUpgradeLoading(null);
-    }
-  }
+  const topTracks = useMemo(() => tracks.slice(0, 6), [tracks]);
 
   function handleFollowClick() {
     if (!artistProfileId || followLoading) return;
@@ -156,28 +141,26 @@ export default function ArtistPanel(props: Props) {
   }
 
   const showUpgradeActions = user ? !viewerHasPaidPlan : true;
-  const artistCampaignActive = isArtistCampaignActive();
-  const artistCampaignHref = user ? "/account" : "/login";
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
+      <div className="flex items-start gap-3">
         <img
           src={artworkSrc || "/logo-new.png"}
           alt="art"
-          className="h-12 w-12 rounded-xl object-cover ring-1 ring-white/10"
+          className="h-12 w-12 flex-none rounded-xl object-cover ring-1 ring-white/10"
         />
-        <div>
+        <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             {artistSlug ? (
               <Link
                 href={`/artists/${encodeURIComponent(artistSlug)}`}
-                className="text-base font-bold text-white transition hover:text-cyan-300"
+                className="truncate text-base font-bold text-white transition hover:text-cyan-300"
               >
                 {artistName}
               </Link>
             ) : (
-              <div className="text-base font-bold text-white">{artistName}</div>
+              <div className="truncate text-base font-bold text-white">{artistName}</div>
             )}
 
             <span className="text-xs font-semibold text-white/45">
@@ -206,6 +189,20 @@ export default function ArtistPanel(props: Props) {
         </div>
       </div>
 
+      {showUpgradeActions ? (
+        <div className="space-y-3">
+          {!user ? (
+            <div className="rounded-2xl bg-white/8 px-4 py-3 text-center text-sm font-semibold text-white/70 ring-1 ring-white/10">
+              Log in to create playlists, upgrade, and unlock more features.
+            </div>
+          ) : null}
+          <UpgradeButtons
+            onUpgradePlan={onUpgradePlan}
+            viewerHasPaidPlan={viewerHasPaidPlan}
+          />
+        </div>
+      ) : null}
+
       <div className={glassBox}>
         <div className="mb-2 text-xs font-bold tracking-widest text-white/60">
           TRACKS
@@ -219,13 +216,13 @@ export default function ArtistPanel(props: Props) {
             return (
               <div
                 key={String((t as any).id)}
-                className="flex items-center justify-between rounded-xl bg-white/8 px-3 py-2"
+                className="flex items-center justify-between gap-3 rounded-xl bg-white/8 px-3 py-2"
               >
-                <div className="truncate text-sm font-bold text-white/95">
+                <div className="min-w-0 truncate text-sm font-bold text-white/95">
                   {((t as any).title ?? (t as any).name ?? "Untitled").toString()}
                 </div>
 
-                <button onClick={() => onPlayClick(t)} className={playBtnClass}>
+                <button onClick={() => onPlayClick(t)} className={`${playBtnClass} shrink-0`}>
                   {isCurrent && isPlaying ? "Playing" : "Play"}
                 </button>
               </div>
@@ -233,49 +230,6 @@ export default function ArtistPanel(props: Props) {
           })}
         </div>
       </div>
-
-      {showUpgradeActions ? (
-        <div className="space-y-3">
-          {!user ? (
-            <div className="rounded-2xl bg-white/8 px-4 py-3 text-center text-sm font-semibold text-white/70 ring-1 ring-white/10">
-              Log in to create playlists, upgrade, and unlock more features.
-            </div>
-          ) : null}
-
-          <button
-            onClick={() => handleUpgrade("premium")}
-            disabled={upgradeLoading !== null || !user}
-            className="h-10 w-full rounded-xl bg-yellow-400 font-bold text-black hover:bg-yellow-300 disabled:opacity-60"
-          >
-            {upgradeLoading === "premium" ? "Opening..." : "Upgrade to Premium"}
-          </button>
-
-          <div className="text-center text-xs font-semibold text-white/55">
-            Premium unlocks monthly likes. Playlists are available to every logged-in user.
-          </div>
-
-          {artistCampaignActive ? (
-            <Link
-              href={artistCampaignHref}
-              className="flex h-10 w-full items-center justify-center rounded-xl bg-gradient-to-r from-rose-500 to-orange-500 font-bold text-white hover:opacity-95"
-            >
-              Launch Campaign: Free Forever
-            </Link>
-          ) : (
-            <button
-              onClick={() => handleUpgrade("artist")}
-              disabled={upgradeLoading !== null || !user}
-              className="h-10 w-full rounded-xl bg-gradient-to-r from-cyan-400 to-fuchsia-500 font-bold text-white hover:opacity-95 disabled:opacity-60"
-            >
-              {upgradeLoading === "artist" ? "Opening..." : "Become Artist"}
-            </button>
-          )}
-
-          <div className="text-center text-xs font-semibold text-white/55">
-            Artist unlocks uploads and artist access.
-          </div>
-        </div>
-      ) : null}
 
       <div className={glassBox}>
         <div className="mb-2 flex items-center justify-between">

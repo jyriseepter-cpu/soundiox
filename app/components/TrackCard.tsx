@@ -144,7 +144,7 @@ export default function TrackCard({
 
   return (
     <div
-      className={`flex items-center justify-between rounded-2xl px-4 py-3 ring-1 transition ${
+      className={`flex flex-col gap-3 rounded-2xl px-4 py-3 ring-1 transition sm:flex-row sm:items-center sm:justify-between ${
         active
           ? "bg-gradient-to-r from-purple-500/15 to-fuchsia-500/15 ring-purple-400/40"
           : "bg-white/8 ring-white/10"
@@ -172,7 +172,9 @@ export default function TrackCard({
         </div>
 
         <div className="min-w-0">
-          <div className="truncate text-lg font-bold text-white">{getTitle(track)}</div>
+          <div className="truncate text-base font-bold text-white sm:text-lg">
+            {getTitle(track)}
+          </div>
 
           <div className="truncate text-sm font-medium text-white/80">
             {artistSlug ? (
@@ -191,7 +193,7 @@ export default function TrackCard({
         </div>
       </div>
 
-      <div className="ml-4 flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 sm:ml-4 sm:justify-end">
         {showFollowButton ? (
           <button
             type="button"
@@ -235,7 +237,7 @@ export default function TrackCard({
         <button
           type="button"
           onClick={handleAddClick}
-          className="rounded-xl bg-gradient-to-r from-cyan-300 to-cyan-400 px-4 py-2 text-base font-semibold text-white transition hover:opacity-90"
+          className="rounded-xl bg-gradient-to-r from-cyan-300 to-cyan-400 px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 sm:px-4 sm:text-base"
         >
           Add
         </button>
@@ -243,7 +245,7 @@ export default function TrackCard({
         <button
           type="button"
           onClick={handlePlayClick}
-          className="rounded-xl bg-gradient-to-r from-purple-500 to-fuchsia-500 px-4 py-2 text-base font-semibold text-white transition hover:opacity-90"
+          className="rounded-xl bg-gradient-to-r from-purple-500 to-fuchsia-500 px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 sm:px-4 sm:text-base"
         >
           {showPause ? "Pause" : "Play"}
         </button>
