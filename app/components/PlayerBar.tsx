@@ -40,21 +40,23 @@ export default function PlayerBar() {
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/10 bg-[rgba(7,10,20,0.9)] shadow-[0_-8px_30px_rgba(0,0,0,0.6)] backdrop-blur-xl lg:bottom-[5mm]">
       <div
-        className="mx-auto max-w-6xl px-4 py-2 lg:py-3"
-        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.35rem)" }}
+        className="mx-auto max-w-6xl px-4 py-1 lg:py-3"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.2rem)" }}
       >
-        <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-2 lg:gap-4">
+        <div className="flex flex-col gap-0.5 md:flex-row md:items-center md:gap-2 lg:gap-4">
           <div className="min-w-0 md:flex-1">
-            <div className="truncate text-xs font-semibold text-white lg:text-sm">
+            <div className="truncate text-[11px] font-semibold leading-tight text-white lg:text-sm">
               {title}
             </div>
-            <div className="truncate text-[10px] text-white/70 lg:text-xs">{artist}</div>
+            <div className="truncate text-[9px] leading-tight text-white/70 lg:text-xs">
+              {artist}
+            </div>
           </div>
 
           <div className="flex items-center justify-between gap-1 sm:justify-start lg:gap-2">
             <button
               onClick={prev}
-              className="rounded-lg bg-white/10 px-2 py-1 text-xs font-semibold text-white ring-1 ring-white/10 hover:bg-white/15 lg:rounded-xl lg:px-3 lg:py-2 lg:text-sm"
+              className="rounded-md bg-white/10 px-1.5 py-0.5 text-[11px] font-semibold text-white ring-1 ring-white/10 hover:bg-white/15 lg:rounded-xl lg:px-3 lg:py-2 lg:text-sm"
               aria-label="Previous"
               type="button"
             >
@@ -63,7 +65,7 @@ export default function PlayerBar() {
 
             <button
               onClick={toggle}
-              className="min-w-[58px] rounded-lg bg-white/10 px-2.5 py-1 text-xs font-semibold text-white ring-1 ring-white/10 hover:bg-white/15 lg:min-w-[84px] lg:rounded-xl lg:px-4 lg:py-2 lg:text-sm"
+              className="min-w-[50px] rounded-md bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white ring-1 ring-white/10 hover:bg-white/15 lg:min-w-[84px] lg:rounded-xl lg:px-4 lg:py-2 lg:text-sm"
               aria-label={isPlaying ? "Pause" : "Play"}
               type="button"
             >
@@ -72,7 +74,7 @@ export default function PlayerBar() {
 
             <button
               onClick={next}
-              className="rounded-lg bg-white/10 px-2 py-1 text-xs font-semibold text-white ring-1 ring-white/10 hover:bg-white/15 lg:rounded-xl lg:px-3 lg:py-2 lg:text-sm"
+              className="rounded-md bg-white/10 px-1.5 py-0.5 text-[11px] font-semibold text-white ring-1 ring-white/10 hover:bg-white/15 lg:rounded-xl lg:px-3 lg:py-2 lg:text-sm"
               aria-label="Next"
               type="button"
             >
@@ -81,27 +83,27 @@ export default function PlayerBar() {
           </div>
 
           <div className="flex items-center gap-1 lg:gap-3">
-            <div className="w-8 text-right text-[9px] text-white/70 lg:w-12 lg:text-xs">
+            <div className="w-7 text-right text-[8px] leading-none text-white/70 lg:w-12 lg:text-xs">
               {formatTime(currentTime ?? 0)}
             </div>
 
             <div
-              className="relative h-1.5 flex-1 cursor-pointer rounded-full bg-white/10 lg:h-2 lg:w-64 lg:flex-none"
+              className="relative h-1 flex-1 cursor-pointer rounded-full bg-white/10 lg:h-2 lg:w-64 lg:flex-none"
               onClick={onSeekBarClick}
               role="slider"
               aria-label="Seek"
             >
               <div
-                className="absolute left-0 top-0 h-1.5 rounded-full bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500 lg:h-2"
+                className="absolute left-0 top-0 h-1 rounded-full bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500 lg:h-2"
                 style={{ width: `${progress}%` }}
               />
               <div
-                className="absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-white lg:h-3 lg:w-3"
-                style={{ left: `calc(${progress}% - 5px)` }}
+                className="absolute top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-white lg:h-3 lg:w-3"
+                style={{ left: `calc(${progress}% - 4px)` }}
               />
             </div>
 
-            <div className="w-8 text-[9px] text-white/70 lg:w-12 lg:text-xs">
+            <div className="w-7 text-[8px] leading-none text-white/70 lg:w-12 lg:text-xs">
               {formatTime(duration ?? 0)}
             </div>
           </div>
