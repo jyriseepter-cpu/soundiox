@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { isLifetimeCampaignActive } from "@/lib/lifetimeCampaign";
 
 type UpgradeTier = "premium" | "artist";
 
@@ -17,12 +18,6 @@ type Props = {
   viewerHasPaidPlan?: boolean;
   className?: string;
 };
-
-const ARTIST_CAMPAIGN_DEADLINE_ISO = "2026-03-29T23:59:59Z";
-
-function isArtistCampaignActive() {
-  return Date.now() <= new Date(ARTIST_CAMPAIGN_DEADLINE_ISO).getTime();
-}
 
 function normalizeRole(value: string | null | undefined) {
   return value === "artist" ? "artist" : "listener";
@@ -140,7 +135,7 @@ export default function UpgradeButtons({
   }
 
   async function handleArtistClick() {
-    const campaignActive = isArtistCampaignActive();
+    const campaignActive = isLifetimeCampaignActive();
 
     if (!userId) {
       router.push("/login");
@@ -165,7 +160,7 @@ export default function UpgradeButtons({
     }
   }
 
-  const campaignActive = isArtistCampaignActive();
+  const campaignActive = isLifetimeCampaignActive();
   const hasArtistAccess =
     viewerIsFounding || viewerRole === "artist" || viewerPlan === "artist";
   const hasPaidAccess = viewerHasPaidPlan || viewerPlan === "premium" || hasArtistAccess;

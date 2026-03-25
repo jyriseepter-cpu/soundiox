@@ -6,6 +6,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import {
+  applyLaunchCampaignArtistAccess,
+  needsLaunchCampaignArtistBackfill,
   shouldGrantLifetimeCampaignPlan,
 } from "@/lib/lifetimeCampaign";
 
@@ -16,6 +18,9 @@ type ProfileRow = {
   display_name: string | null;
   plan?: string | null;
   is_founding?: boolean | null;
+  lifetime_access?: boolean | null;
+  lifetime_granted_at?: string | null;
+  lifetime_source?: string | null;
 };
 
 function slugify(value: string) {
@@ -56,7 +61,9 @@ export default function Header() {
 
         const { data: profileRow } = await supabase
           .from("profiles")
-          .select("id, role, slug, display_name, plan, is_founding")
+          .select(
+            "id, role, slug, display_name, plan, is_founding, lifetime_access, lifetime_granted_at, lifetime_source"
+          )
           .eq("id", user.id)
           .maybeSingle<ProfileRow>();
 
@@ -96,6 +103,18 @@ export default function Header() {
           } else {
             effectiveProfile = insertedProfile;
           }
+        } else if (needsLaunchCampaignArtistBackfill(effectiveProfile)) {
+          const backfilledProfile = await applyLaunchCampaignArtistAccess({
+            supabase,
+            userId: user.id,
+            profile: {
+              email: user.email ?? null,
+              display_name: effectiveProfile.display_name,
+              slug: effectiveProfile.slug,
+            },
+          });
+
+          effectiveProfile = backfilledProfile as ProfileRow;
         } else if (
           shouldGrantLifetimeCampaignPlan({
             plan: effectiveProfile.plan,

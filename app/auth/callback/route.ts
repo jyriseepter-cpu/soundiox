@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  applyLaunchCampaignArtistAccess,
+  isLifetimeCampaignActive,
+} from "@/lib/lifetimeCampaign";
 
 export const runtime = "nodejs";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-const LIFETIME_DEADLINE_ISO = "2026-03-22T23:59:59Z";
 
 export async function GET(request: Request) {
   try {
@@ -48,26 +50,18 @@ export async function GET(request: Request) {
       },
     });
 
-    const now = new Date();
-    const deadline = new Date(LIFETIME_DEADLINE_ISO);
-    const grantLifetime = now.getTime() <= deadline.getTime();
-
-    const profilePatch: Record<string, unknown> = {
-      id: user.id,
-    };
-
-    if (grantLifetime) {
-      profilePatch.lifetime_access = true;
-      profilePatch.lifetime_granted_at = now.toISOString();
-      profilePatch.lifetime_source = "launch_campaign";
-    }
-
-    const { error: profileError } = await admin
-      .from("profiles")
-      .upsert(profilePatch, { onConflict: "id" });
-
-    if (profileError) {
-      return NextResponse.redirect(`${origin}/login?error=profile_update_failed`);
+    if (isLifetimeCampaignActive()) {
+      try {
+        await applyLaunchCampaignArtistAccess({
+          supabase: admin,
+          userId: user.id,
+          profile: {
+            email: user.email || null,
+          },
+        });
+      } catch {
+        return NextResponse.redirect(`${origin}/login?error=profile_update_failed`);
+      }
     }
 
     return NextResponse.redirect(`${origin}/discover`);

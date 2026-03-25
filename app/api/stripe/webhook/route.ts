@@ -1,5 +1,9 @@
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
+import {
+  applyLaunchCampaignArtistAccess,
+  hasLaunchCampaignLifetimeAccess,
+} from "@/lib/lifetimeCampaign";
 
 export const runtime = "nodejs";
 
@@ -17,6 +21,9 @@ type ProfileAccessRow = {
   id: string;
   role: string | null;
   is_founding: boolean | null;
+  lifetime_access: boolean | null;
+  lifetime_granted_at?: string | null;
+  lifetime_source?: string | null;
 };
 
 function readEnv(...names: string[]) {
@@ -151,7 +158,7 @@ async function getProfileByStripeCustomerId(
 ) {
   const { data, error } = await context.supabase
     .from("profiles")
-    .select("id, role, is_founding")
+    .select("id, role, is_founding, lifetime_access, lifetime_granted_at, lifetime_source")
     .eq("stripe_customer_id", stripeCustomerId)
     .maybeSingle();
 
@@ -168,7 +175,7 @@ async function getProfileByUserId(
 ): Promise<ProfileAccessRow | null> {
   const { data, error } = await context.supabase
     .from("profiles")
-    .select("id, role, is_founding")
+    .select("id, role, is_founding, lifetime_access, lifetime_granted_at, lifetime_source")
     .eq("id", userId)
     .maybeSingle();
 
@@ -246,6 +253,22 @@ async function applyFreeDowngrade(params: {
       context,
       userId,
       plan: "free",
+      stripeCustomerId,
+      stripeSubscriptionId: null,
+    });
+
+    return;
+  }
+
+  if (hasLaunchCampaignLifetimeAccess(profile)) {
+    await applyLaunchCampaignArtistAccess({
+      supabase: context.supabase,
+      userId,
+    });
+
+    await updateProfile({
+      context,
+      userId,
       stripeCustomerId,
       stripeSubscriptionId: null,
     });

@@ -10,7 +10,6 @@ import {
   type NormalizedArtistIdentity,
   type TrackWithResolvedArtist,
 } from "@/lib/artistIdentity";
-import { LIFETIME_CAMPAIGN_END } from "@/lib/lifetimeCampaign";
 
 type TrackRow = {
   id: string;
@@ -35,10 +34,29 @@ function pickArtist(t: HomeTrack) {
   return t.artistDisplayName.toString();
 }
 
+function formatEndOfWeekUtc(now = new Date()) {
+  const endOfWeek = new Date(now);
+  const currentDay = now.getUTCDay();
+  const daysUntilSunday = (7 - currentDay) % 7;
+
+  endOfWeek.setUTCDate(now.getUTCDate() + daysUntilSunday);
+  endOfWeek.setUTCHours(23, 59, 59, 0);
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "UTC",
+  }).format(endOfWeek);
+}
+
 export default function HomeClient() {
   const [tracks, setTracks] = useState<HomeTrack[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const campaignDeadlineLabel = formatEndOfWeekUtc();
 
   useEffect(() => {
     async function loadTracks() {
@@ -118,7 +136,7 @@ export default function HomeClient() {
               </div>
               <div className="mt-2 text-sm leading-6 text-white/70">
                 Create your SoundioX account before{" "}
-                <span className="font-semibold text-white">{LIFETIME_CAMPAIGN_END}</span> and
+                <span className="font-semibold text-white">{campaignDeadlineLabel}</span> and
                 unlock lifetime access without Stripe during launch week.
               </div>
             </div>

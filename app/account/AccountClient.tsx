@@ -8,6 +8,9 @@ import { supabase } from "@/lib/supabaseClient";
 import TrackCard from "@/app/components/TrackCard";
 import { usePlayer } from "@/app/components/PlayerContext";
 import {
+  applyLaunchCampaignArtistAccess,
+  isLifetimeCampaignActive,
+  needsLaunchCampaignArtistBackfill,
   normalizeAccessPlan,
   shouldGrantLifetimeCampaignPlan,
 } from "@/lib/lifetimeCampaign";
@@ -25,6 +28,9 @@ type ProfileRow = {
   plan: string | null;
   is_founding: boolean | null;
   created_at?: string | null;
+  lifetime_access?: boolean | null;
+  lifetime_granted_at?: string | null;
+  lifetime_source?: string | null;
 };
 
 type FollowRow = {
@@ -67,8 +73,6 @@ type TrackRow = {
   plays_this_month?: number | null;
   user_id?: string | null;
 };
-
-const ARTIST_CAMPAIGN_DEADLINE_ISO = "2026-03-23T23:59:59Z";
 
 function slugify(value: string) {
   return value
@@ -136,10 +140,6 @@ function deleteInviteCookie() {
 function normalizeProfileRole(value: string | null | undefined) {
   if (value === "artist") return "artist";
   return "listener";
-}
-
-function isArtistCampaignActive() {
-  return Date.now() <= new Date(ARTIST_CAMPAIGN_DEADLINE_ISO).getTime();
 }
 
 function getOfficialGenreLabel(value: string | null | undefined) {
@@ -220,7 +220,7 @@ export default function AccountClient() {
     );
   }, [playlists, selectedPlaylistId]);
 
-  const artistCampaignActive = isArtistCampaignActive();
+  const artistCampaignActive = isLifetimeCampaignActive();
   const isArtistAccount = isFounding || role === "artist" || plan === "artist";
   const canUpload = isArtistAccount;
   const canCreatePlaylists = Boolean(userId);
@@ -238,7 +238,7 @@ export default function AccountClient() {
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select(
-        "id, email, role, display_name, bio, country, avatar_url, slug, plan, is_founding, created_at"
+        "id, email, role, display_name, bio, country, avatar_url, slug, plan, is_founding, created_at, lifetime_access, lifetime_granted_at, lifetime_source"
       )
       .eq("id", user.id)
       .maybeSingle<ProfileRow>();
@@ -270,7 +270,29 @@ export default function AccountClient() {
     setPlan(effectivePlan);
     setIsFounding(nextFounding);
 
-    if (profile && shouldGrantLifetime) {
+    if (profile && needsLaunchCampaignArtistBackfill(profile)) {
+      const upgradedProfile = await applyLaunchCampaignArtistAccess({
+        supabase,
+        userId: user.id,
+        profile: {
+          email: user.email ?? null,
+          display_name: nextDisplayName,
+          bio: profile.bio,
+          country: profile.country,
+          avatar_url: profile.avatar_url,
+          slug: nextSlug,
+        },
+      });
+
+      setRole("artist");
+      setDisplayName((upgradedProfile.display_name as string | null) || nextDisplayName);
+      setBio((upgradedProfile.bio as string | null) || "");
+      setCountry((upgradedProfile.country as string | null) || "");
+      setSlug((upgradedProfile.slug as string | null) || nextSlug);
+      setAvatarUrl((upgradedProfile.avatar_url as string | null) || "");
+      setPlan("lifetime");
+      setIsFounding(false);
+    } else if (profile && shouldGrantLifetime) {
       const { error: upgradeError } = await supabase
         .from("profiles")
         .update({ plan: "lifetime" })
@@ -999,28 +1021,37 @@ export default function AccountClient() {
       const nextSlug = slugify(slug || displayName || "artist");
       const nextDisplayName = (displayName || "AI Artist").trim() || "AI Artist";
 
-      const payload = {
-        id: userId,
-        email: email || null,
-        role: "artist",
-        display_name: nextDisplayName,
-        bio: bio.trim() || null,
-        country: country.trim() || null,
-        avatar_url: avatarUrl || null,
-        slug: nextSlug || null,
-        plan: "lifetime",
-      };
+      const updatedProfile = await applyLaunchCampaignArtistAccess({
+        supabase,
+        userId,
+        profile: {
+          email: email || null,
+          display_name: nextDisplayName,
+          bio: bio.trim() || null,
+          country: country.trim() || null,
+          avatar_url: avatarUrl || null,
+          slug: nextSlug || null,
+        },
+      });
 
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .upsert(payload, { onConflict: "id" });
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      if (updateError) throw updateError;
+      if (user) {
+        await loadProfile(user);
+      }
 
       setRole("artist");
       setPlan("lifetime");
-      setSlug(nextSlug);
-      setDisplayName(nextDisplayName);
+      setSlug((updatedProfile.slug as string | null) || nextSlug);
+      setDisplayName(
+        (updatedProfile.display_name as string | null) || nextDisplayName
+      );
+      setBio((updatedProfile.bio as string | null) || bio);
+      setCountry((updatedProfile.country as string | null) || country);
+      setAvatarUrl((updatedProfile.avatar_url as string | null) || avatarUrl);
+      router.refresh();
       setMessage("Artist access activated for free forever.");
     } catch (err: any) {
       setError(err?.message || "Campaign activation failed.");
