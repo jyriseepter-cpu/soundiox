@@ -542,7 +542,7 @@ export default function ArtistPage() {
                         disabled={donateLoading !== null}
                         className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-white hover:bg-white/10 disabled:opacity-60"
                       >
-                        <span>Support with €3</span>
+                        <span>Support with EUR3</span>
                         <span>{donateLoading === 300 ? "…" : ""}</span>
                       </button>
 
@@ -551,7 +551,7 @@ export default function ArtistPage() {
                         disabled={donateLoading !== null}
                         className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-white hover:bg-white/10 disabled:opacity-60"
                       >
-                        <span>Support with €5</span>
+                        <span>Support with EUR5</span>
                         <span>{donateLoading === 500 ? "…" : ""}</span>
                       </button>
 
@@ -560,7 +560,7 @@ export default function ArtistPage() {
                         disabled={donateLoading !== null}
                         className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-white hover:bg-white/10 disabled:opacity-60"
                       >
-                        <span>Support with €10</span>
+                        <span>Support with EUR10</span>
                         <span>{donateLoading === 1000 ? "…" : ""}</span>
                       </button>
 
@@ -569,7 +569,7 @@ export default function ArtistPage() {
                         disabled={donateLoading !== null}
                         className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-white hover:bg-white/10 disabled:opacity-60"
                       >
-                        <span>Support with €20</span>
+                        <span>Support with EUR20</span>
                         <span>{donateLoading === 2000 ? "…" : ""}</span>
                       </button>
                     </div>
