@@ -17,6 +17,7 @@ type TrackRow = {
   id: string;
   title: string | null;
   genre: string | null;
+  isrc?: string | null;
   audio_url: string | null;
   artwork_url: string | null;
   created_at?: string | null;
@@ -84,6 +85,7 @@ export default function MyArtistPage() {
   const [editTitle, setEditTitle] = useState("");
   const [savingTrackId, setSavingTrackId] = useState<string | null>(null);
   const [deletingTrackId, setDeletingTrackId] = useState<string | null>(null);
+  const [copiedIsrcTrackId, setCopiedIsrcTrackId] = useState<string | null>(null);
 
   const canUpload = useMemo(() => {
     return !!upTitle.trim() && !!upGenre.trim() && !!upAudio && !!userId;
@@ -124,7 +126,7 @@ export default function MyArtistPage() {
 
     const { data: t, error: tErr } = await supabase
       .from("tracks")
-      .select("id,title,genre,audio_url,artwork_url,created_at,is_published")
+      .select("id,title,genre,isrc,audio_url,artwork_url,created_at,is_published")
       .eq("user_id", uid)
       .order("created_at", { ascending: false });
 
@@ -280,6 +282,18 @@ export default function MyArtistPage() {
     setEditingTrackId(null);
     setEditTitle("");
     setSavingTrackId(null);
+  }
+
+  async function copyIsrc(trackId: string, isrc: string) {
+    try {
+      await navigator.clipboard.writeText(isrc);
+      setCopiedIsrcTrackId(trackId);
+      window.setTimeout(() => {
+        setCopiedIsrcTrackId((current) => (current === trackId ? null : current));
+      }, 1800);
+    } catch (error) {
+      console.error("isrc copy failed:", error);
+    }
   }
 
   async function deleteTrack(track: TrackRow) {
@@ -543,6 +557,21 @@ export default function MyArtistPage() {
                             {(profile?.display_name ?? "Artist").toString()} •{" "}
                             {getOfficialGenreLabel(t.genre) || "—"}
                           </div>
+                          {t.isrc ? (
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/55">
+                              <span className="font-medium text-white/75">ISRC: {t.isrc}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!t.isrc) return;
+                                  void copyIsrc(t.id, t.isrc);
+                                }}
+                                className="rounded-lg bg-white/10 px-2 py-1 text-[11px] font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15"
+                              >
+                                {copiedIsrcTrackId === t.id ? "Copied" : "Copy ISRC"}
+                              </button>
+                            </div>
+                          ) : null}
                         </div>
                       </div>
 

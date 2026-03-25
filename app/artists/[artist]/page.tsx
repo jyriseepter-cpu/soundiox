@@ -24,6 +24,7 @@ type TrackRow = {
   title: string;
   artist: string | null;
   genre: string | null;
+  isrc: string | null;
   audio_url: string;
   artwork_url: string | null;
   created_at: string | null;
@@ -90,6 +91,7 @@ export default function ArtistPage() {
   const [isFollowing, setIsFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  const [copiedIsrcTrackId, setCopiedIsrcTrackId] = useState<string | null>(null);
 
   const playsMonth = useMemo(
     () => tracks.reduce((sum, t) => sum + (t.plays_this_month || 0), 0),
@@ -169,6 +171,18 @@ export default function ArtistPage() {
     } finally {
       setDonateLoading(null);
       setShowDonateMenu(false);
+    }
+  }
+
+  async function handleCopyIsrc(trackId: string, isrc: string) {
+    try {
+      await navigator.clipboard.writeText(isrc);
+      setCopiedIsrcTrackId(trackId);
+      window.setTimeout(() => {
+        setCopiedIsrcTrackId((current) => (current === trackId ? null : current));
+      }, 1800);
+    } catch (error) {
+      console.error("isrc copy failed:", error);
     }
   }
 
@@ -311,7 +325,7 @@ export default function ArtistPage() {
       const { data: trackData, error: trackErr } = await supabase
         .from("tracks")
         .select(
-          "id,title,artist,genre,audio_url,artwork_url,created_at,plays_all_time,plays_this_month,user_id"
+          "id,title,artist,genre,isrc,audio_url,artwork_url,created_at,plays_all_time,plays_this_month,user_id"
         )
         .eq("user_id", a.id)
         .eq("is_published", true)
@@ -578,6 +592,88 @@ export default function ArtistPage() {
         </div>
       </div>
 
+      <div className="mt-6 rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
+        <div className="mb-3 flex items-center justify-between">
+          <div className="text-sm font-semibold text-white">Tracks</div>
+          {loading ? (
+            <div className="text-xs text-white/60">Loading…</div>
+          ) : (
+            <div className="text-xs text-white/60">
+              {tracks.length} track{tracks.length === 1 ? "" : "s"}
+            </div>
+          )}
+        </div>
+
+        {tracks.length === 0 ? (
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-6 text-sm text-white/70">
+            No tracks found for this artist.
+          </div>
+        ) : (
+          <div className="divide-y divide-white/10 overflow-hidden rounded-2xl border border-white/10">
+            {tracks.map((t) => (
+              <div
+                key={t.id}
+                className="flex items-center justify-between gap-3 bg-black/20 p-3"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="relative h-12 w-12 flex-none overflow-hidden rounded-xl border border-white/10 bg-white/5">
+                    {t.artwork_url ? (
+                      <Image
+                        src={t.artwork_url}
+                        alt={t.title}
+                        fill
+                        className="object-cover"
+                        sizes="48px"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-white/40">
+                        ♪
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold text-white">{t.title}</div>
+                    <div className="truncate text-xs text-white/60">
+                      {t.genre || "—"} • {formatDateShort(t.created_at)}
+                    </div>
+                    {t.isrc ? (
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/55">
+                        <span className="font-medium text-white/75">ISRC: {t.isrc}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!t.isrc) return;
+                            void handleCopyIsrc(t.id, t.isrc);
+                          }}
+                          className="rounded-lg bg-white/10 px-2 py-1 text-[11px] font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15"
+                        >
+                          {copiedIsrcTrackId === t.id ? "Copied" : "Copy ISRC"}
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="flex flex-none items-center gap-2">
+                  <div className="hidden text-right text-xs text-white/60 md:block">
+                    <div>{t.plays_this_month || 0} plays (month)</div>
+                    <div>{t.plays_all_time || 0} plays (all)</div>
+                  </div>
+
+                  <button
+                    onClick={() => playTrack(t as any, tracks as any)}
+                    className="h-9 rounded-xl bg-white/10 px-4 text-sm font-medium text-white hover:bg-white/15"
+                  >
+                    Play
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="mt-6">
         <div className="mb-3 text-xs font-semibold tracking-[0.18em] text-white/55">
           CAREER STATS
@@ -641,73 +737,6 @@ export default function ArtistPage() {
             <div className="mt-1 text-xs text-white/60">{likesMonth} this month</div>
           </div>
         </div>
-      </div>
-
-      <div className="mt-6 rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="text-sm font-semibold text-white">Tracks</div>
-          {loading ? (
-            <div className="text-xs text-white/60">Loading…</div>
-          ) : (
-            <div className="text-xs text-white/60">
-              {tracks.length} track{tracks.length === 1 ? "" : "s"}
-            </div>
-          )}
-        </div>
-
-        {tracks.length === 0 ? (
-          <div className="rounded-2xl border border-white/10 bg-black/20 p-6 text-sm text-white/70">
-            No tracks found for this artist.
-          </div>
-        ) : (
-          <div className="divide-y divide-white/10 overflow-hidden rounded-2xl border border-white/10">
-            {tracks.map((t) => (
-              <div
-                key={t.id}
-                className="flex items-center justify-between gap-3 bg-black/20 p-3"
-              >
-                <div className="flex min-w-0 items-center gap-3">
-                  <div className="relative h-12 w-12 flex-none overflow-hidden rounded-xl border border-white/10 bg-white/5">
-                    {t.artwork_url ? (
-                      <Image
-                        src={t.artwork_url}
-                        alt={t.title}
-                        fill
-                        className="object-cover"
-                        sizes="48px"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-white/40">
-                        ♪
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold text-white">{t.title}</div>
-                    <div className="truncate text-xs text-white/60">
-                      {t.genre || "—"} • {formatDateShort(t.created_at)}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex flex-none items-center gap-2">
-                  <div className="hidden text-right text-xs text-white/60 md:block">
-                    <div>{t.plays_this_month || 0} plays (month)</div>
-                    <div>{t.plays_all_time || 0} plays (all)</div>
-                  </div>
-
-                  <button
-                    onClick={() => playTrack(t as any, tracks as any)}
-                    className="h-9 rounded-xl bg-white/10 px-4 text-sm font-medium text-white hover:bg-white/15"
-                  >
-                    Play
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       <div className="mt-6 rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
