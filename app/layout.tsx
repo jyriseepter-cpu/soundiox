@@ -19,6 +19,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <head>
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#7c3aed" />
+        <link rel="apple-touch-icon" href="/logo-new.png" />
+      </head>
       <body className="bg-gradient-to-b from-black via-neutral-900 to-black text-white">
         <PlayerProvider>
           <div className="min-h-screen flex flex-col">
