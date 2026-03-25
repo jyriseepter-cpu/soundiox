@@ -1358,122 +1358,6 @@ export default function AccountClient() {
 <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
   <div className="mb-4 flex items-center justify-between gap-3">
     <div>
-      <h2 className="text-lg font-semibold text-white">My Playlists</h2>
-      <p className="mt-1 text-sm text-white/60">
-        Open your saved playlists and play them from your account.
-      </p>
-    </div>
-
-    <div className="text-sm font-medium text-white/55">{playlists.length} total</div>
-  </div>
-
-  {loadingPlaylists ? (
-    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
-      Loading playlists...
-    </div>
-  ) : playlists.length === 0 ? (
-    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
-      You do not have playlists yet. Create one on Discover.
-    </div>
-  ) : (
-    <>
-      <div className="mb-4 flex flex-wrap gap-2">
-        {playlists.map((playlist) => {
-          const active = playlist.id === selectedPlaylistId;
-
-          return (
-            <button
-              key={playlist.id}
-              type="button"
-              onClick={() => setSelectedPlaylistId(playlist.id)}
-              className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                active
-                  ? "bg-cyan-400 text-white"
-                  : "border border-white/10 bg-white/8 text-white/80 hover:bg-white/12"
-              }`}
-            >
-              {playlist.name}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
-        <div className="text-sm text-white/45">Selected playlist</div>
-        <div className="mt-1 text-base font-semibold text-white">
-          {selectedPlaylist?.name || "—"}
-        </div>
-        <div className="mt-1 text-sm text-white/55">
-          {selectedPlaylistTracks.length} track
-          {selectedPlaylistTracks.length === 1 ? "" : "s"}
-        </div>
-      </div>
-
-      {loadingSelectedPlaylistTracks ? (
-        <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
-          Loading playlist tracks...
-        </div>
-      ) : selectedPlaylistTracks.length === 0 ? (
-        <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
-          This playlist is empty.
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {selectedPlaylistTracks.map((track) => (
-            <TrackCard
-              key={track.id}
-              track={track as any}
-              allTracks={selectedPlaylistTracks as any}
-              onPlay={() => {
-                void playTrack(track as any, selectedPlaylistTracks as any);
-              }}
-            />
-          ))}
-        </div>
-      )}
-    </>
-  )}
-</section>
-
-<section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-  <div className="mb-4 flex items-center justify-between gap-3">
-    <div>
-      <h2 className="text-lg font-semibold text-white">My Likes</h2>
-      <p className="mt-1 text-sm text-white/60">
-        Tracks you have supported with likes.
-      </p>
-    </div>
-
-    <div className="text-sm font-medium text-white/55">{likedTracks.length} total</div>
-  </div>
-
-  {loadingLikedTracks ? (
-    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
-      Loading liked tracks...
-    </div>
-  ) : likedTracks.length === 0 ? (
-    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
-      You have not liked any tracks yet.
-    </div>
-  ) : (
-    <div className="space-y-2">
-      {likedTracks.map((track) => (
-        <TrackCard
-          key={track.id}
-          track={track as any}
-          allTracks={likedTracks as any}
-          onPlay={() => {
-            void playTrack(track as any, likedTracks as any);
-          }}
-        />
-      ))}
-    </div>
-  )}
-</section>
-
-<section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-  <div className="mb-4 flex items-center justify-between gap-3">
-    <div>
       <h2 className="text-lg font-semibold text-white">My Tracks</h2>
       <p className="mt-1 text-sm text-white/60">
         Manage your uploaded tracks.
@@ -1587,6 +1471,122 @@ export default function AccountClient() {
           </div>
         );
       })}
+    </div>
+  )}
+</section>
+
+<section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+  <div className="mb-4 flex items-center justify-between gap-3">
+    <div>
+      <h2 className="text-lg font-semibold text-white">My Playlists</h2>
+      <p className="mt-1 text-sm text-white/60">
+        Open your saved playlists and play them from your account.
+      </p>
+    </div>
+
+    <div className="text-sm font-medium text-white/55">{playlists.length} total</div>
+  </div>
+
+  {loadingPlaylists ? (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+      Loading playlists...
+    </div>
+  ) : playlists.length === 0 ? (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+      You do not have playlists yet. Create one on Discover.
+    </div>
+  ) : (
+    <>
+      <div className="mb-4 flex flex-wrap gap-2">
+        {playlists.map((playlist) => {
+          const active = playlist.id === selectedPlaylistId;
+
+          return (
+            <button
+              key={playlist.id}
+              type="button"
+              onClick={() => setSelectedPlaylistId(playlist.id)}
+              className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                active
+                  ? "bg-cyan-400 text-white"
+                  : "border border-white/10 bg-white/8 text-white/80 hover:bg-white/12"
+              }`}
+            >
+              {playlist.name}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+        <div className="text-sm text-white/45">Selected playlist</div>
+        <div className="mt-1 text-base font-semibold text-white">
+          {selectedPlaylist?.name || "—"}
+        </div>
+        <div className="mt-1 text-sm text-white/55">
+          {selectedPlaylistTracks.length} track
+          {selectedPlaylistTracks.length === 1 ? "" : "s"}
+        </div>
+      </div>
+
+      {loadingSelectedPlaylistTracks ? (
+        <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+          Loading playlist tracks...
+        </div>
+      ) : selectedPlaylistTracks.length === 0 ? (
+        <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+          This playlist is empty.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {selectedPlaylistTracks.map((track) => (
+            <TrackCard
+              key={track.id}
+              track={track as any}
+              allTracks={selectedPlaylistTracks as any}
+              onPlay={() => {
+                void playTrack(track as any, selectedPlaylistTracks as any);
+              }}
+            />
+          ))}
+        </div>
+      )}
+    </>
+  )}
+</section>
+
+<section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+  <div className="mb-4 flex items-center justify-between gap-3">
+    <div>
+      <h2 className="text-lg font-semibold text-white">My Likes</h2>
+      <p className="mt-1 text-sm text-white/60">
+        Tracks you have supported with likes.
+      </p>
+    </div>
+
+    <div className="text-sm font-medium text-white/55">{likedTracks.length} total</div>
+  </div>
+
+  {loadingLikedTracks ? (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+      Loading liked tracks...
+    </div>
+  ) : likedTracks.length === 0 ? (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+      You have not liked any tracks yet.
+    </div>
+  ) : (
+    <div className="space-y-2">
+      {likedTracks.map((track) => (
+        <TrackCard
+          key={track.id}
+          track={track as any}
+          allTracks={likedTracks as any}
+          onPlay={() => {
+            void playTrack(track as any, likedTracks as any);
+          }}
+        />
+      ))}
     </div>
   )}
 </section>
