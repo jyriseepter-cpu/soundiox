@@ -193,26 +193,24 @@ export default function Header() {
     }`;
 
   return (
-    <header className="relative z-40 px-4 py-4 sm:px-6 sm:py-6 lg:px-6 lg:py-8">
+    <header className="relative z-40 px-6 py-8">
       <div className="mx-auto max-w-6xl">
-        <div className="flex flex-col gap-4 rounded-[10px] border border-white/10 bg-[linear-gradient(90deg,rgba(34,211,238,0.18),rgba(99,102,241,0.14),rgba(217,70,239,0.18))] px-4 py-4 shadow-[0_18px_60px_rgba(0,0,0,0.28)] backdrop-blur-xl landscape:flex-row landscape:items-center landscape:justify-between landscape:gap-3 landscape:py-3 sm:px-5 sm:py-5 lg:flex-row lg:items-center lg:justify-between lg:px-6">
-          <div className="flex items-center justify-between gap-3 landscape:min-w-0 lg:min-w-0">
-            <Link href="/" className="flex min-w-0 items-center gap-3">
-              <Image
-                src="/logo-new.png"
-                alt="SoundioX"
-                width={52}
-                height={52}
-                className="h-11 w-11 object-contain landscape:h-10 landscape:w-10 sm:h-12 sm:w-12"
-                priority
-              />
-              <span className="whitespace-nowrap text-lg font-bold tracking-wide text-white landscape:text-base sm:text-xl">
-                SoundioX
-              </span>
-            </Link>
-          </div>
+        <div className="flex items-center justify-between rounded-[10px] border border-white/10 bg-[linear-gradient(90deg,rgba(34,211,238,0.18),rgba(99,102,241,0.14),rgba(217,70,239,0.18))] px-6 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.28)] backdrop-blur-xl">
+          <Link href="/" className="flex items-center gap-3">
+            <Image
+              src="/logo-new.png"
+              alt="SoundioX"
+              width={52}
+              height={52}
+              className="h-13 w-13 object-contain"
+              priority
+            />
+            <span className="text-xl font-bold tracking-wide text-white">
+              SoundioX
+            </span>
+          </Link>
 
-          <nav className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm landscape:flex-nowrap landscape:justify-center landscape:gap-4 landscape:text-[13px] sm:text-base lg:flex-1 lg:justify-center lg:gap-10">
+          <nav className="flex items-center gap-10">
             <Link href="/discover" className={linkClass("/discover")}>
               Discover
             </Link>
@@ -235,15 +233,15 @@ export default function Header() {
             </Link>
           </nav>
 
-          <div className="flex flex-wrap items-center gap-2 landscape:flex-nowrap landscape:justify-end landscape:gap-2 sm:gap-3 lg:justify-end">
+          <div className="flex items-center gap-3">
             {loading ? (
-              <div className="text-sm text-white/60 landscape:text-xs">Loading...</div>
+              <div className="text-sm text-white/60">Loading...</div>
             ) : profile ? (
               <>
                 <button
                   type="button"
                   onClick={handleAccount}
-                  className="rounded-lg bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-4 py-2 text-sm font-bold text-white transition hover:opacity-90 landscape:px-3 landscape:py-1.5 landscape:text-xs sm:px-5"
+                  className="rounded-lg bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-5 py-2 text-sm font-bold text-white transition hover:opacity-90"
                 >
                   {profile.display_name?.trim() || "Account"}
                 </button>
@@ -252,7 +250,7 @@ export default function Header() {
                   type="button"
                   onClick={handleLogout}
                   disabled={loggingOut}
-                  className="rounded-lg border border-white/15 bg-black/20 px-4 py-2 text-sm font-bold text-white/90 transition hover:bg-white/10 disabled:opacity-60 landscape:px-3 landscape:py-1.5 landscape:text-xs"
+                  className="rounded-lg border border-white/15 bg-black/20 px-4 py-2 text-sm font-bold text-white/90 transition hover:bg-white/10 disabled:opacity-60"
                 >
                   {loggingOut ? "Logging out..." : "Log out"}
                 </button>
@@ -260,7 +258,7 @@ export default function Header() {
             ) : (
               <Link
                 href="/login"
-                className="rounded-lg bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-4 py-2 text-sm font-bold text-white transition hover:opacity-90 landscape:px-3 landscape:py-1.5 landscape:text-xs sm:px-5"
+                className="rounded-lg bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-5 py-2 text-sm font-bold text-white transition hover:opacity-90"
               >
                 Get Started
               </Link>
