@@ -39,6 +39,7 @@ export default function Header() {
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -210,7 +211,7 @@ export default function Header() {
             </span>
           </Link>
 
-          <nav className="flex items-center gap-10">
+          <nav className="hidden md:flex items-center gap-10">
             <Link href="/discover" className={linkClass("/discover")}>
               Discover
             </Link>
@@ -233,7 +234,15 @@ export default function Header() {
             </Link>
           </nav>
 
-          <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen((prev) => !prev)}
+            className="md:hidden rounded-lg border border-white/15 bg-black/20 px-3 py-2 text-sm font-bold text-white/90"
+          >
+            {mobileMenuOpen ? "Close" : "Menu"}
+          </button>
+
+          <div className="hidden md:flex items-center gap-3">
             {loading ? (
               <div className="text-sm text-white/60">Loading...</div>
             ) : profile ? (
@@ -265,6 +274,63 @@ export default function Header() {
             )}
           </div>
         </div>
+
+        {mobileMenuOpen ? (
+          <div className="md:hidden border-t border-white/10 px-6 py-4">
+            <div className="flex flex-col gap-3">
+              <Link href="/discover" className={linkClass("/discover")}>
+                Discover
+              </Link>
+
+              <Link href="/pulse" className={linkClass("/pulse")}>
+                <span className="relative inline-flex items-center gap-2">
+                  <span
+                    className={`relative inline-flex h-2.5 w-2.5 rounded-full ${
+                      pathname === "/pulse" ? "bg-cyan-300" : "bg-cyan-400/90"
+                    }`}
+                  >
+                    <span className="absolute inset-0 rounded-full bg-cyan-300/80 animate-ping" />
+                  </span>
+                  Pulse
+                </span>
+              </Link>
+
+              <Link href="/artists" className={linkClass("/artists")}>
+                Artists
+              </Link>
+
+              {loading ? (
+                <div className="text-sm text-white/60">Loading...</div>
+              ) : profile ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleAccount}
+                    className="rounded-lg bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-5 py-2 text-sm font-bold text-white transition hover:opacity-90"
+                  >
+                    {profile.display_name?.trim() || "Account"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    disabled={loggingOut}
+                    className="rounded-lg border border-white/15 bg-black/20 px-4 py-2 text-sm font-bold text-white/90 transition hover:bg-white/10 disabled:opacity-60"
+                  >
+                    {loggingOut ? "Logging out..." : "Log out"}
+                  </button>
+                </>
+              ) : (
+                <Link
+                  href="/login"
+                  className="rounded-lg bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-5 py-2 text-sm font-bold text-white transition hover:opacity-90"
+                >
+                  Get Started
+                </Link>
+              )}
+            </div>
+          </div>
+        ) : null}
       </div>
     </header>
   );
