@@ -106,6 +106,18 @@ function monthStartDateString() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
+// 🔥 LISA SEE SIIA
+function getTrackScore(t: DiscoverTrack) {
+  const created = t.created_at ? new Date(t.created_at).getTime() : 0;
+  const ageHours = created ? (Date.now() - created) / 36e5 : 999;
+
+  return (
+    (t.plays_all_time ?? 0) * 0.7 +
+    (t.plays_this_month ?? 0) * 0.5 +
+    Math.max(0, 24 - ageHours) * 2
+  );
+}
+
 export default function DiscoverPage() {
   const router = useRouter();
   const { playTrack, currentTrack, isPlaying } = usePlayer();
@@ -624,22 +636,24 @@ export default function DiscoverPage() {
   );
 
   const displayedTracks = useMemo(() => {
-    const q = search.trim().toLowerCase();
+  const q = search.trim().toLowerCase();
 
-    return tracks.filter((t) => {
-      if (genre !== "All genres" && getOfficialGenreLabel(t.genre) !== genre) {
-        return false;
-      }
+  const filtered = tracks.filter((t) => {
+    if (genre !== "All genres" && getOfficialGenreLabel(t.genre) !== genre) {
+      return false;
+    }
 
-      if (!q) return true;
+    if (!q) return true;
 
-      const hay = `${t.title ?? ""} ${t.artistDisplayName ?? ""} ${getOfficialGenreLabel(
-        t.genre
-      )}`.toLowerCase();
+    const hay = `${t.title ?? ""} ${t.artistDisplayName ?? ""} ${getOfficialGenreLabel(
+      t.genre
+    )}`.toLowerCase();
 
-      return hay.includes(q);
-    });
-  }, [tracks, search, genre]);
+    return hay.includes(q);
+  });
+
+  return filtered.sort((a, b) => getTrackScore(b) - getTrackScore(a));
+}, [tracks, search, genre]);
 
   const selectedPlaylist = useMemo(
     () => playlists.find((p) => p.id === selectedPlaylistId) ?? null,
