@@ -5,13 +5,16 @@ import { supabase } from "@/lib/supabaseClient";
 import TrackCard from "@/app/components/TrackCard";
 import { usePlayer } from "@/app/components/PlayerContext";
 
-type Track = {
+type TrackRow = {
   id: string;
   title: string | null;
   artist: string | null;
   genre: string | null;
-  artwork_url: string | null;
   audio_url: string | null;
+  artwork_url: string | null;
+  created_at: string | null;
+  plays_all_time: number | null;
+  likes_this_month?: number | null;
 };
 
 type Playlist = {
@@ -19,157 +22,265 @@ type Playlist = {
   name: string;
 };
 
+type PlaylistTrackRow = {
+  playlist_id: string;
+  track_id: string;
+  tracks: TrackRow | TrackRow[] | null;
+};
+
+type LikeTrackRow = {
+  track_id: string;
+  tracks: TrackRow | TrackRow[] | null;
+};
+
 export default function ProfilePage() {
   const { playTrack } = usePlayer();
 
-  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
-  const [likedTracks, setLikedTracks] = useState<Track[]>([]);
-  const [playlistTracks, setPlaylistTracks] = useState<Track[]>([]);
-  const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState<string>("");
+  const [playlistTracks, setPlaylistTracks] = useState<TrackRow[]>([]);
+  const [likedTracks, setLikedTracks] = useState<TrackRow[]>([]);
 
-  // 🔹 load user
   useEffect(() => {
-    const load = async () => {
-      const { data } = await supabase.auth.getUser();
-      setUser(data.user ?? null);
-    };
-    load();
-  }, []);
+    let active = true;
 
-  // 🔹 load playlists
-  useEffect(() => {
-    if (!user?.id) return;
+    async function loadProfileData() {
+      try {
+        setLoading(true);
 
-    const load = async () => {
-      const { data } = await supabase
-        .from("playlists")
-        .select("id,name")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
-      setPlaylists(data ?? []);
-    };
+        if (!user) {
+          if (!active) return;
+          setPlaylists([]);
+          setSelectedPlaylistId("");
+          setPlaylistTracks([]);
+          setLikedTracks([]);
+          return;
+        }
 
-    load();
-  }, [user]);
+        const { data: playlistsData, error: playlistsError } = await supabase
+          .from("playlists")
+          .select("id,name")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false });
 
-  // 🔹 load liked tracks
-  useEffect(() => {
-    if (!user?.id) return;
+        if (playlistsError) throw playlistsError;
 
-    const load = async () => {
-      const { data } = await supabase
-        .from("likes")
-        .select("track_id")
-        .eq("user_id", user.id);
+        const safePlaylists = (playlistsData ?? []) as Playlist[];
 
-      const ids = (data ?? []).map((l) => l.track_id);
+        if (!active) return;
 
-      if (ids.length === 0) {
+        setPlaylists(safePlaylists);
+
+        const nextSelectedPlaylistId = safePlaylists[0]?.id ?? "";
+        setSelectedPlaylistId(nextSelectedPlaylistId);
+
+        if (nextSelectedPlaylistId) {
+          const { data: playlistTracksData, error: playlistTracksError } = await supabase
+            .from("playlist_tracks")
+            .select(
+              `
+              playlist_id,
+              track_id,
+              tracks (
+                id,
+                title,
+                artist,
+                genre,
+                audio_url,
+                artwork_url,
+                created_at,
+                plays_all_time
+              )
+            `
+            )
+            .eq("playlist_id", nextSelectedPlaylistId);
+
+          if (playlistTracksError) throw playlistTracksError;
+
+          const safePlaylistTracks = ((playlistTracksData ?? []) as PlaylistTrackRow[])
+            .map((row) =>
+              Array.isArray(row.tracks) ? row.tracks[0] ?? null : row.tracks ?? null
+            )
+            .filter((track): track is TrackRow => Boolean(track));
+
+          if (!active) return;
+          setPlaylistTracks(safePlaylistTracks);
+        } else {
+          setPlaylistTracks([]);
+        }
+
+        const monthStart = `${new Date().getFullYear()}-${String(
+          new Date().getMonth() + 1
+        ).padStart(2, "0")}-01`;
+
+        const { data: likedTracksData, error: likedTracksError } = await supabase
+          .from("likes")
+          .select(
+            `
+            track_id,
+            tracks (
+              id,
+              title,
+              artist,
+              genre,
+              audio_url,
+              artwork_url,
+              created_at,
+              plays_all_time
+            )
+          `
+          )
+          .eq("user_id", user.id)
+          .eq("month", monthStart);
+
+        if (likedTracksError) throw likedTracksError;
+
+        const safeLikedTracks = ((likedTracksData ?? []) as LikeTrackRow[])
+          .map((row) => (Array.isArray(row.tracks) ? row.tracks[0] ?? null : row.tracks ?? null))
+          .filter((track): track is TrackRow => Boolean(track));
+
+        if (!active) return;
+        setLikedTracks(safeLikedTracks);
+      } catch (error) {
+        console.error("Profile page load error:", error);
+        if (!active) return;
+        setPlaylists([]);
+        setSelectedPlaylistId("");
+        setPlaylistTracks([]);
         setLikedTracks([]);
-        return;
+      } finally {
+        if (active) setLoading(false);
       }
-
-      const { data: tracks } = await supabase
-        .from("tracks")
-        .select("*")
-        .in("id", ids);
-
-      setLikedTracks(tracks ?? []);
-    };
-
-    load();
-  }, [user]);
-
-  // 🔹 load playlist tracks
-  useEffect(() => {
-    if (!selectedPlaylistId) {
-      setPlaylistTracks([]);
-      return;
     }
 
-    const load = async () => {
-      const { data } = await supabase
-        .from("playlist_tracks")
-        .select("track_id")
-        .eq("playlist_id", selectedPlaylistId);
+    void loadProfileData();
 
-      const ids = (data ?? []).map((t) => t.track_id);
+    return () => {
+      active = false;
+    };
+  }, []);
 
-      if (ids.length === 0) {
+  useEffect(() => {
+    let active = true;
+
+    async function loadSelectedPlaylistTracks() {
+      if (!selectedPlaylistId) {
         setPlaylistTracks([]);
         return;
       }
 
-      const { data: tracks } = await supabase
-        .from("tracks")
-        .select("*")
-        .in("id", ids);
+      try {
+        const { data, error } = await supabase
+          .from("playlist_tracks")
+          .select(
+            `
+            playlist_id,
+            track_id,
+            tracks (
+              id,
+              title,
+              artist,
+              genre,
+              audio_url,
+              artwork_url,
+              created_at,
+              plays_all_time
+            )
+          `
+          )
+          .eq("playlist_id", selectedPlaylistId);
 
-      setPlaylistTracks(tracks ?? []);
+        if (error) throw error;
+
+        const safeTracks = ((data ?? []) as PlaylistTrackRow[])
+          .map((row) => (Array.isArray(row.tracks) ? row.tracks[0] ?? null : row.tracks ?? null))
+          .filter((track): track is TrackRow => Boolean(track));
+
+        if (!active) return;
+        setPlaylistTracks(safeTracks);
+      } catch (error) {
+        console.error("Selected playlist tracks load error:", error);
+        if (!active) return;
+        setPlaylistTracks([]);
+      }
+    }
+
+    void loadSelectedPlaylistTracks();
+
+    return () => {
+      active = false;
     };
-
-    load();
   }, [selectedPlaylistId]);
 
-  if (!user) {
-    return (
-      <div className="p-6 text-white/70">
-        Please log in to view your profile.
-      </div>
-    );
-  }
-
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 text-white">
-      <h1 className="mb-6 text-2xl font-bold">Your Profile</h1>
+    <div className="mx-auto max-w-5xl px-4 py-8 text-white">
+      <h1 className="mb-6 text-3xl font-bold">Profile</h1>
 
-      {/* PLAYLISTS */}
-      <div className="mb-8">
-        <h2 className="mb-3 text-lg font-semibold">My Playlists</h2>
-
-        <div className="flex flex-wrap gap-2">
-          {playlists.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => setSelectedPlaylistId(p.id)}
-              className={`rounded-xl px-4 py-2 text-sm font-semibold ${
-                selectedPlaylistId === p.id
-                  ? "bg-cyan-400 text-white"
-                  : "bg-white/10 text-white/80"
-              }`}
-            >
-              {p.name}
-            </button>
-          ))}
+      {loading ? (
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-white/70">
+          Loading...
         </div>
+      ) : (
+        <div className="space-y-8">
+          <div>
+            <h2 className="mb-3 text-lg font-semibold">My Playlists</h2>
 
-        <div className="mt-4 space-y-2">
-          {playlistTracks.map((t) => (
-            <TrackCard
-              key={t.id}
-              track={t as any}
-              onPlay={() => playTrack(t as any, playlistTracks as any)}
-            />
-          ))}
+            {playlists.length > 0 ? (
+              <div className="mb-4 flex flex-wrap gap-2">
+                {playlists.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setSelectedPlaylistId(p.id)}
+                    className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                      selectedPlaylistId === p.id
+                        ? "bg-cyan-400 text-black"
+                        : "bg-white/10 text-white hover:bg-white/15"
+                    }`}
+                  >
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="mb-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-white/60">
+                No playlists yet.
+              </div>
+            )}
+
+            <div className="mt-4 space-y-2">
+              {playlistTracks.map((t) => (
+                <TrackCard
+                  key={t.id}
+                  track={t as any}
+                  allTracks={playlistTracks as any}
+                  onPlay={() => playTrack(t as any, playlistTracks as any)}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <h2 className="mb-3 text-lg font-semibold">My Likes</h2>
+
+            <div className="space-y-2">
+              {likedTracks.map((t) => (
+                <TrackCard
+                  key={t.id}
+                  track={t as any}
+                  allTracks={likedTracks as any}
+                  onPlay={() => playTrack(t as any, likedTracks as any)}
+                />
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
-
-      {/* LIKES */}
-      <div>
-        <h2 className="mb-3 text-lg font-semibold">My Likes</h2>
-
-        <div className="space-y-2">
-          {likedTracks.map((t) => (
-            <TrackCard
-              key={t.id}
-              track={t as any}
-              onPlay={() => playTrack(t as any, likedTracks as any)}
-            />
-          ))}
-        </div>
-      </div>
+      )}
     </div>
   );
 }
