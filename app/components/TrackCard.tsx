@@ -187,20 +187,20 @@ export default function TrackCard({
               {getArtistName(track)} • {getGenreName(track)}
             </span>
 
-            {showFollowButton ? (
-              <button
-                type="button"
-                onClick={onFollow}
-                disabled={followLoading}
-                className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold transition ${
-                  isFollowing
-                    ? "bg-white/12 text-white/80 hover:bg-white/18"
-                    : "bg-cyan-400/15 text-cyan-200 hover:bg-cyan-400/20"
-                } disabled:cursor-not-allowed disabled:opacity-60`}
-              >
-                {followLoading ? "..." : isFollowing ? "Following" : "Follow"}
-              </button>
-            ) : null}
+           {showFollowButton ? (
+  <button
+    type="button"
+    onClick={onFollow}
+    disabled={followLoading}
+    className={`shrink-0 bg-transparent p-0 text-sm font-medium transition ${
+      isFollowing
+        ? "text-white/75 hover:text-white"
+        : "text-cyan-200 hover:text-cyan-100"
+    } disabled:cursor-not-allowed disabled:opacity-60`}
+  >
+    {followLoading ? "..." : isFollowing ? "Following" : "Follow"}
+  </button>
+) : null}
           </div>
 
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/60">
