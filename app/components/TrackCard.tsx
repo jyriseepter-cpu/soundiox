@@ -80,6 +80,12 @@ function getTitle(track: Track) {
   return track.title || "Untitled";
 }
 
+function shortenTitle(value: string, max = 20) {
+  const clean = value.trim();
+  if (clean.length <= max) return clean;
+  return `${clean.slice(0, max)}...`;
+}
+
 export default function TrackCard({
   track,
   allTracks,
@@ -106,6 +112,9 @@ export default function TrackCard({
 
   const badge = useMemo(() => getTrackBadge(track.created_at), [track.created_at]);
 
+  const fullTitle = getTitle(track);
+  const shortTitle = shortenTitle(fullTitle, 20);
+
   function handlePlay() {
     if (onPlay) {
       onPlay();
@@ -128,7 +137,7 @@ export default function TrackCard({
     if (navigator.share) {
       navigator
         .share({
-          title: getTitle(track),
+          title: fullTitle,
           text: `${getArtistName(track)} on SoundioX`,
           url,
         })
@@ -147,7 +156,7 @@ export default function TrackCard({
         <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-white/5">
           <Image
             src={getArtworkSrc(track)}
-            alt={getTitle(track)}
+            alt={fullTitle}
             fill
             className="object-cover"
             sizes="64px"
@@ -158,13 +167,13 @@ export default function TrackCard({
           <div className="flex min-w-0 items-center gap-2">
             <h3
               className="min-w-0 flex-1 truncate text-lg font-semibold text-white"
-              title={getTitle(track)}
+              title={fullTitle}
             >
-              {getTitle(track)}
+              {shortTitle}
             </h3>
 
             {badge ? (
-              <span className="inline-flex shrink-0 items-center rounded-full border border-cyan-400/30 bg-cyan-400/10 px-2.5 py-1 text-xs font-medium text-cyan-200">
+              <span className="inline-flex shrink-0 items-center rounded-full border border-cyan-400/30 bg-cyan-400/10 px-2 py-1 text-[11px] font-medium text-cyan-200">
                 {badge}
               </span>
             ) : null}
@@ -183,9 +192,9 @@ export default function TrackCard({
                 type="button"
                 onClick={onFollow}
                 disabled={followLoading}
-                className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold transition ${
+                className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold transition ${
                   isFollowing
-                    ? "bg-white/12 text-white/85 hover:bg-white/18"
+                    ? "bg-white/12 text-white/80 hover:bg-white/18"
                     : "bg-cyan-400/15 text-cyan-200 hover:bg-cyan-400/20"
                 } disabled:cursor-not-allowed disabled:opacity-60`}
               >
@@ -212,7 +221,7 @@ export default function TrackCard({
               if (canLike && onLike) void onLike();
             }}
             disabled={!canLike || likeLoading}
-            className={`min-w-[58px] rounded-2xl px-4 py-2.5 text-sm font-semibold transition ${
+            className={`min-w-[52px] rounded-2xl px-3 py-2 text-sm font-semibold transition ${
               !canLike
                 ? "cursor-not-allowed bg-white/5 text-white/35"
                 : isLiked
@@ -226,7 +235,7 @@ export default function TrackCard({
           <button
             type="button"
             onClick={handleShare}
-            className="min-w-[74px] rounded-2xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15"
+            className="min-w-[70px] rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15"
           >
             Share
           </button>
@@ -234,7 +243,7 @@ export default function TrackCard({
           <button
             type="button"
             onClick={onAdd}
-            className="min-w-[64px] rounded-2xl bg-gradient-to-r from-cyan-400 to-sky-400 px-4 py-2.5 text-sm font-semibold text-white transition hover:scale-[1.02] active:scale-[0.98]"
+            className="min-w-[64px] rounded-2xl bg-gradient-to-r from-cyan-400 to-sky-400 px-4 py-2 text-sm font-semibold text-white transition hover:scale-[1.02] active:scale-[0.98]"
           >
             Add
           </button>
@@ -242,7 +251,7 @@ export default function TrackCard({
           <button
             type="button"
             onClick={handlePlay}
-            className="min-w-[72px] rounded-2xl bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_0_30px_rgba(168,85,247,0.25)] transition hover:scale-[1.02] active:scale-[0.98]"
+            className="min-w-[72px] rounded-2xl bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-5 py-2 text-sm font-semibold text-white shadow-[0_0_30px_rgba(168,85,247,0.25)] transition hover:scale-[1.02] active:scale-[0.98]"
           >
             {isCurrentTrack && isPlaying ? "Pause" : "Play"}
           </button>
@@ -256,7 +265,7 @@ export default function TrackCard({
             if (canLike && onLike) void onLike();
           }}
           disabled={!canLike || likeLoading}
-          className={`rounded-2xl px-4 py-2.5 text-sm font-semibold transition ${
+          className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
             !canLike
               ? "cursor-not-allowed bg-white/5 text-white/35"
               : isLiked
@@ -270,7 +279,7 @@ export default function TrackCard({
         <button
           type="button"
           onClick={handleShare}
-          className="rounded-2xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15"
+          className="rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15"
         >
           Share
         </button>
@@ -278,7 +287,7 @@ export default function TrackCard({
         <button
           type="button"
           onClick={onAdd}
-          className="rounded-2xl bg-gradient-to-r from-cyan-400 to-sky-400 px-4 py-2.5 text-sm font-semibold text-white transition hover:scale-[1.02] active:scale-[0.98]"
+          className="rounded-2xl bg-gradient-to-r from-cyan-400 to-sky-400 px-4 py-2 text-sm font-semibold text-white transition hover:scale-[1.02] active:scale-[0.98]"
         >
           Add
         </button>
@@ -286,7 +295,7 @@ export default function TrackCard({
         <button
           type="button"
           onClick={handlePlay}
-          className="rounded-2xl bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_0_30px_rgba(168,85,247,0.25)] transition hover:scale-[1.02] active:scale-[0.98]"
+          className="rounded-2xl bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-5 py-2 text-sm font-semibold text-white shadow-[0_0_30px_rgba(168,85,247,0.25)] transition hover:scale-[1.02] active:scale-[0.98]"
         >
           {isCurrentTrack && isPlaying ? "Pause" : "Play"}
         </button>
