@@ -820,6 +820,10 @@ export default function DiscoverPage() {
           ...prev,
           [trackId]: Math.max(0, (prev[trackId] ?? 0) - 1),
         }));
+        setLikesAllTimeByTrackId((prev) => ({
+          ...prev,
+          [trackId]: Math.max(0, (prev[trackId] ?? 0) - 1),
+        }));
         return;
       }
 
@@ -835,6 +839,10 @@ export default function DiscoverPage() {
 
       setLikedTrackIds((prev) => (prev.includes(trackId) ? prev : [...prev, trackId]));
       setLikesMonthByTrackId((prev) => ({
+        ...prev,
+        [trackId]: (prev[trackId] ?? 0) + 1,
+      }));
+      setLikesAllTimeByTrackId((prev) => ({
         ...prev,
         [trackId]: (prev[trackId] ?? 0) + 1,
       }));
@@ -1197,8 +1205,7 @@ export default function DiscoverPage() {
                   onAdd={() => void addTrackToSelectedPlaylist(t)}
                   onLike={() => void toggleLike(t.id)}
                   onFollow={() => void toggleArtistFollow(t.user_id ?? "")}
-                  likeCount={likesMonthByTrackId[t.id] ?? 0}
-                  allTimeLikeCount={likesAllTimeByTrackId[t.id] ?? 0}
+                  likeCount={likesAllTimeByTrackId[t.id] ?? 0}
                   isLiked={likedTrackIds.includes(t.id)}
                   likeLoading={likeLoadingTrackId === t.id}
                   canLike={viewerCanLike}
