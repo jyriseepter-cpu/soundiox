@@ -48,11 +48,6 @@ type ViewerProfile = {
   is_founding: boolean | null;
 };
 
-type TrackLikesAllTimeRow = {
-  track_id: string;
-  likes: number | null;
-};
-
 const MONTHLY_LIKE_LIMIT = 100;
 
 function monthStartISO() {
@@ -104,7 +99,6 @@ export default function PulsePage() {
 
   const [tracks, setTracks] = useState<PulseTrack[]>([]);
   const [likesMonth, setLikesMonth] = useState<Map<string, number>>(new Map());
-  const [likesAllTime, setLikesAllTime] = useState<Map<string, number>>(new Map());
   const [likedSet, setLikedSet] = useState<Set<string>>(new Set());
   const [userId, setUserId] = useState<string | null>(null);
   const [followingSet, setFollowingSet] = useState<Set<string>>(new Set());
@@ -303,22 +297,6 @@ export default function PulsePage() {
       const ids = enrichedTracks.map((t) => t.id).filter(Boolean);
 
       if (ids.length > 0) {
-        const { data: allTimeRows, error: allTimeErr } = await supabase
-          .from("track_likes_all_time")
-          .select("track_id, likes")
-          .in("track_id", ids);
-
-        if (allTimeErr) {
-          console.warn("Pulse all-time likes query error:", allTimeErr);
-        }
-
-        const allTimeMap = new Map<string, number>();
-        (allTimeRows ?? []).forEach((row) => {
-          const likeRow = row as TrackLikesAllTimeRow;
-          allTimeMap.set(String(likeRow.track_id), Number(likeRow.likes ?? 0));
-        });
-        setLikesAllTime(allTimeMap);
-
         const { data: likeRows, error: likeErr } = await supabase
           .from("likes")
           .select("track_id")
@@ -336,7 +314,6 @@ export default function PulsePage() {
         });
         setLikesMonth(map);
       } else {
-        setLikesAllTime(new Map());
         setLikesMonth(new Map());
       }
 
@@ -485,11 +462,6 @@ export default function PulsePage() {
         m.set(trackId, Math.max(0, (m.get(trackId) ?? 1) - 1));
         return m;
       });
-      setLikesAllTime((prev) => {
-        const m = new Map(prev);
-        m.set(trackId, Math.max(0, (m.get(trackId) ?? 1) - 1));
-        return m;
-      });
 
       setViewerLikesUsed((prev) => Math.max(0, prev - 1));
       return;
@@ -538,11 +510,6 @@ export default function PulsePage() {
 
     setLikedSet((prev) => new Set(prev).add(trackId));
     setLikesMonth((prev) => {
-      const m = new Map(prev);
-      m.set(trackId, (m.get(trackId) ?? 0) + 1);
-      return m;
-    });
-    setLikesAllTime((prev) => {
       const m = new Map(prev);
       m.set(trackId, (m.get(trackId) ?? 0) + 1);
       return m;
@@ -722,7 +689,7 @@ export default function PulsePage() {
           rows.map((t, idx) => {
             const id = String(t.id);
             const liked = likedSet.has(id);
-            const likes = likesAllTime.get(id) ?? 0;
+            const likes = likesMonth.get(id) ?? 0;
             const plays = Number(t.plays_this_month ?? 0) || 0;
             const isCurrent = currentTrack?.id && String((currentTrack as any).id) === id;
             const artistId = t.user_id;
