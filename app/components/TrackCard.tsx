@@ -1,255 +1,92 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
-import { useState } from "react";
+import { useMemo } from "react";
 import { usePlayer } from "@/app/components/PlayerContext";
-import type { Track } from "@/app/components/PlayerContext";
+
+type Track = {
+  id: string;
+  title?: string | null;
+  artist?: string | null;
+  genre?: string | null;
+  artwork_url?: string | null;
+  created_at?: string | null;
+  plays_all_time?: number | null;
+  likes_this_month?: number | null;
+};
 
 type Props = {
   track: Track;
-  allTracks?: Track[];
-  onPlay?: () => void;
-  onAdd?: (track: Track) => void;
-  onLike?: (track: Track) => void;
-  onFollow?: (artistId: string) => void;
-  likeCount?: number;
-  isLiked?: boolean;
-  likeLoading?: boolean;
-  canLike?: boolean;
-  artistId?: string | null;
-  showFollowButton?: boolean;
-  isFollowing?: boolean;
-  followLoading?: boolean;
+  allTracks: Track[];
 };
 
-function getTitle(track: Track) {
-  const t = track as any;
-  return (t.title ?? t.name ?? "Untitled").toString();
+function getHoursSince(date?: string | null) {
+  if (!date) return 999;
+  return (Date.now() - new Date(date).getTime()) / 36e5;
 }
 
-function getArtist(track: Track) {
-  const t = track as any;
-  return (t.artistDisplayName ?? t.displayArtist ?? t.artist ?? "AI Artist").toString();
+function getPlays(plays?: number | null, created?: string | null) {
+  if (getHoursSince(created) < 5) return "🔥";
+  return plays ?? 0;
 }
 
-function getGenre(track: Track) {
-  const t = track as any;
-  return (t.genre ?? "").toString();
-}
+export default function TrackCard({ track, allTracks }: Props) {
+  const { playTrack, currentTrack, isPlaying, toggle } = usePlayer();
+  const isCurrent = currentTrack?.id === track.id;
 
-function getImage(track: Track) {
-  const t = track as any;
-  return (
-    t.artistAvatarUrl ??
-    t.avatar_url ??
-    t.artwork_url ??
-    t.image_url ??
-    t.cover_url ??
-    "/logo-new.png"
-  ).toString();
-}
-
-function isSameTrack(a?: Track | null, b?: Track | null) {
-  if (!a || !b) return false;
-
-  const ta = a as any;
-  const tb = b as any;
-
-  if (ta.id && tb.id) return ta.id === tb.id;
-
-  const aSrc = (ta.audio_url ?? ta.src ?? "").toString();
-  const bSrc = (tb.audio_url ?? tb.src ?? "").toString();
-
-  return Boolean(aSrc) && aSrc === bSrc;
-}
-
-export default function TrackCard({
-  track,
-  allTracks = [],
-  onPlay,
-  onAdd,
-  onLike,
-  onFollow,
-  likeCount = 0,
-  isLiked = false,
-  likeLoading = false,
-  canLike = true,
-  artistId = null,
-  showFollowButton = false,
-  isFollowing = false,
-  followLoading = false,
-}: Props) {
-  const { currentTrack, isPlaying, playTrack, toggle } = usePlayer();
-  const [shareCopied, setShareCopied] = useState(false);
-
-  const t = track as any;
-  const active = isSameTrack(currentTrack, track);
-  const showPause = active && isPlaying;
-  const artistSlug =
-    typeof t.artistSlug === "string" && t.artistSlug.trim() ? t.artistSlug.trim() : null;
-
-  function handlePlayClick() {
-    if (active) {
-      toggle();
-      return;
-    }
-
-    if (onPlay) {
-      onPlay();
-      return;
-    }
-
-    playTrack(track, allTracks.length ? allTracks : [track]);
+  function handlePlay() {
+    if (isCurrent) return toggle();
+    playTrack(track as any, allTracks as any);
   }
 
-  function handleAddClick() {
-    if (onAdd) {
-      onAdd(track);
-    }
-  }
-
-  function handleLikeClick() {
-    if (!canLike || likeLoading) return;
-    if (onLike) {
-      onLike(track);
-    }
-  }
-
-  function handleFollowClick() {
-    if (!artistId || !onFollow || followLoading) return;
-    onFollow(artistId);
-  }
-
-  async function handleShareClick() {
-    const trackId = t?.id ? String(t.id) : "";
-
-    if (!trackId) return;
-
-    try {
-      const origin =
-        typeof window !== "undefined"
-          ? window.location.origin
-          : process.env.NEXT_PUBLIC_APP_URL || "https://soundiox.io";
-
-      const shareUrl = `${origin}/track/${trackId}`;
-
-      await navigator.clipboard.writeText(shareUrl);
-      setShareCopied(true);
-      window.setTimeout(() => setShareCopied(false), 1800);
-    } catch (error) {
-      console.warn("share copy failed:", error);
-    }
-  }
+  const plays = useMemo(
+    () => getPlays(track.plays_all_time, track.created_at),
+    [track.plays_all_time, track.created_at]
+  );
 
   return (
-    <div
-      className={`flex flex-col gap-3 overflow-hidden rounded-2xl px-4 py-3 ring-1 transition lg:flex-row lg:items-center lg:justify-between ${
-        active
-          ? "bg-gradient-to-r from-purple-500/15 to-fuchsia-500/15 ring-purple-400/40"
-          : "bg-white/8 ring-white/10"
-      }`}
-    >
-      <div className="flex min-w-0 items-center gap-3">
-        <div
-          className={`relative h-14 w-14 overflow-hidden rounded-2xl ring-1 transition ${
-            active
-              ? "bg-gradient-to-br from-purple-500/20 to-fuchsia-500/20 ring-purple-400/50 shadow-[0_0_24px_rgba(168,85,247,0.28)]"
-              : "bg-white/10 ring-white/10"
-          }`}
-        >
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+
+      {/* TOP ROW */}
+      <div className="flex gap-4">
+        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl">
           <Image
-            src={getImage(track)}
-            alt={getTitle(track)}
+            src={track.artwork_url || "/logo-new.png"}
+            alt=""
             fill
             className="object-cover"
-            sizes="56px"
           />
-
-          {active ? (
-            <div className="pointer-events-none absolute inset-0 rounded-2xl border border-white/10" />
-          ) : null}
         </div>
 
         <div className="min-w-0 flex-1">
-          <div className="truncate text-base font-bold text-white lg:text-lg">
-            {getTitle(track)}
+          <div className="truncate font-semibold text-white">
+            {track.title}
           </div>
 
-          <div className="truncate text-sm font-medium text-white/80">
-            {artistSlug ? (
-              <Link
-                href={`/artists/${encodeURIComponent(artistSlug)}`}
-                className="transition hover:text-cyan-300"
-              >
-                {getArtist(track)}
-              </Link>
-            ) : (
-              <span>{getArtist(track)}</span>
-            )}
+          <div className="truncate text-sm text-white/70">
+            {track.artist} • {track.genre}
+          </div>
 
-            {getGenre(track) ? ` • ${getGenre(track)}` : ""}
+          <div className="mt-1 text-xs text-white/50">
+            Plays: {plays}
           </div>
         </div>
       </div>
 
-      <div className="flex w-full flex-wrap items-center gap-2 lg:ml-4 lg:w-auto lg:justify-end">
-        {showFollowButton ? (
-          <button
-            type="button"
-            onClick={handleFollowClick}
-            disabled={followLoading}
-            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition ${
-              isFollowing
-                ? "bg-white/10 text-white ring-white/10 hover:bg-white/14"
-                : "bg-cyan-400/10 text-cyan-100 ring-cyan-300/20 hover:bg-cyan-400/15"
-            } disabled:cursor-not-allowed disabled:opacity-60`}
-          >
-            {followLoading ? "..." : isFollowing ? "Following" : "Follow"}
-          </button>
-        ) : null}
+      {/* BUTTON ROW — ERALDI */}
+      <div className="mt-4 flex gap-2 flex-wrap">
+        <button className="px-3 py-2 rounded-lg bg-white/10">Following</button>
+        <button className="px-3 py-2 rounded-lg bg-white/10">Share</button>
+        <button className="px-3 py-2 rounded-lg bg-cyan-500">Add</button>
 
         <button
-          type="button"
-          onClick={handleLikeClick}
-          disabled={!canLike || likeLoading}
-          title={canLike ? "Like track" : "Upgrade to like tracks"}
-          className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-2 text-sm font-semibold transition ${
-            canLike
-              ? isLiked
-                ? "text-pink-200 hover:bg-white/10"
-                : "text-white/55 hover:bg-white/10 hover:text-white/80"
-              : "cursor-not-allowed text-white/30"
-          }`}
+          onClick={handlePlay}
+          className="px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-400 to-fuchsia-500"
         >
-          <span className="text-base leading-none">{isLiked ? "♥" : "♡"}</span>
-          <span>{likeLoading ? "..." : likeCount}</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={handleShareClick}
-          className="shrink-0 rounded-xl bg-white/8 px-3 py-2 text-sm font-semibold text-white/75 ring-1 ring-white/10 transition hover:bg-white/12 hover:text-white"
-        >
-          {shareCopied ? "Copied" : "Share"}
-        </button>
-
-        <button
-          type="button"
-          onClick={handleAddClick}
-          className="shrink-0 rounded-xl bg-gradient-to-r from-cyan-300 to-cyan-400 px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 lg:px-4 lg:text-base"
-        >
-          Add
-        </button>
-
-        <button
-          type="button"
-          onClick={handlePlayClick}
-          className="shrink-0 rounded-xl bg-gradient-to-r from-purple-500 to-fuchsia-500 px-2.5 py-2 text-xs font-semibold text-white transition hover:opacity-90 lg:px-4 lg:text-base lg:text-sm"
-        >
-          {showPause ? "Pause" : "Play"}
+          {isCurrent && isPlaying ? "Pause" : "Play"}
         </button>
       </div>
+
     </div>
   );
 }
