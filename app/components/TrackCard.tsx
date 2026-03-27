@@ -28,6 +28,7 @@ type TrackCardProps = {
   onFollow?: () => void;
 
   likeCount?: number;
+  allTimeLikeCount?: number;
   isLiked?: boolean;
   likeLoading?: boolean;
   canLike?: boolean;
@@ -94,6 +95,7 @@ export default function TrackCard({
   onLike,
   onFollow,
   likeCount = 0,
+  allTimeLikeCount,
   isLiked = false,
   likeLoading = false,
   canLike = true,
@@ -211,6 +213,12 @@ export default function TrackCard({
             <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
               Likes: {likeCount}
             </span>
+
+            {typeof allTimeLikeCount === "number" ? (
+              <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
+                All-time: {allTimeLikeCount}
+              </span>
+            ) : null}
           </div>
         </div>
 

@@ -147,7 +147,8 @@ export default function DiscoverPage() {
   const [newPlaylistName, setNewPlaylistName] = useState("");
   const [playlistMenuOpen, setPlaylistMenuOpen] = useState(false);
 
-  const [likesByTrackId, setLikesByTrackId] = useState<Record<string, number>>({});
+  const [likesMonthByTrackId, setLikesMonthByTrackId] = useState<Record<string, number>>({});
+  const [likesAllTimeByTrackId, setLikesAllTimeByTrackId] = useState<Record<string, number>>({});
   const [likedTrackIds, setLikedTrackIds] = useState<string[]>([]);
   const [likeLoadingTrackId, setLikeLoadingTrackId] = useState<string | null>(null);
   const [followingArtistIds, setFollowingArtistIds] = useState<Set<string>>(new Set());
@@ -428,11 +429,11 @@ export default function DiscoverPage() {
           }
         }
 
-        setLikesByTrackId(map);
+        setLikesAllTimeByTrackId(map);
       } catch (error) {
         console.warn("discover likes warning:", error);
         if (!alive) return;
-        setLikesByTrackId({});
+        setLikesAllTimeByTrackId({});
       }
     }
 
@@ -442,6 +443,50 @@ export default function DiscoverPage() {
       alive = false;
     };
   }, []);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadMonthlyLikes() {
+      const trackIds = tracks.map((track) => track.id).filter(Boolean);
+
+      if (!trackIds.length) {
+        setLikesMonthByTrackId({});
+        return;
+      }
+
+      try {
+        const monthStart = monthStartDateString();
+        const { data, error } = await supabase
+          .from("likes")
+          .select("track_id")
+          .eq("month", monthStart)
+          .in("track_id", trackIds);
+
+        if (error) throw error;
+        if (!alive) return;
+
+        const map: Record<string, number> = {};
+        for (const row of (data ?? []) as LikeRow[]) {
+          if (row.track_id) {
+            map[row.track_id] = (map[row.track_id] ?? 0) + 1;
+          }
+        }
+
+        setLikesMonthByTrackId(map);
+      } catch (error) {
+        console.warn("discover monthly likes warning:", error);
+        if (!alive) return;
+        setLikesMonthByTrackId({});
+      }
+    }
+
+    void loadMonthlyLikes();
+
+    return () => {
+      alive = false;
+    };
+  }, [tracks]);
 
   useEffect(() => {
     let alive = true;
@@ -771,7 +816,7 @@ export default function DiscoverPage() {
         if (error) throw error;
 
         setLikedTrackIds((prev) => prev.filter((id) => id !== trackId));
-        setLikesByTrackId((prev) => ({
+        setLikesMonthByTrackId((prev) => ({
           ...prev,
           [trackId]: Math.max(0, (prev[trackId] ?? 0) - 1),
         }));
@@ -789,7 +834,7 @@ export default function DiscoverPage() {
       if (error) throw error;
 
       setLikedTrackIds((prev) => (prev.includes(trackId) ? prev : [...prev, trackId]));
-      setLikesByTrackId((prev) => ({
+      setLikesMonthByTrackId((prev) => ({
         ...prev,
         [trackId]: (prev[trackId] ?? 0) + 1,
       }));
@@ -1152,7 +1197,8 @@ export default function DiscoverPage() {
                   onAdd={() => void addTrackToSelectedPlaylist(t)}
                   onLike={() => void toggleLike(t.id)}
                   onFollow={() => void toggleArtistFollow(t.user_id ?? "")}
-                  likeCount={likesByTrackId[t.id] ?? 0}
+                  likeCount={likesMonthByTrackId[t.id] ?? 0}
+                  allTimeLikeCount={likesAllTimeByTrackId[t.id] ?? 0}
                   isLiked={likedTrackIds.includes(t.id)}
                   likeLoading={likeLoadingTrackId === t.id}
                   canLike={viewerCanLike}
