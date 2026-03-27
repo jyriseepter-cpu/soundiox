@@ -51,8 +51,8 @@ type ViewerProfile = {
 const MONTHLY_LIKE_LIMIT = 100;
 
 function monthStartISO() {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
 function safeStr(v: unknown) {
