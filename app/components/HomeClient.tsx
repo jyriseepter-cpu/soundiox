@@ -42,7 +42,7 @@ function formatEndOfWeekUtc(now = new Date()) {
   endOfWeek.setUTCDate(now.getUTCDate() + daysUntilSunday);
   endOfWeek.setUTCHours(23, 59, 59, 0);
 
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat("en-US", {
     month: "long",
     day: "numeric",
     hour: "2-digit",

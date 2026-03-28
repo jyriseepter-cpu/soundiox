@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePlayer } from "@/app/components/PlayerContext";
 
 type Track = {
@@ -102,6 +102,7 @@ export default function TrackCard({
   followLoading = false,
 }: TrackCardProps) {
   const { playTrack, currentTrack, isPlaying, toggle } = usePlayer();
+  const [shareLabel, setShareLabel] = useState("Share");
 
   const isCurrentTrack = currentTrack?.id === track.id;
 
@@ -114,6 +115,16 @@ export default function TrackCard({
 
   const fullTitle = getTitle(track);
   const shortTitle = shortenTitle(fullTitle, 20);
+
+  useEffect(() => {
+    if (shareLabel !== "Copied!") return;
+
+    const timer = window.setTimeout(() => {
+      setShareLabel("Share");
+    }, 1400);
+
+    return () => window.clearTimeout(timer);
+  }, [shareLabel]);
 
   function handlePlay() {
     if (isCurrentTrack) {
@@ -129,23 +140,31 @@ export default function TrackCard({
     playTrack(track as any, allTracks as any);
   }
 
-  function handleShare() {
+  async function handleShare() {
     if (typeof window === "undefined") return;
 
     const url = `${window.location.origin}/track/${track.id}`;
 
-    if (navigator.share) {
-      navigator
-        .share({
-          title: fullTitle,
-          text: `${getArtistName(track)} on SoundioX`,
-          url,
-        })
-        .catch(() => {});
-      return;
-    }
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = url;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
 
-    navigator.clipboard.writeText(url).catch(() => {});
+      setShareLabel("Copied!");
+    } catch {
+      setShareLabel("Copy failed");
+      window.setTimeout(() => setShareLabel("Share"), 1400);
+    }
   }
 
   return (
@@ -235,9 +254,9 @@ export default function TrackCard({
           <button
             type="button"
             onClick={handleShare}
-            className="min-w-[70px] rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15"
+            className="min-w-[88px] rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15"
           >
-            Share
+            {shareLabel}
           </button>
 
           <button
@@ -281,7 +300,7 @@ export default function TrackCard({
           onClick={handleShare}
           className="rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15"
         >
-          Share
+          {shareLabel}
         </button>
 
         <button
