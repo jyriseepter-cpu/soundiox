@@ -39,66 +39,62 @@ export default function CustomSelect({
 
   return (
     <div ref={ref} className={`relative ${className}`}>
-      {/* SELECT BUTTON */}
       <button
         type="button"
-        onClick={() => setOpen((p) => !p)}
+        onClick={() => setOpen((prev) => !prev)}
         className="
-          h-10 w-full rounded-xl px-4 text-sm font-semibold
-          text-white
+          flex h-10 w-full items-center justify-between rounded-xl
           bg-gradient-to-r from-cyan-400 to-sky-400
+          px-4 text-sm font-semibold text-white
           ring-1 ring-cyan-200/40
           backdrop-blur
-          flex items-center justify-between
-          hover:opacity-95
+          transition hover:opacity-95
         "
       >
-        <span className="truncate">
-          {selected ? selected.label : "Select"}
-        </span>
-        <span className="ml-2 text-xs">▼</span>
+        <span className="truncate">{selected ? selected.label : "Select"}</span>
+        <span className="ml-2 text-xs text-white/90">▼</span>
       </button>
 
-      {/* DROPDOWN */}
-      {open && (
+      {open ? (
         <div
           className="
-            absolute z-50 mt-2 w-full
-            rounded-2xl
-            bg-[#89d7ff]/95
-            backdrop-blur
-            ring-1 ring-white/20
-            shadow-2xl
+            absolute left-0 right-0 z-50 mt-2 overflow-hidden rounded-2xl
+            border border-cyan-200/20
+            bg-gradient-to-b from-cyan-400/85 to-sky-500/75
             p-2
+            shadow-2xl
+            backdrop-blur-xl
           "
         >
-          {options.map((option) => {
-            const isActive = option.value === value;
+          {options.length === 0 ? (
+            <div className="rounded-xl border border-white/15 bg-white/18 px-3 py-2 text-sm font-medium text-white/90">
+              No playlists yet.
+            </div>
+          ) : (
+            options.map((option) => {
+              const isActive = option.value === value;
 
-            return (
-              <button
-                key={option.value}
-                onClick={() => {
-                  onChange(option.value);
-                  setOpen(false);
-                }}
-                className={`
-                  w-full text-left px-3 py-2 rounded-xl
-                  text-sm font-semibold
-                  transition
-                  ${
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => {
+                    onChange(option.value);
+                    setOpen(false);
+                  }}
+                  className={`w-full rounded-xl px-3 py-2 text-left text-sm font-semibold transition ${
                     isActive
                       ? "bg-white/30 text-white"
-                      : "text-white/95 hover:bg-white/20"
-                  }
-                `}
-              >
-                {option.label}
-              </button>
-            );
-          })}
+                      : "bg-white/10 text-white/95 hover:bg-white/18"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              );
+            })
+          )}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

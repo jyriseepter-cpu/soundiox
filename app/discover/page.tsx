@@ -1045,77 +1045,77 @@ export default function DiscoverPage() {
             className="w-full lg:w-[220px]"
           />
 
-          <div className="relative w-full lg:w-[240px]">
+              <div className="relative w-full lg:w-[240px]">
+  <button
+    type="button"
+    onClick={() => setPlaylistMenuOpen((prev) => !prev)}
+    className="flex h-10 w-full items-center justify-between rounded-xl bg-gradient-to-r from-cyan-400 to-sky-400 px-4 text-sm font-semibold text-white ring-1 ring-cyan-200/40 backdrop-blur transition hover:opacity-95"
+  >
+    <span className="truncate">
+      {selectedPlaylist ? `Playlist: ${selectedPlaylist.name}` : "My Playlists"}
+    </span>
+    <span className="ml-3 text-xs text-white/90">▼</span>
+  </button>
+
+  {playlistMenuOpen ? (
+    <div className="absolute right-0 top-12 z-40 w-full rounded-2xl border border-cyan-200/20 bg-gradient-to-b from-cyan-400/85 to-sky-500/75 p-3 text-white shadow-2xl backdrop-blur-xl">
+      {!viewerLoggedIn ? (
+        <div className="rounded-xl border border-white/15 bg-white/18 px-3 py-2 text-sm font-medium text-white/90">
+          Log in to create and use playlists.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="space-y-2">
+            {playlists.length === 0 ? (
+              <div className="rounded-xl border border-white/15 bg-white/18 px-3 py-2 text-sm font-medium text-white/90">
+                No playlists yet.
+              </div>
+            ) : (
+              playlists.map((playlist) => {
+                const isActive = playlist.id === selectedPlaylistId;
+
+                return (
+                  <button
+                    key={playlist.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedPlaylistId(playlist.id);
+                      setPlaylistMenuOpen(false);
+                    }}
+                    className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-semibold transition ${
+                      isActive
+                        ? "bg-white/30 text-white"
+                        : "bg-white/10 text-white/95 hover:bg-white/18"
+                    }`}
+                  >
+                    <span className="truncate">{playlist.name}</span>
+                    {isActive ? <span className="text-[10px]">OPEN</span> : null}
+                  </button>
+                );
+              })
+            )}
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input
+              value={newPlaylistName}
+              onChange={(e) => setNewPlaylistName(e.target.value)}
+              placeholder="New playlist..."
+              className="h-10 flex-1 rounded-xl bg-white/18 px-3 text-sm font-medium text-white placeholder:text-white/70 outline-none ring-1 ring-white/15"
+            />
             <button
               type="button"
-              onClick={() => setPlaylistMenuOpen((prev) => !prev)}
-              className="flex h-10 w-full items-center justify-between rounded-xl bg-gradient-to-r from-cyan-400 to-sky-400 px-4 text-sm font-semibold text-white ring-1 ring-cyan-200/40 backdrop-blur transition hover:opacity-95"
+              onClick={createPlaylist}
+              className="h-10 rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-500 px-4 text-sm font-bold text-white ring-1 ring-white/15"
             >
-              <span className="truncate">
-                {selectedPlaylist ? `Playlist: ${selectedPlaylist.name}` : "My Playlists"}
-              </span>
-              <span className="ml-3 text-xs text-white/90">▼</span>
+              Create
             </button>
-
-            {playlistMenuOpen ? (
-              <div className="absolute right-0 top-12 z-40 w-full rounded-2xl bg-[#89d7ff]/95 p-3 text-white shadow-2xl ring-1 ring-white/20 backdrop-blur">
-                {!viewerLoggedIn ? (
-                  <div className="text-sm font-semibold text-white/90">
-                    Log in to create and use playlists.
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="space-y-2">
-                      {playlists.length === 0 ? (
-                        <div className="rounded-xl bg-white/15 px-3 py-2 text-sm font-medium text-white/90">
-                          No playlists yet.
-                        </div>
-                      ) : (
-                        playlists.map((playlist) => {
-                          const isActive = playlist.id === selectedPlaylistId;
-
-                          return (
-                            <button
-                              key={playlist.id}
-                              type="button"
-                              onClick={() => {
-                                setSelectedPlaylistId(playlist.id);
-                                setPlaylistMenuOpen(false);
-                              }}
-                              className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-semibold transition ${
-                                isActive
-                                  ? "bg-white/25 text-white"
-                                  : "bg-white/10 text-white/95 hover:bg-white/20"
-                              }`}
-                            >
-                              <span className="truncate">{playlist.name}</span>
-                              {isActive ? <span className="text-[10px]">OPEN</span> : null}
-                            </button>
-                          );
-                        })
-                      )}
-                    </div>
-
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <input
-                        value={newPlaylistName}
-                        onChange={(e) => setNewPlaylistName(e.target.value)}
-                        placeholder="New playlist..."
-                        className="h-10 flex-1 rounded-xl bg-white/15 px-3 text-sm font-medium text-white placeholder:text-white/60 outline-none ring-1 ring-white/15"
-                      />
-                      <button
-                        type="button"
-                        onClick={createPlaylist}
-                        className="h-10 rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-500 px-4 text-sm font-bold text-white ring-1 ring-white/15"
-                      >
-                        Create
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : null}
           </div>
+        </div>
+      )}
+    </div>
+  ) : null}
+</div>
         </div>
       </div>
 
