@@ -116,13 +116,13 @@ export default function TrackCard({
   const shortTitle = shortenTitle(fullTitle, 20);
 
   function handlePlay() {
-    if (onPlay) {
-      onPlay();
+    if (isCurrentTrack) {
+      toggle();
       return;
     }
 
-    if (isCurrentTrack) {
-      toggle();
+    if (onPlay) {
+      onPlay();
       return;
     }
 
@@ -187,20 +187,20 @@ export default function TrackCard({
               {getArtistName(track)} • {getGenreName(track)}
             </span>
 
-           {showFollowButton ? (
-  <button
-    type="button"
-    onClick={onFollow}
-    disabled={followLoading}
-    className={`shrink-0 bg-transparent p-0 text-sm font-medium transition ${
-      isFollowing
-        ? "text-white/75 hover:text-white"
-        : "text-cyan-200 hover:text-cyan-100"
-    } disabled:cursor-not-allowed disabled:opacity-60`}
-  >
-    {followLoading ? "..." : isFollowing ? "Following" : "Follow"}
-  </button>
-) : null}
+            {showFollowButton ? (
+              <button
+                type="button"
+                onClick={onFollow}
+                disabled={followLoading}
+                className={`shrink-0 bg-transparent p-0 text-sm font-medium transition ${
+                  isFollowing
+                    ? "text-white/75 hover:text-white"
+                    : "text-cyan-200 hover:text-cyan-100"
+                } disabled:cursor-not-allowed disabled:opacity-60`}
+              >
+                {followLoading ? "..." : isFollowing ? "Following" : "Follow"}
+              </button>
+            ) : null}
           </div>
 
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/60">
@@ -211,7 +211,6 @@ export default function TrackCard({
             <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
               Likes: {likeCount}
             </span>
-
           </div>
         </div>
 

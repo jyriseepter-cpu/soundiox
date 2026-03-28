@@ -15,10 +15,7 @@ import {
   type NormalizedArtistIdentity,
   type TrackWithResolvedArtist,
 } from "@/lib/artistIdentity";
-import {
-  SOUNDIOX_GENRES,
-  isSoundioXGenre,
-} from "@/lib/genres";
+import { SOUNDIOX_GENRES, isSoundioXGenre } from "@/lib/genres";
 import { normalizeAccessPlan } from "@/lib/lifetimeCampaign";
 
 type TrackRow = {
@@ -71,6 +68,8 @@ type ViewerProfile = {
 
 type UpgradeTier = "premium" | "artist";
 
+const PAGE_SIZE = 50;
+
 function pickTitle(t: DiscoverTrack) {
   return (t.title ?? "Untitled").toString();
 }
@@ -106,7 +105,6 @@ function monthStartDateString() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
-// 🔥 LISA SEE SIIA
 function getTrackScore(t: DiscoverTrack) {
   const created = t.created_at ? new Date(t.created_at).getTime() : 0;
   const ageHours = created ? (Date.now() - created) / 36e5 : 999;
@@ -129,6 +127,7 @@ export default function DiscoverPage() {
 
   const [search, setSearch] = useState("");
   const [genre, setGenre] = useState("All genres");
+  const [page, setPage] = useState(1);
 
   const [selectedTrack, setSelectedTrack] = useState<DiscoverTrack | null>(null);
   const [hasOAuthCode, setHasOAuthCode] = useState(false);
@@ -163,9 +162,7 @@ export default function DiscoverPage() {
   const authReadyRef = useRef(false);
 
   const viewerIsArtist =
-    viewerIsFounding ||
-    viewerRole === "artist" ||
-    viewerPlan === "artist";
+    viewerIsFounding || viewerRole === "artist" || viewerPlan === "artist";
   const viewerCanLike =
     viewerIsFounding ||
     viewerRole === "artist" ||
@@ -675,30 +672,38 @@ export default function DiscoverPage() {
     };
   }, [selectedPlaylistId]);
 
-  const genreOptions = useMemo(
-    () => ["All genres", ...SOUNDIOX_GENRES],
-    []
-  );
+  const genreOptions = useMemo(() => ["All genres", ...SOUNDIOX_GENRES], []);
 
   const displayedTracks = useMemo(() => {
-  const q = search.trim().toLowerCase();
+    const q = search.trim().toLowerCase();
 
-  const filtered = tracks.filter((t) => {
-    if (genre !== "All genres" && getOfficialGenreLabel(t.genre) !== genre) {
-      return false;
-    }
+    const filtered = tracks.filter((t) => {
+      if (genre !== "All genres" && getOfficialGenreLabel(t.genre) !== genre) {
+        return false;
+      }
 
-    if (!q) return true;
+      if (!q) return true;
 
-    const hay = `${t.title ?? ""} ${t.artistDisplayName ?? ""} ${getOfficialGenreLabel(
-      t.genre
-    )}`.toLowerCase();
+      const hay = `${t.title ?? ""} ${t.artistDisplayName ?? ""} ${getOfficialGenreLabel(
+        t.genre
+      )}`.toLowerCase();
 
-    return hay.includes(q);
-  });
+      return hay.includes(q);
+    });
 
-  return filtered.sort((a, b) => getTrackScore(b) - getTrackScore(a));
-}, [tracks, search, genre]);
+    return filtered.sort((a, b) => getTrackScore(b) - getTrackScore(a));
+  }, [tracks, search, genre]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, genre]);
+
+  const totalTracks = displayedTracks.length;
+  const totalPages = Math.max(1, Math.ceil(totalTracks / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const startIndex = (currentPage - 1) * PAGE_SIZE;
+  const endIndex = Math.min(startIndex + PAGE_SIZE, totalTracks);
+  const visibleTracks = displayedTracks.slice(startIndex, endIndex);
 
   const selectedPlaylist = useMemo(
     () => playlists.find((p) => p.id === selectedPlaylistId) ?? null,
@@ -1020,7 +1025,7 @@ export default function DiscoverPage() {
         />
       </div>
 
-      <div className="block lg:hidden mb-4 rounded-2xl bg-white/8 p-4 ring-1 ring-white/10">
+      <div className="mb-4 block rounded-2xl bg-white/8 p-4 ring-1 ring-white/10 lg:hidden">
         <div className="mb-3">
           <div className="text-base font-semibold text-white">Unlock more on SoundioX</div>
           <div className="text-sm text-white/60">
@@ -1045,77 +1050,77 @@ export default function DiscoverPage() {
             className="w-full lg:w-[220px]"
           />
 
-              <div className="relative w-full lg:w-[240px]">
-  <button
-    type="button"
-    onClick={() => setPlaylistMenuOpen((prev) => !prev)}
-    className="flex h-10 w-full items-center justify-between rounded-xl bg-gradient-to-r from-cyan-400 to-sky-400 px-4 text-sm font-semibold text-white ring-1 ring-cyan-200/40 backdrop-blur transition hover:opacity-95"
-  >
-    <span className="truncate">
-      {selectedPlaylist ? `Playlist: ${selectedPlaylist.name}` : "My Playlists"}
-    </span>
-    <span className="ml-3 text-xs text-white/90">▼</span>
-  </button>
-
-  {playlistMenuOpen ? (
-    <div className="absolute right-0 top-12 z-40 w-full rounded-2xl border border-cyan-200/20 bg-gradient-to-b from-cyan-400/85 to-sky-500/75 p-3 text-white shadow-2xl backdrop-blur-xl">
-      {!viewerLoggedIn ? (
-        <div className="rounded-xl border border-white/15 bg-white/18 px-3 py-2 text-sm font-medium text-white/90">
-          Log in to create and use playlists.
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <div className="space-y-2">
-            {playlists.length === 0 ? (
-              <div className="rounded-xl border border-white/15 bg-white/18 px-3 py-2 text-sm font-medium text-white/90">
-                No playlists yet.
-              </div>
-            ) : (
-              playlists.map((playlist) => {
-                const isActive = playlist.id === selectedPlaylistId;
-
-                return (
-                  <button
-                    key={playlist.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedPlaylistId(playlist.id);
-                      setPlaylistMenuOpen(false);
-                    }}
-                    className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-semibold transition ${
-                      isActive
-                        ? "bg-white/30 text-white"
-                        : "bg-white/10 text-white/95 hover:bg-white/18"
-                    }`}
-                  >
-                    <span className="truncate">{playlist.name}</span>
-                    {isActive ? <span className="text-[10px]">OPEN</span> : null}
-                  </button>
-                );
-              })
-            )}
-          </div>
-
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <input
-              value={newPlaylistName}
-              onChange={(e) => setNewPlaylistName(e.target.value)}
-              placeholder="New playlist..."
-              className="h-10 flex-1 rounded-xl bg-white/18 px-3 text-sm font-medium text-white placeholder:text-white/70 outline-none ring-1 ring-white/15"
-            />
+          <div className="relative w-full lg:w-[240px]">
             <button
               type="button"
-              onClick={createPlaylist}
-              className="h-10 rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-500 px-4 text-sm font-bold text-white ring-1 ring-white/15"
+              onClick={() => setPlaylistMenuOpen((prev) => !prev)}
+              className="flex h-10 w-full items-center justify-between rounded-xl bg-gradient-to-r from-cyan-400 to-sky-400 px-4 text-sm font-semibold text-white ring-1 ring-cyan-200/40 backdrop-blur transition hover:opacity-95"
             >
-              Create
+              <span className="truncate">
+                {selectedPlaylist ? `Playlist: ${selectedPlaylist.name}` : "My Playlists"}
+              </span>
+              <span className="ml-3 text-xs text-white/90">▼</span>
             </button>
+
+            {playlistMenuOpen ? (
+              <div className="absolute right-0 top-12 z-40 w-full rounded-2xl border border-cyan-200/20 bg-gradient-to-b from-cyan-400/85 to-sky-500/75 p-3 text-white shadow-2xl backdrop-blur-xl">
+                {!viewerLoggedIn ? (
+                  <div className="rounded-xl border border-white/15 bg-white/18 px-3 py-2 text-sm font-medium text-white/90">
+                    Log in to create and use playlists.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      {playlists.length === 0 ? (
+                        <div className="rounded-xl border border-white/15 bg-white/18 px-3 py-2 text-sm font-medium text-white/90">
+                          No playlists yet.
+                        </div>
+                      ) : (
+                        playlists.map((playlist) => {
+                          const isActive = playlist.id === selectedPlaylistId;
+
+                          return (
+                            <button
+                              key={playlist.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedPlaylistId(playlist.id);
+                                setPlaylistMenuOpen(false);
+                              }}
+                              className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-semibold transition ${
+                                isActive
+                                  ? "bg-white/30 text-white"
+                                  : "bg-white/10 text-white/95 hover:bg-white/18"
+                              }`}
+                            >
+                              <span className="truncate">{playlist.name}</span>
+                              {isActive ? <span className="text-[10px]">OPEN</span> : null}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <input
+                        value={newPlaylistName}
+                        onChange={(e) => setNewPlaylistName(e.target.value)}
+                        placeholder="New playlist..."
+                        className="h-10 flex-1 rounded-xl bg-white/18 px-3 text-sm font-medium text-white placeholder:text-white/70 outline-none ring-1 ring-white/15"
+                      />
+                      <button
+                        type="button"
+                        onClick={createPlaylist}
+                        className="h-10 rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-500 px-4 text-sm font-bold text-white ring-1 ring-white/15"
+                      >
+                        Create
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : null}
           </div>
-        </div>
-      )}
-    </div>
-  ) : null}
-</div>
         </div>
       </div>
 
@@ -1123,9 +1128,7 @@ export default function DiscoverPage() {
         <div className="mb-4 rounded-2xl bg-white/8 p-3 ring-1 ring-white/10">
           <div className="mb-2 flex items-center justify-between gap-3">
             <div>
-              <div className="text-sm font-bold text-white">
-                {selectedPlaylist.name}
-              </div>
+              <div className="text-sm font-bold text-white">{selectedPlaylist.name}</div>
               <div className="text-xs font-semibold text-white/55">
                 {selectedPlaylistTracks.length} track
                 {selectedPlaylistTracks.length === 1 ? "" : "s"}
@@ -1183,17 +1186,53 @@ export default function DiscoverPage() {
           <div className="mb-2 flex items-center justify-between px-2">
             <div className="font-semibold text-white/90">Discover</div>
             <div className="text-sm text-white/50">
-              {loading ? "Loading..." : `${displayedTracks.length} tracks`}
+              {loading
+                ? "Loading..."
+                : totalTracks === 0
+                ? "0 tracks"
+                : `${startIndex + 1}-${endIndex} of ${totalTracks} tracks`}
+            </div>
+          </div>
+
+          <div className="mb-3 flex flex-col gap-3 rounded-2xl bg-white/8 px-4 py-3 ring-1 ring-white/10 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm text-white/75">
+              {totalTracks === 0
+                ? "Showing 0 tracks"
+                : `Showing ${startIndex + 1}-${endIndex} of ${totalTracks} tracks`}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Previous
+              </button>
+
+              <div className="min-w-[88px] text-center text-sm text-white/70">
+                {currentPage} / {totalPages}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                disabled={currentPage >= totalPages}
+                className="rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Next
+              </button>
             </div>
           </div>
 
           <div className="space-y-2">
             {loading ? (
               <div className="px-2 py-6 text-white/60">Loading tracks…</div>
-            ) : displayedTracks.length === 0 ? (
+            ) : visibleTracks.length === 0 ? (
               <div className="px-2 py-6 text-white/60">No tracks found.</div>
             ) : (
-              displayedTracks.map((t) => (
+              visibleTracks.map((t) => (
                 <TrackCard
                   key={t.id}
                   track={t as any}

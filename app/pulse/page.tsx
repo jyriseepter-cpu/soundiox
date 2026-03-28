@@ -49,6 +49,7 @@ type ViewerProfile = {
 };
 
 const MONTHLY_LIKE_LIMIT = 100;
+const PAGE_SIZE = 50;
 
 function monthStartISO() {
   const now = new Date();
@@ -116,6 +117,7 @@ export default function PulsePage() {
   const [category, setCategory] = useState<CategoryKey>("global");
   const [genre, setGenre] = useState<string>("All genres");
   const [q, setQ] = useState<string>("");
+  const [page, setPage] = useState(1);
 
   const [loading, setLoading] = useState(true);
   const [actionMessage, setActionMessage] = useState("");
@@ -263,12 +265,11 @@ export default function PulsePage() {
           });
 
           if (category === "estonia") {
-            const estoniaOnly = enrichedTracks.filter((track) => {
+            enrichedTracks = enrichedTracks.filter((track) => {
               const profile = track.user_id ? profileMap.get(track.user_id) : undefined;
               const country = safeStr(profile?.country).trim().toLowerCase();
               return country === "estonia" || country === "eesti";
             });
-            enrichedTracks = estoniaOnly;
           }
         }
 
@@ -373,10 +374,7 @@ export default function PulsePage() {
     return sum;
   }, [likesMonth]);
 
-  const availableGenres = useMemo(
-    () => ["All genres", ...SOUNDIOX_GENRES],
-    []
-  );
+  const availableGenres = useMemo(() => ["All genres", ...SOUNDIOX_GENRES], []);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -425,6 +423,17 @@ export default function PulsePage() {
 
     return list;
   }, [filtered, likesMonth, sort]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [q, genre, sort, category]);
+
+  const totalRows = rows.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const startIndex = (currentPage - 1) * PAGE_SIZE;
+  const endIndex = Math.min(startIndex + PAGE_SIZE, totalRows);
+  const visibleRows = rows.slice(startIndex, endIndex);
 
   async function toggleLike(trackId: string) {
     setActionMessage("");
@@ -673,6 +682,38 @@ export default function PulsePage() {
         </div>
       </div>
 
+      <div className="mb-4 flex flex-col gap-3 rounded-2xl bg-white/8 px-4 py-3 ring-1 ring-white/10 sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-sm text-white/75">
+          {totalRows === 0
+            ? "Showing 0 tracks"
+            : `Showing ${startIndex + 1}-${endIndex} of ${totalRows} tracks`}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+            disabled={currentPage === 1}
+            className="rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Previous
+          </button>
+
+          <div className="min-w-[88px] text-center text-sm text-white/70">
+            {currentPage} / {totalPages}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+            disabled={currentPage >= totalPages}
+            className="rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Next
+          </button>
+        </div>
+      </div>
+
       <div className="overflow-hidden rounded-2xl bg-white/10 ring-1 ring-white/10">
         <div className="grid grid-cols-12 gap-2 px-4 py-3 text-xs font-semibold tracking-widest text-white/60">
           <div className="col-span-5">TRACK</div>
@@ -683,10 +724,10 @@ export default function PulsePage() {
 
         {loading ? (
           <div className="p-4 text-white/60">Loading…</div>
-        ) : rows.length === 0 ? (
+        ) : visibleRows.length === 0 ? (
           <div className="p-4 text-white/60">No tracks.</div>
         ) : (
-          rows.map((t, idx) => {
+          visibleRows.map((t, idx) => {
             const id = String(t.id);
             const liked = likedSet.has(id);
             const likes = likesMonth.get(id) ?? 0;
@@ -728,7 +769,7 @@ export default function PulsePage() {
 
                 <div className="grid grid-cols-12 items-center gap-2">
                   <div className="col-span-5 flex min-w-0 items-center gap-3">
-                    <div className="w-6 text-white/40">{idx + 1}</div>
+                    <div className="w-10 text-white/40">{startIndex + idx + 1}</div>
 
                     <img
                       src={getArtworkSrc(t)}
