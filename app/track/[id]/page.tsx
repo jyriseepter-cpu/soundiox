@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
@@ -22,7 +22,7 @@ type TrackRow = {
 
 export default function TrackPage() {
   const params = useParams();
-  const { playTrack } = usePlayer();
+  const { playTrack, currentTrack, isPlaying, toggle } = usePlayer();
 
   const id = typeof params?.id === "string" ? params.id : "";
 
@@ -71,8 +71,19 @@ export default function TrackPage() {
     };
   }, [id]);
 
+  const isCurrentTrack = useMemo(() => {
+    if (!track || !currentTrack) return false;
+    return String(currentTrack.id) === String(track.id);
+  }, [currentTrack, track]);
+
   function handlePlay() {
     if (!track) return;
+
+    if (isCurrentTrack) {
+      toggle();
+      return;
+    }
+
     void playTrack(track as any, [track] as any);
   }
 
@@ -147,7 +158,7 @@ export default function TrackPage() {
                 onClick={handlePlay}
                 className="rounded-xl bg-gradient-to-r from-purple-500 to-fuchsia-500 px-5 py-3 text-sm font-semibold text-white transition hover:opacity-90"
               >
-                Play
+                {isCurrentTrack && isPlaying ? "Pause" : "Play"}
               </button>
 
               <Link
