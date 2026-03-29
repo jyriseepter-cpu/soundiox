@@ -7,6 +7,7 @@ export const SOUNDIOX_GENRES = [
   "Classical / Cine",
   "Country / Folk",
   "Metal",
+  "KIDS"
 ] as const;
 
 export type SoundioXGenre = (typeof SOUNDIOX_GENRES)[number];

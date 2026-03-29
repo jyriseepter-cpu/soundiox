@@ -438,7 +438,7 @@ export default function UploadPage() {
               Release a new SoundioX track
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-white/65 sm:text-base">
-              Add your title, choose one of the eight official SoundioX genres,
+              Add your title, choose one of the official SoundioX genres,
               upload your audio and artwork, then publish it to your profile and
               the discovery feed.
             </p>
@@ -495,7 +495,7 @@ export default function UploadPage() {
                     className="w-full"
                   />
                   <p className="mt-2 text-xs leading-6 text-white/45">
-                    Only the 8 official SoundioX genres are allowed.
+                    Only the official SoundioX genres are allowed.
                   </p>
                 </div>
 
@@ -612,7 +612,7 @@ export default function UploadPage() {
                       Add a clear track title
                     </div>
                     <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-                      Pick one of the 8 official genres
+                      Pick one of the official genres
                     </div>
                     <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
                       Upload audio and cover art

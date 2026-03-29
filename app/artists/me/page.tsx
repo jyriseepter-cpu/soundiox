@@ -173,7 +173,7 @@ export default function MyArtistPage() {
 
     try {
       if (!isSoundioXGenre(upGenre.trim())) {
-        throw new Error("Please select one of the 8 official SoundioX genres.");
+        throw new Error("Please select one of the official SoundioX genres.");
       }
 
       const audioBucket = "tracks";
@@ -467,7 +467,7 @@ export default function MyArtistPage() {
                   />
                 </div>
                 <div className="mt-2 text-xs text-white/50">
-                  Choose one of the 8 official SoundioX genres.
+                  Choose one of the official SoundioX genres.
                 </div>
               </div>
 
