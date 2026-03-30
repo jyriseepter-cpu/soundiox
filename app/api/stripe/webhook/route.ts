@@ -44,8 +44,7 @@ function getWebhookContext(): WebhookContext {
   const premiumPriceId = readEnv("STRIPE_PREMIUM_PRICE_ID", "PREMIUM_PRICE_ID");
   const artistPriceId = readEnv(
     "STRIPE_ARTIST_PRICE_ID",
-    "STRIPE_ARTIST_PRO_PRICE_ID",
-    "ARTIST_PRO_PRICE_ID"
+    "ARTIST_PRICE_ID"
   );
 
   if (!stripeSecretKey) {
@@ -65,7 +64,7 @@ function getWebhookContext(): WebhookContext {
   }
   if (!artistPriceId) {
     throw new Error(
-      "Missing STRIPE_ARTIST_PRICE_ID or STRIPE_ARTIST_PRO_PRICE_ID or ARTIST_PRO_PRICE_ID"
+      "Missing STRIPE_ARTIST_PRICE_ID or ARTIST_PRICE_ID"
     );
   }
 

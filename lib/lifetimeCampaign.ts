@@ -1,4 +1,24 @@
-export const LIFETIME_CAMPAIGN_END = "2026-03-29T23:59:59Z";
+export const LIFETIME_CAMPAIGN_END = "2026-04-05T23:59:00+03:00";
+
+function formatCampaignEndLabel(value: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Tallinn",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(value));
+
+  const lookup = new Map(parts.map((part) => [part.type, part.value]));
+
+  return `${lookup.get("month")} ${lookup.get("day")}, ${lookup.get("year")} at ${lookup.get("hour")}:${lookup.get("minute")}`;
+}
+
+export const LIFETIME_CAMPAIGN_END_LABEL = formatCampaignEndLabel(
+  LIFETIME_CAMPAIGN_END
+);
 
 export type AccessPlan = "free" | "premium" | "artist" | "lifetime";
 export type CampaignLifetimeSource = "launch_campaign";

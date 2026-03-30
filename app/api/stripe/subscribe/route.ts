@@ -154,8 +154,7 @@ export async function POST(req: NextRequest) {
 
     const artistPriceId = readEnv(
       "STRIPE_ARTIST_PRICE_ID",
-      "STRIPE_ARTIST_PRO_PRICE_ID",
-      "ARTIST_PRO_PRICE_ID"
+      "ARTIST_PRICE_ID"
     );
 
     let priceId: string | null = null;

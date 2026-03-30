@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import { isLifetimeCampaignActive } from "@/lib/lifetimeCampaign";
+import { formatEuroPrice, SOUNDIOX_PRICING } from "@/lib/pricing";
+import {
+  isLifetimeCampaignActive,
+  LIFETIME_CAMPAIGN_END_LABEL,
+} from "@/lib/lifetimeCampaign";
 
 type UpgradeTier = "premium" | "artist";
 
@@ -194,11 +198,13 @@ export default function UpgradeButtons({
         disabled={loading !== null}
         className={`${baseBtn} ${premiumBtn}`}
       >
-        {loading === "premium" ? "Opening..." : "Upgrade to Premium"}
+        {loading === "premium"
+          ? "Opening..."
+          : `Upgrade to Premium • ${formatEuroPrice(SOUNDIOX_PRICING.premium)}`}
       </button>
 
       <div className="text-center text-xs font-semibold text-white/55">
-        Premium unlocks monthly likes. Playlists stay available for logged-in users.
+        Premium unlocks monthly likes for {formatEuroPrice(SOUNDIOX_PRICING.premium)}. Playlists stay available for logged-in users.
       </div>
 
       <button
@@ -211,13 +217,13 @@ export default function UpgradeButtons({
           ? "Opening..."
           : campaignActive
             ? "Launch Campaign: Free Forever"
-            : "Become Artist"}
+            : `Become Artist • ${formatEuroPrice(SOUNDIOX_PRICING.artist)}`}
       </button>
 
       <div className="text-center text-xs font-semibold text-white/55">
         {campaignActive
-          ? "Campaign active through March 29, 2026. Free forever during launch."
-          : "Artist unlocks uploads and artist access."}
+          ? `Campaign active through ${LIFETIME_CAMPAIGN_END_LABEL}. Free forever during launch.`
+          : `Artist unlocks uploads and artist access for ${formatEuroPrice(SOUNDIOX_PRICING.artist)}.`}
       </div>
     </div>
   );
