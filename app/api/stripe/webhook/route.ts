@@ -336,6 +336,18 @@ async function handleCheckoutCompleted(
     }
   }
 
+  const profile = await getProfileByUserId(userId, context);
+
+  if (profile?.is_founding) {
+    console.log("checkout.session.completed ignored for founding user", {
+      userId,
+      sessionId,
+      stripeCustomerId,
+      stripeSubscriptionId,
+    });
+    return;
+  }
+
   await updateProfile({
     context,
     userId,
@@ -388,6 +400,18 @@ async function handleSubscriptionUpdated(
 
   if (!userId) {
     console.warn("No profile found for subscription update", {
+      stripeCustomerId,
+      stripeSubscriptionId,
+      status,
+    });
+    return;
+  }
+
+  const profile = await getProfileByUserId(userId, context);
+
+  if (profile?.is_founding) {
+    console.log("customer.subscription.updated ignored for founding user", {
+      userId,
       stripeCustomerId,
       stripeSubscriptionId,
       status,
@@ -460,6 +484,14 @@ async function handleSubscriptionDeleted(
 
   if (!profile?.id) {
     console.warn("No profile found for deleted subscription customer", {
+      stripeCustomerId,
+    });
+    return;
+  }
+
+  if (profile.is_founding) {
+    console.log("customer.subscription.deleted ignored for founding user", {
+      userId: profile.id,
       stripeCustomerId,
     });
     return;

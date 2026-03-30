@@ -5,6 +5,7 @@ import Stripe from "stripe";
 export const runtime = "nodejs";
 
 type ProfileAccessRow = {
+  is_founding: boolean | null;
   lifetime_access: boolean | null;
 };
 
@@ -122,7 +123,7 @@ export async function POST(req: NextRequest) {
 
     const { data: profile, error: profileError } = await authClient
       .from("profiles")
-      .select("lifetime_access")
+      .select("is_founding, lifetime_access")
       .eq("id", user.id)
       .maybeSingle<ProfileAccessRow>();
 
@@ -142,6 +143,17 @@ export async function POST(req: NextRequest) {
           error: "Lifetime access already active",
           message:
             "Your SoundioX account already has lifetime access. No payment is needed.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (profile?.is_founding) {
+      return NextResponse.json(
+        {
+          error: "Founding users cannot start Stripe checkout",
+          message:
+            "Your SoundioX account already has founding lifetime access. No subscription is needed.",
         },
         { status: 400 }
       );

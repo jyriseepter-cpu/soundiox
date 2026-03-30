@@ -120,6 +120,10 @@ export default function UpgradeButtons({
   }, []);
 
   async function handlePremiumClick() {
+    if (viewerIsFounding) {
+      return;
+    }
+
     if (!userId) {
       router.push("/login");
       return;
@@ -140,6 +144,10 @@ export default function UpgradeButtons({
 
   async function handleArtistClick() {
     const campaignActive = isLifetimeCampaignActive();
+
+    if (viewerIsFounding) {
+      return;
+    }
 
     if (!userId) {
       router.push("/login");
@@ -188,43 +196,57 @@ export default function UpgradeButtons({
     <div className={`space-y-3 ${className}`.trim()}>
       {checkingProfile ? (
         <div className={statusBox}>Checking access...</div>
+      ) : viewerIsFounding ? (
+        <div className={statusBox}>Founding Artist — Lifetime access</div>
       ) : statusActiveLabel ? (
         <div className={statusBox}>{statusActiveLabel}</div>
       ) : null}
 
-      <button
-        type="button"
-        onClick={handlePremiumClick}
-        disabled={loading !== null}
-        className={`${baseBtn} ${premiumBtn}`}
-      >
-        {loading === "premium"
-          ? "Opening..."
-          : `Upgrade to Premium • ${formatEuroPrice(SOUNDIOX_PRICING.premium)}`}
-      </button>
+      {!checkingProfile && !viewerIsFounding ? (
+        <>
+          <button
+            type="button"
+            onClick={handlePremiumClick}
+            disabled={loading !== null}
+            className={`${baseBtn} ${premiumBtn}`}
+          >
+            {loading === "premium"
+              ? "Opening..."
+              : `Upgrade to Premium • ${formatEuroPrice(
+                  SOUNDIOX_PRICING.premium
+                )}`}
+          </button>
 
-      <div className="text-center text-xs font-semibold text-white/55">
-        Premium unlocks monthly likes for {formatEuroPrice(SOUNDIOX_PRICING.premium)}. Playlists stay available for logged-in users.
-      </div>
+          <div className="text-center text-xs font-semibold text-white/55">
+            Premium unlocks monthly likes for{" "}
+            {formatEuroPrice(SOUNDIOX_PRICING.premium)}. Playlists stay
+            available for logged-in users.
+          </div>
 
-      <button
-        type="button"
-        onClick={handleArtistClick}
-        disabled={loading !== null}
-        className={`${baseBtn} ${artistBtn}`}
-      >
-        {loading === "artist"
-          ? "Opening..."
-          : campaignActive
-            ? "Launch Campaign: Free Forever"
-            : `Become Artist • ${formatEuroPrice(SOUNDIOX_PRICING.artist)}`}
-      </button>
+          <button
+            type="button"
+            onClick={handleArtistClick}
+            disabled={loading !== null}
+            className={`${baseBtn} ${artistBtn}`}
+          >
+            {loading === "artist"
+              ? "Opening..."
+              : campaignActive
+                ? "Launch Campaign: Free Forever"
+                : `Become Artist • ${formatEuroPrice(
+                    SOUNDIOX_PRICING.artist
+                  )}`}
+          </button>
 
-      <div className="text-center text-xs font-semibold text-white/55">
-        {campaignActive
-          ? `Campaign active through ${LIFETIME_CAMPAIGN_END_LABEL}. Free forever during launch.`
-          : `Artist unlocks uploads and artist access for ${formatEuroPrice(SOUNDIOX_PRICING.artist)}.`}
-      </div>
+          <div className="text-center text-xs font-semibold text-white/55">
+            {campaignActive
+              ? `Campaign active through ${LIFETIME_CAMPAIGN_END_LABEL}. Free forever during launch.`
+              : `Artist unlocks uploads and artist access for ${formatEuroPrice(
+                  SOUNDIOX_PRICING.artist
+                )}.`}
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }
