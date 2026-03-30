@@ -10,10 +10,12 @@ import { usePlayer } from "@/app/components/PlayerContext";
 import {
   applyLaunchCampaignArtistAccess,
   isLifetimeCampaignActive,
+  LIFETIME_CAMPAIGN_END_LABEL,
   needsLaunchCampaignArtistBackfill,
   normalizeAccessPlan,
   shouldGrantLifetimeCampaignPlan,
 } from "@/lib/lifetimeCampaign";
+import { formatEuroPrice, SOUNDIOX_PRICING } from "@/lib/pricing";
 import { isSoundioXGenre } from "@/lib/genres";
 
 type ProfileRow = {
@@ -730,11 +732,19 @@ export default function AccountClient() {
     if (!selectedPlan || checkoutStatus === "success") return;
 
     if (selectedPlan === "premium") {
-      setMessage("Premium plan selected. Complete checkout to activate it.");
+      setMessage(
+        `Premium plan selected (${formatEuroPrice(
+          SOUNDIOX_PRICING.premium
+        )}). Complete checkout to activate it.`
+      );
     }
 
     if (selectedPlan === "artist") {
-      setMessage("Artist plan selected. Complete checkout to activate it.");
+      setMessage(
+        `Artist plan selected (${formatEuroPrice(
+          SOUNDIOX_PRICING.artist
+        )}). Complete checkout to activate it.`
+      );
     }
   }, [selectedPlan, checkoutStatus]);
 
@@ -1212,7 +1222,7 @@ export default function AccountClient() {
               </div>
               {!canUpload && artistCampaignActive ? (
                 <div className="mt-1 text-xs text-rose-200/90">
-                  Free artist campaign active until Monday.
+                  Free artist campaign active until {LIFETIME_CAMPAIGN_END_LABEL}.
                 </div>
               ) : null}
             </div>
@@ -1244,7 +1254,7 @@ export default function AccountClient() {
                 Artist campaign
               </h2>
               <p className="mt-2 text-sm leading-6 text-white/75">
-                Join before Monday and unlock artist access for free forever.
+                Join before {LIFETIME_CAMPAIGN_END_LABEL} and unlock artist access for free forever.
               </p>
 
               <div className="mt-5">
@@ -1276,7 +1286,7 @@ export default function AccountClient() {
               </h2>
               <p className="mt-2 text-sm leading-6 text-white/65">
                 Premium unlocks monthly likes while keeping playlists available
-                on your account.
+                on your account for {formatEuroPrice(SOUNDIOX_PRICING.premium)}.
               </p>
 
               <div className="mt-5">
@@ -1284,7 +1294,7 @@ export default function AccountClient() {
                   href="/discover"
                   className="inline-flex h-12 items-center justify-center rounded-full border border-white/15 bg-white/8 px-6 text-sm font-medium text-white transition hover:bg-white/12"
                 >
-                  Upgrade to Premium
+                  Upgrade to Premium • {formatEuroPrice(SOUNDIOX_PRICING.premium)}
                 </Link>
               </div>
             </div>
@@ -1648,7 +1658,7 @@ export default function AccountClient() {
       {canUpload
         ? "Publish a new song to your SoundioX profile and discovery feed."
         : showArtistCampaignCta
-        ? "Join before Monday and unlock artist access for free forever."
+        ? `Join before ${LIFETIME_CAMPAIGN_END_LABEL} and unlock artist access for free forever.`
         : "Unlock artist access to upload tracks and build your public SoundioX profile."}
     </p>
 
@@ -1680,7 +1690,7 @@ export default function AccountClient() {
           </button>
 
           <p className="text-xs leading-6 text-rose-200/90">
-            Free forever if you join before Monday. No payment required.
+            Free forever if you join before {LIFETIME_CAMPAIGN_END_LABEL}. No payment required.
           </p>
         </>
       ) : (
@@ -1689,11 +1699,13 @@ export default function AccountClient() {
             href="/discover"
             className="inline-flex h-12 w-full items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:scale-[1.01]"
           >
-            Become Artist
+            Become Artist • {formatEuroPrice(SOUNDIOX_PRICING.artist)}
           </Link>
 
           <p className="text-xs leading-6 text-white/45">
-            Upgrade your access to start uploading tracks and shaping your artist profile.
+            Upgrade your access to start uploading tracks and shaping your artist profile for {formatEuroPrice(
+              SOUNDIOX_PRICING.artist
+            )}.
           </p>
         </>
       )}

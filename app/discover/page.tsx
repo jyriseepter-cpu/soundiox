@@ -17,6 +17,7 @@ import {
 } from "@/lib/artistIdentity";
 import { SOUNDIOX_GENRES, isSoundioXGenre } from "@/lib/genres";
 import { normalizeAccessPlan } from "@/lib/lifetimeCampaign";
+import { formatEuroPrice, SOUNDIOX_PRICING } from "@/lib/pricing";
 
 type TrackRow = {
   id: string;
@@ -744,12 +745,16 @@ export default function DiscoverPage() {
 
     setNewPlaylistName("");
 
-    await fetchPlaylists(viewerUserId);
-
     if (data?.id) {
+      setPlaylists((prev) => {
+        const next = [data as Playlist, ...prev.filter((playlist) => playlist.id !== data.id)];
+        return next;
+      });
       setSelectedPlaylistId(data.id);
       setPlaylistMenuOpen(true);
     }
+
+    await fetchPlaylists(viewerUserId);
 
     showToast("Playlist created ✓");
   }
@@ -1011,7 +1016,9 @@ export default function DiscoverPage() {
 
       {viewerLoggedIn && !viewerHasPaidPlan ? (
         <div className="mb-4 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-400/10 px-4 py-3 text-sm text-fuchsia-100">
-          Free account active. Playlists are enabled. Upgrade to Premium for likes or become an Artist to upload music.
+          Free account active. Playlists are enabled. Upgrade to Premium for likes at {formatEuroPrice(
+            SOUNDIOX_PRICING.premium
+          )} or become an Artist at {formatEuroPrice(SOUNDIOX_PRICING.artist)} to upload music.
         </div>
       ) : null}
 
@@ -1105,6 +1112,11 @@ export default function DiscoverPage() {
                       <input
                         value={newPlaylistName}
                         onChange={(e) => setNewPlaylistName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter") return;
+                          e.preventDefault();
+                          void createPlaylist();
+                        }}
                         placeholder="New playlist..."
                         className="h-10 flex-1 rounded-xl bg-white/18 px-3 text-sm font-medium text-white placeholder:text-white/70 outline-none ring-1 ring-white/15"
                       />
@@ -1155,12 +1167,22 @@ export default function DiscoverPage() {
                   key={track.id}
                   className="flex flex-col gap-3 rounded-xl bg-white/8 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-bold text-white">
-                      {track.title ?? "Untitled"}
-                    </div>
-                    <div className="truncate text-xs font-semibold text-white/55">
-                      {track.artistDisplayName}
+                  <div className="flex min-w-0 items-center gap-3">
+                    <img
+                      src={getArtworkSrc(track)}
+                      alt={track.title ?? "Untitled"}
+                      className="h-10 w-10 rounded-xl object-cover ring-1 ring-white/10"
+                    />
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-bold text-white">
+                        {track.title ?? "Untitled"}
+                      </div>
+                      <div className="truncate text-xs font-semibold text-white/55">
+                        {track.artistDisplayName}
+                        {getOfficialGenreLabel(track.genre)
+                          ? ` • ${getOfficialGenreLabel(track.genre)}`
+                          : ""}
+                      </div>
                     </div>
                   </div>
 
@@ -1249,6 +1271,14 @@ export default function DiscoverPage() {
                   likeLoading={likeLoadingTrackId === t.id}
                   canLike={viewerCanLike}
                   artistId={t.user_id}
+                  trackHref={`/track/${t.id}`}
+                  artistHref={
+                    t.artistSlug
+                      ? `/artists/${encodeURIComponent(t.artistSlug)}`
+                      : t.user_id
+                        ? `/artists/${encodeURIComponent(t.user_id)}`
+                        : null
+                  }
                   showFollowButton={Boolean(t.user_id && t.user_id !== viewerUserId)}
                   isFollowing={Boolean(t.user_id && followingArtistIds.has(t.user_id))}
                   followLoading={followLoadingArtistId === t.user_id}

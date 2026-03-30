@@ -8,6 +8,7 @@ import { usePlayer } from "@/app/components/PlayerContext";
 import CustomSelect from "@/app/components/CustomSelect";
 import { SOUNDIOX_GENRES, isSoundioXGenre } from "@/lib/genres";
 import { normalizeAccessPlan } from "@/lib/lifetimeCampaign";
+import { formatEuroPrice, SOUNDIOX_PRICING } from "@/lib/pricing";
 
 type SortKey = "plays_month" | "likes_month";
 type CategoryKey = "global" | "new_rising" | "estonia";
@@ -113,7 +114,7 @@ export default function PulsePage() {
   const [viewerIsFounding, setViewerIsFounding] = useState(false);
   const [viewerLikesUsed, setViewerLikesUsed] = useState(0);
 
-  const [sort, setSort] = useState<SortKey>("plays_month");
+  const [sort, setSort] = useState<SortKey>("likes_month");
   const [category, setCategory] = useState<CategoryKey>("global");
   const [genre, setGenre] = useState<string>("All genres");
   const [q, setQ] = useState<string>("");
@@ -630,7 +631,11 @@ export default function PulsePage() {
         </div>
       ) : !viewerCanLike ? (
         <div className="mb-4 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-400/10 px-4 py-3 text-sm text-fuchsia-100">
-          Free account active. You can listen and create playlists. Upgrade to Premium for likes or become an Artist to upload and like tracks.
+          Free account active. You can listen and create playlists. Upgrade to Premium for likes at {formatEuroPrice(
+            SOUNDIOX_PRICING.premium
+          )} or become an Artist at {formatEuroPrice(
+            SOUNDIOX_PRICING.artist
+          )} to upload and like tracks.
         </div>
       ) : (
         <div className="mb-4 rounded-2xl border border-cyan-300/20 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100">

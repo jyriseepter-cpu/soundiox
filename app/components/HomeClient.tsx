@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import { LIFETIME_CAMPAIGN_END_LABEL } from "@/lib/lifetimeCampaign";
 import {
   createArtistIdentityMap,
   enrichTracksWithArtistIdentity,
@@ -34,29 +35,11 @@ function pickArtist(t: HomeTrack) {
   return t.artistDisplayName.toString();
 }
 
-function formatEndOfWeekUtc(now = new Date()) {
-  const endOfWeek = new Date(now);
-  const currentDay = now.getUTCDay();
-  const daysUntilSunday = (7 - currentDay) % 7;
-
-  endOfWeek.setUTCDate(now.getUTCDate() + daysUntilSunday);
-  endOfWeek.setUTCHours(23, 59, 59, 0);
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "long",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "UTC",
-  }).format(endOfWeek);
-}
-
 export default function HomeClient() {
   const [tracks, setTracks] = useState<HomeTrack[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const campaignDeadlineLabel = formatEndOfWeekUtc();
+  const campaignDeadlineLabel = LIFETIME_CAMPAIGN_END_LABEL;
 
   useEffect(() => {
     async function loadTracks() {
@@ -132,12 +115,12 @@ export default function HomeClient() {
                 Launch Campaign
               </div>
               <div className="mt-2 text-xl font-bold leading-tight text-white">
-                Join this week — get lifetime access for free
+                Join before the fixed campaign deadline
               </div>
               <div className="mt-2 text-sm leading-6 text-white/70">
                 Create your SoundioX account before{" "}
                 <span className="font-semibold text-white">{campaignDeadlineLabel}</span> and
-                unlock lifetime access without Stripe during launch week.
+                unlock lifetime access without Stripe during the launch campaign.
               </div>
             </div>
 

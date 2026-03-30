@@ -1,7 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import { useRouter } from "next/navigation";
 import { usePlayer } from "@/app/components/PlayerContext";
 
 type Track = {
@@ -16,6 +17,7 @@ type Track = {
   plays_all_time?: number | null;
   likes_this_month?: number | null;
   user_id?: string | null;
+  artistSlug?: string | null;
 };
 
 type TrackCardProps = {
@@ -33,6 +35,8 @@ type TrackCardProps = {
   canLike?: boolean;
 
   artistId?: string | null;
+  trackHref?: string | null;
+  artistHref?: string | null;
   showFollowButton?: boolean;
   isFollowing?: boolean;
   followLoading?: boolean;
@@ -97,10 +101,13 @@ export default function TrackCard({
   isLiked = false,
   likeLoading = false,
   canLike = true,
+  trackHref = null,
+  artistHref = null,
   showFollowButton = false,
   isFollowing = false,
   followLoading = false,
 }: TrackCardProps) {
+  const router = useRouter();
   const { playTrack, currentTrack, isPlaying, toggle } = usePlayer();
   const [shareLabel, setShareLabel] = useState("Share");
 
@@ -167,12 +174,27 @@ export default function TrackCard({
     }
   }
 
+  function handleTrackOpen() {
+    if (!trackHref) return;
+    router.push(trackHref);
+  }
+
+  function handleArtistOpen(e: MouseEvent) {
+    e.stopPropagation();
+    if (!artistHref) return;
+    router.push(artistHref);
+  }
+
   return (
     <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-4 shadow-[0_10px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl transition hover:border-cyan-400/30 hover:bg-white/10">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.10),transparent_35%),radial-gradient(circle_at_bottom_left,rgba(168,85,247,0.12),transparent_35%)] opacity-80" />
 
       <div className="relative flex items-center gap-4">
-        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+        <button
+          type="button"
+          onClick={handleTrackOpen}
+          className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-white/5 text-left"
+        >
           <Image
             src={getArtworkSrc(track)}
             alt={fullTitle}
@@ -180,36 +202,57 @@ export default function TrackCard({
             className="object-cover"
             sizes="64px"
           />
-        </div>
+        </button>
 
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-2">
-            <h3
-              className="min-w-0 flex-1 truncate text-lg font-semibold text-white"
-              title={fullTitle}
-            >
-              {shortTitle}
-            </h3>
+          <button
+            type="button"
+            onClick={handleTrackOpen}
+            className="block w-full text-left"
+          >
+            <div className="flex min-w-0 items-center gap-2">
+              <div
+                className="min-w-0 flex-1 truncate text-lg font-semibold text-white"
+                title={fullTitle}
+              >
+                {shortTitle}
+              </div>
 
-            {badge ? (
-              <span className="inline-flex shrink-0 items-center rounded-full border border-cyan-400/30 bg-cyan-400/10 px-2 py-1 text-[11px] font-medium text-cyan-200">
-                {badge}
+              {badge ? (
+                <span className="inline-flex shrink-0 items-center rounded-full border border-cyan-400/30 bg-cyan-400/10 px-2 py-1 text-[11px] font-medium text-cyan-200">
+                  {badge}
+                </span>
+              ) : null}
+            </div>
+
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/60">
+              <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
+                Plays: {playsLabel}
               </span>
-            ) : null}
-          </div>
+
+              <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
+                Likes: {likeCount}
+              </span>
+            </div>
+          </button>
 
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-sm text-white/75">
-            <span
-              className="truncate"
+            <button
+              type="button"
+              onClick={handleArtistOpen}
+              className="truncate text-left transition hover:text-white"
               title={`${getArtistName(track)} • ${getGenreName(track)}`}
             >
               {getArtistName(track)} • {getGenreName(track)}
-            </span>
+            </button>
 
             {showFollowButton ? (
               <button
                 type="button"
-                onClick={onFollow}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onFollow?.();
+                }}
                 disabled={followLoading}
                 className={`shrink-0 bg-transparent p-0 text-sm font-medium transition ${
                   isFollowing
@@ -220,16 +263,6 @@ export default function TrackCard({
                 {followLoading ? "..." : isFollowing ? "Following" : "Follow"}
               </button>
             ) : null}
-          </div>
-
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/60">
-            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
-              Plays: {playsLabel}
-            </span>
-
-            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
-              Likes: {likeCount}
-            </span>
           </div>
         </div>
 
