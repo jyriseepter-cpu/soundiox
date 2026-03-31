@@ -59,6 +59,22 @@ export default function TermsPage() {
           law, to protect users, or to prevent abuse.
         </p>
 
+        <h2 className="text-2xl font-semibold text-white">
+          Promotional Use of Content
+        </h2>
+        <p>
+          By uploading any content to SoundioX, you grant SoundioX Labs OÜ a
+          non-exclusive, worldwide, royalty-free license to use, reproduce,
+          distribute, display, and promote your content for marketing and
+          promotional purposes.
+        </p>
+        <p>
+          This includes, but is not limited to, use on social media platforms
+          (such as TikTok, Instagram, YouTube), advertisements, and other
+          promotional materials.
+        </p>
+        <p>You retain ownership of your content at all times.</p>
+
         <h2 className="text-2xl font-semibold text-white">8. Contact</h2>
         <p>
           Questions or legal requests: <strong>legal@soundiox.io</strong>
