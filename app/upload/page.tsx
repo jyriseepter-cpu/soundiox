@@ -374,6 +374,7 @@ export default function UploadPage() {
         artwork_url: artworkUrl,
         user_id: user.id,
         is_published: true,
+        is_promo: false,
         plays_all_time: 0,
         plays_this_month: 0,
       };

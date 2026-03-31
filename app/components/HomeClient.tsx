@@ -17,6 +17,7 @@ type TrackRow = {
   title: string | null;
   artist: string | null;
   artwork_url: string | null;
+  is_promo: boolean | null;
   user_id: string | null;
 };
 
@@ -45,7 +46,7 @@ export default function HomeClient() {
     async function loadTracks() {
       const { data, error } = await supabase
         .from("tracks")
-        .select("id,title,artist,artwork_url,user_id")
+        .select("id,title,artist,artwork_url,is_promo,user_id")
         .eq("is_published", true)
         .order("created_at", { ascending: false })
         .limit(5);

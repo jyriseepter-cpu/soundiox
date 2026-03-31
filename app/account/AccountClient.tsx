@@ -73,6 +73,7 @@ type TrackRow = {
   created_at: string | null;
   plays_all_time?: number | null;
   plays_this_month?: number | null;
+  is_promo?: boolean | null;
   user_id?: string | null;
 };
 
@@ -459,7 +460,7 @@ export default function AccountClient() {
       const { data: tracks, error: tracksError } = await supabase
         .from("tracks")
         .select(
-          "id,title,artist,genre,artwork_url,audio_url,created_at,plays_all_time,plays_this_month,user_id"
+          "id,title,artist,genre,artwork_url,audio_url,created_at,plays_all_time,plays_this_month,is_promo,user_id"
         )
         .in("id", ids);
 
@@ -513,7 +514,7 @@ export default function AccountClient() {
       const { data: tracks, error: tracksError } = await supabase
         .from("tracks")
         .select(
-          "id,title,artist,genre,artwork_url,audio_url,created_at,plays_all_time,plays_this_month,user_id"
+          "id,title,artist,genre,artwork_url,audio_url,created_at,plays_all_time,plays_this_month,is_promo,user_id"
         )
         .in("id", ids);
 
@@ -543,7 +544,7 @@ export default function AccountClient() {
       const { data, error } = await supabase
         .from("tracks")
         .select(
-          "id,title,artist,genre,artwork_url,audio_url,created_at,plays_all_time,plays_this_month,user_id"
+          "id,title,artist,genre,artwork_url,audio_url,created_at,plays_all_time,plays_this_month,is_promo,user_id"
         )
         .eq("user_id", ownerId)
         .order("created_at", { ascending: false });

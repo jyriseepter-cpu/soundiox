@@ -22,6 +22,7 @@ type TrackRow = {
   artwork_url: string | null;
   created_at?: string | null;
   is_published?: boolean | null;
+  is_promo?: boolean | null;
 };
 
 function isAbsoluteUrl(u: string) {
@@ -126,7 +127,9 @@ export default function MyArtistPage() {
 
     const { data: t, error: tErr } = await supabase
       .from("tracks")
-      .select("id,title,genre,isrc,audio_url,artwork_url,created_at,is_published")
+      .select(
+        "id,title,genre,isrc,audio_url,artwork_url,created_at,is_published,is_promo"
+      )
       .eq("user_id", uid)
       .order("created_at", { ascending: false });
 
@@ -220,6 +223,7 @@ export default function MyArtistPage() {
         artwork_url: artworkPublic,
         user_id: userId,
         is_published: true,
+        is_promo: false,
       });
 
       if (insErr) throw new Error(`Track insert failed: ${insErr.message}`);

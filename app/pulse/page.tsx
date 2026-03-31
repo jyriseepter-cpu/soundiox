@@ -28,6 +28,7 @@ type PulseTrack = {
   image?: string | null;
   user_id: string | null;
   is_published?: boolean | null;
+  is_promo?: boolean | null;
   artistDisplayName: string;
   artistSlug: string | null;
 };

@@ -17,6 +17,7 @@ type TrackRow = {
   plays_all_time: number | null;
   plays_this_month: number | null;
   is_published: boolean | null;
+  is_promo: boolean | null;
   user_id: string | null;
 };
 
@@ -44,7 +45,7 @@ export default function TrackPage() {
         const { data, error } = await supabase
           .from("tracks")
           .select(
-            "id,title,artist,genre,audio_url,artwork_url,created_at,plays_all_time,plays_this_month,is_published,user_id"
+            "id,title,artist,genre,audio_url,artwork_url,created_at,plays_all_time,plays_this_month,is_published,is_promo,user_id"
           )
           .eq("id", id)
           .eq("is_published", true)
