@@ -49,6 +49,7 @@ type PlayerContextValue = {
   toggle: () => Promise<void>;
   next: () => Promise<void>;
   prev: () => Promise<void>;
+  shuffleQueue: () => void;
 };
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
@@ -300,6 +301,28 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     await goRelative(-1);
   };
 
+  const shuffleQueue = () => {
+    const q = queueRef.current;
+    const cur = currentTrackRef.current;
+
+    if (!q.length) return;
+
+    const rest = cur
+      ? q.filter((track) => String(track.id) !== String(cur.id))
+      : [...q];
+
+    for (let i = rest.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const tmp = rest[i];
+      rest[i] = rest[j];
+      rest[j] = tmp;
+    }
+
+    const nextQueue = cur ? [cur, ...rest] : rest;
+    setQueue(nextQueue);
+    queueRef.current = nextQueue;
+  };
+
   const seek = (timeSeconds: number) => {
     const a = audioRef.current;
     if (!a) return;
@@ -325,6 +348,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       toggle,
       next,
       prev,
+      shuffleQueue,
     }),
     [queue, currentTrack, isPlaying, currentTime, duration]
   );
