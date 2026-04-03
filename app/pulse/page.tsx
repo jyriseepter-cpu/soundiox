@@ -21,6 +21,7 @@ type PulseTrack = {
   genre: string | null;
   created_at: string | null;
   plays_this_month: number | null;
+  audio_url?: string | null;
   artwork_url?: string | null;
   cover_url?: string | null;
   image_url?: string | null;
@@ -247,7 +248,9 @@ export default function PulsePage() {
 
       const { data: tRows, error: tErr } = await supabase
         .from("tracks")
-        .select("id,title,artist,genre,created_at,plays_this_month,artwork_url,user_id,is_published")
+        .select(
+          "id,title,artist,genre,created_at,plays_this_month,audio_url,artwork_url,user_id,is_published"
+        )
         .eq("is_published", true);
 
       if (tErr) {
