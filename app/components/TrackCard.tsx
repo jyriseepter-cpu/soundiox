@@ -19,6 +19,7 @@ type Track = {
   likes_this_month?: number | null;
   user_id?: string | null;
   artistSlug?: string | null;
+  artistIsFounding?: boolean;
 };
 
 type TrackCardProps = {
@@ -36,6 +37,9 @@ type TrackCardProps = {
   isLiked?: boolean;
   likeLoading?: boolean;
   canLike?: boolean;
+  artistIsFounding?: boolean;
+  isCurrentMonthWinner?: boolean;
+  isPreviousMonthWinner?: boolean;
 
   artistId?: string | null;
   trackHref?: string | null;
@@ -106,6 +110,9 @@ export default function TrackCard({
   isLiked = false,
   likeLoading = false,
   canLike = true,
+  artistIsFounding = false,
+  isCurrentMonthWinner = false,
+  isPreviousMonthWinner = false,
   trackHref = null,
   artistHref = null,
   showFollowButton = false,
@@ -129,6 +136,14 @@ export default function TrackCard({
   const shortTitle = shortenTitle(fullTitle, 20);
   const resolvedAllTimeLikeCount = allTimeLikeCount ?? likeCount;
   const resolvedMonthLikeCount = monthLikeCount ?? likeCount;
+  const artworkFrameClassName = artistIsFounding
+    ? "relative shrink-0 rounded-[20px] bg-[linear-gradient(135deg,rgba(250,204,21,0.98),rgba(244,114,182,0.98),rgba(34,211,238,0.98))] p-[2px] shadow-[0_0_0_1px_rgba(250,204,21,0.55),0_0_32px_rgba(244,114,182,0.42)]"
+    : "relative shrink-0";
+  const artworkBorderClassName = isCurrentMonthWinner
+    ? "border-amber-200/95 shadow-[0_0_0_2px_rgba(250,204,21,0.55),0_0_28px_rgba(250,204,21,0.45)]"
+    : isPreviousMonthWinner
+      ? "border-yellow-100/90 shadow-[0_0_0_2px_rgba(245,158,11,0.45),0_0_22px_rgba(245,158,11,0.38)]"
+      : "border-white/10";
 
   useEffect(() => {
     if (shareLabel !== "Copied!") return;
@@ -197,19 +212,33 @@ export default function TrackCard({
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.10),transparent_35%),radial-gradient(circle_at_bottom_left,rgba(168,85,247,0.12),transparent_35%)] opacity-80" />
 
       <div className="relative flex items-center gap-4">
-        <button
-          type="button"
-          onClick={handleTrackOpen}
-          className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-white/5 text-left"
-        >
-          <Image
-            src={getArtworkSrc(track)}
-            alt={fullTitle}
-            fill
-            className="object-cover"
-            sizes="64px"
-          />
-        </button>
+        <div className={artworkFrameClassName}>
+          <button
+            type="button"
+            onClick={handleTrackOpen}
+            className={`relative h-16 w-16 overflow-hidden rounded-2xl border bg-white/5 text-left ${artworkBorderClassName}`}
+          >
+            <Image
+              src={getArtworkSrc(track)}
+              alt={fullTitle}
+              fill
+              className="object-cover"
+              sizes="64px"
+            />
+          </button>
+
+          {artistIsFounding ? (
+            <span className="pointer-events-none absolute -bottom-2 left-1/2 z-10 w-full max-w-[64px] -translate-x-1/2 overflow-hidden rounded-full border border-amber-200/70 bg-[linear-gradient(135deg,rgba(250,204,21,0.98),rgba(244,114,182,0.92))] px-1 py-0.5 text-center text-[7px] font-black uppercase tracking-[0.1em] text-slate-950 shadow-[0_0_16px_rgba(244,114,182,0.42)]">
+              Founding
+            </span>
+          ) : null}
+
+          {isCurrentMonthWinner ? (
+            <span className="pointer-events-none absolute -top-2 left-1/2 z-10 w-full max-w-[58px] -translate-x-1/2 overflow-hidden rounded-full border border-yellow-100/80 bg-[linear-gradient(135deg,rgba(254,240,138,1),rgba(245,158,11,1))] px-1 py-0.5 text-center text-[7px] font-black uppercase tracking-[0.1em] text-slate-950 shadow-[0_0_24px_rgba(250,204,21,0.62)]">
+              #1 Now
+            </span>
+          ) : null}
+        </div>
 
         <div className="min-w-0 flex-1">
           <button
@@ -217,13 +246,19 @@ export default function TrackCard({
             onClick={handleTrackOpen}
             className="block w-full text-left"
           >
-            <div className="flex min-w-0 items-center gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
               <div
-                className="min-w-0 flex-1 truncate text-lg font-semibold text-white"
+                className="min-w-0 truncate text-lg font-semibold text-white"
                 title={fullTitle}
               >
                 {shortTitle}
               </div>
+
+              {isPreviousMonthWinner ? (
+                <span className="inline-flex shrink-0 items-center rounded-full border border-amber-200/70 bg-[linear-gradient(135deg,rgba(254,240,138,0.24),rgba(245,158,11,0.28))] px-2 py-0.5 text-[10px] font-semibold text-amber-100 shadow-[0_0_16px_rgba(250,204,21,0.16)]">
+                  🏆 Last month #1
+                </span>
+              ) : null}
 
               {badge ? (
                 <span className="inline-flex shrink-0 items-center rounded-full border border-cyan-400/30 bg-cyan-400/10 px-2 py-1 text-[11px] font-medium text-cyan-200">

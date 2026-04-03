@@ -32,6 +32,7 @@ type PulseTrack = {
   is_promo?: boolean | null;
   artistDisplayName: string;
   artistSlug: string | null;
+  artistIsFounding?: boolean;
 };
 
 type ProfileRow = {
@@ -56,6 +57,14 @@ const PAGE_SIZE = 50;
 
 function monthStartISO() {
   const now = new Date();
+  now.setDate(1);
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+}
+
+function monthStartOffsetISO(offsetMonths: number) {
+  const now = new Date();
+  now.setDate(1);
+  now.setMonth(now.getMonth() + offsetMonths);
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
@@ -97,12 +106,35 @@ function normalizeRole(value: string | null | undefined) {
   return "listener";
 }
 
+function logSupabaseError(label: string, error: unknown) {
+  const err = error as
+    | {
+        message?: string | null;
+        details?: string | null;
+        hint?: string | null;
+        code?: string | null;
+      }
+    | null
+    | undefined;
+
+  console.error(label, {
+    message: err?.message ?? null,
+    details: err?.details ?? null,
+    hint: err?.hint ?? null,
+    code: err?.code ?? null,
+    raw: error,
+  });
+}
+
 export default function PulsePage() {
   const router = useRouter();
   const { playTrack, currentTrack, isPlaying, toggle } = usePlayer();
 
   const [tracks, setTracks] = useState<PulseTrack[]>([]);
   const [likesMonth, setLikesMonth] = useState<Map<string, number>>(new Map());
+  const [previousMonthWinnerTrackId, setPreviousMonthWinnerTrackId] = useState<string | null>(
+    null
+  );
   const [likedSet, setLikedSet] = useState<Set<string>>(new Set());
   const [userId, setUserId] = useState<string | null>(null);
   const [followingSet, setFollowingSet] = useState<Set<string>>(new Set());
@@ -215,11 +247,11 @@ export default function PulsePage() {
 
       const { data: tRows, error: tErr } = await supabase
         .from("tracks")
-        .select("*")
+        .select("id,title,artist,genre,created_at,plays_this_month,artwork_url,user_id,is_published")
         .eq("is_published", true);
 
       if (tErr) {
-        console.error("Pulse tracks error:", tErr);
+        logSupabaseError("Pulse tracks error", tErr);
       }
 
       const safeTracks: PulseTrack[] = ((tRows ?? []) as any[]).map((track) => ({
@@ -260,6 +292,7 @@ export default function PulsePage() {
               artistDisplayName: safeStr(
                 profile?.display_name || track.artist || "AI Artist"
               ),
+              artistIsFounding: Boolean(profile?.is_founding),
               artistSlug:
                 profile?.slug && safeStr(profile.slug).trim()
                   ? safeStr(profile.slug).trim()
@@ -317,8 +350,29 @@ export default function PulsePage() {
           map.set(trackId, (map.get(trackId) ?? 0) + 1);
         });
         setLikesMonth(map);
+
+        const { data: previousWinnerRows, error: previousWinnerError } = await supabase
+          .from("track_likes_monthly")
+          .select("track_id,month,likes")
+          .eq("month", monthStartOffsetISO(-1))
+          .in("track_id", ids)
+          .order("likes", { ascending: false })
+          .limit(1);
+
+        if (previousWinnerError) {
+          console.warn("Pulse previous winner query error:", previousWinnerError);
+          setPreviousMonthWinnerTrackId(null);
+        } else {
+          const winnerTrackId = previousWinnerRows?.[0]?.track_id;
+          setPreviousMonthWinnerTrackId(
+            typeof winnerTrackId === "string" && winnerTrackId.length > 0
+              ? winnerTrackId
+              : null
+          );
+        }
       } else {
         setLikesMonth(new Map());
+        setPreviousMonthWinnerTrackId(null);
       }
 
       if (userId && ids.length > 0) {
@@ -426,6 +480,22 @@ export default function PulsePage() {
 
     return list;
   }, [filtered, likesMonth, sort]);
+  const currentMonthWinnerTrackId = useMemo(() => {
+    let topTrackId: string | null = null;
+    let topLikes = 0;
+
+    tracks.forEach((track) => {
+      const trackId = String(track.id);
+      const likes = likesMonth.get(trackId) ?? 0;
+
+      if (likes > topLikes) {
+        topTrackId = trackId;
+        topLikes = likes;
+      }
+    });
+
+    return topLikes > 0 ? topTrackId : null;
+  }, [tracks, likesMonth]);
 
   useEffect(() => {
     setPage(1);
@@ -747,6 +817,9 @@ export default function PulsePage() {
             const followLoading = followLoadingId === artistId;
             const followerCount = artistId ? followerCounts.get(artistId) ?? 0 : 0;
             const isOwnTrack = Boolean(userId && artistId && userId === artistId);
+            const isFoundingArtist = Boolean(t.artistIsFounding);
+            const isCurrentMonthWinner = currentMonthWinnerTrackId === id;
+            const isPreviousMonthWinner = previousMonthWinnerTrackId === id;
             const likeDisabledReason = !userId
               ? "Log in to like"
               : liked
@@ -774,20 +847,56 @@ export default function PulsePage() {
                   </div>
                 ) : null}
 
-                <div className="grid grid-cols-12 items-center gap-2">
-                  <div className="col-span-5 flex min-w-0 items-center gap-3">
-                    <div className="w-10 text-white/40">{startIndex + idx + 1}</div>
+                <div className="grid grid-cols-12 items-center gap-3">
+                  <div className="col-span-5 flex min-w-0 items-center gap-4">
+                    <div className="flex w-12 shrink-0 flex-col items-center gap-1">
+                      <div className="text-white/40">{startIndex + idx + 1}</div>
+                    </div>
 
-                    <img
-                      src={getArtworkSrc(t)}
-                      alt={safeStr(t.title) || "Cover"}
-                      className="h-10 w-10 rounded-xl object-cover ring-1 ring-white/10"
-                      loading="lazy"
-                    />
+                    <div
+                      className={`relative shrink-0 ${
+                        isFoundingArtist
+                          ? "rounded-[14px] bg-[linear-gradient(135deg,rgba(250,204,21,0.98),rgba(244,114,182,0.98),rgba(34,211,238,0.98))] p-[2px] shadow-[0_0_0_1px_rgba(250,204,21,0.5),0_0_24px_rgba(244,114,182,0.36)]"
+                          : ""
+                      }`}
+                    >
+                      <img
+                        src={getArtworkSrc(t)}
+                        alt={safeStr(t.title) || "Cover"}
+                        className={`h-14 w-14 rounded-2xl object-cover ring-1 ${
+                          isCurrentMonthWinner
+                            ? "ring-amber-200 shadow-[0_0_16px_rgba(250,204,21,0.36)]"
+                            : isPreviousMonthWinner
+                              ? "ring-orange-200 shadow-[0_0_12px_rgba(249,115,22,0.28)]"
+                              : "ring-white/10"
+                        }`}
+                        loading="lazy"
+                      />
+
+                      {isCurrentMonthWinner ? (
+                        <span className="pointer-events-none absolute -top-2 left-1/2 w-full max-w-[54px] -translate-x-1/2 overflow-hidden rounded-full border border-yellow-100/80 bg-[linear-gradient(135deg,rgba(254,240,138,1),rgba(245,158,11,1))] px-1 py-0.5 text-center text-[7px] font-black uppercase tracking-[0.08em] text-slate-950 shadow-[0_0_18px_rgba(250,204,21,0.52)]">
+                          #1 Now
+                        </span>
+                      ) : null}
+
+                      {isFoundingArtist ? (
+                        <span className="pointer-events-none absolute -bottom-2 left-1/2 w-full max-w-[54px] -translate-x-1/2 overflow-hidden rounded-full border border-amber-200/70 bg-[linear-gradient(135deg,rgba(250,204,21,0.98),rgba(244,114,182,0.92))] px-1 py-0.5 text-center text-[7px] font-black uppercase tracking-[0.08em] text-slate-950 shadow-[0_0_14px_rgba(244,114,182,0.34)]">
+                          Founding
+                        </span>
+                      ) : null}
+                    </div>
 
                     <div className="min-w-0">
-                      <div className="truncate font-semibold text-white">
-                        {safeStr(t.title) || "Untitled"}
+                      <div className="flex min-w-0 items-center gap-2">
+                        <div className="min-w-0 truncate font-semibold text-white">
+                          {safeStr(t.title) || "Untitled"}
+                        </div>
+
+                        {isPreviousMonthWinner ? (
+                          <span className="inline-flex shrink-0 items-center rounded-full border border-amber-200/70 bg-[linear-gradient(135deg,rgba(254,240,138,0.24),rgba(245,158,11,0.28))] px-2 py-0.5 text-[10px] font-semibold text-amber-100 shadow-[0_0_16px_rgba(250,204,21,0.16)]">
+                            🏆 Last month #1
+                          </span>
+                        ) : null}
                       </div>
 
                       <div className="truncate text-sm text-white/60">

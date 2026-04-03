@@ -67,6 +67,12 @@ type TrackLikesAllTimeRow = {
   likes: number | null;
 };
 
+type TrackLikesMonthlyRow = {
+  track_id: string;
+  month: string | null;
+  likes: number | null;
+};
+
 type ProfileMini = ArtistIdentityProfile;
 type DiscoverTrack = TrackWithResolvedArtist<TrackRow>;
 
@@ -110,8 +116,10 @@ function normalizeRole(value: string | null | undefined) {
   return "listener";
 }
 
-function monthStartDateString() {
+function monthStartDateString(offsetMonths = 0) {
   const now = new Date();
+  now.setDate(1);
+  now.setMonth(now.getMonth() + offsetMonths);
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
@@ -158,6 +166,9 @@ export default function DiscoverPage() {
 
   const [likesMonthByTrackId, setLikesMonthByTrackId] = useState<Record<string, number>>({});
   const [likesAllTimeByTrackId, setLikesAllTimeByTrackId] = useState<Record<string, number>>({});
+  const [previousMonthWinnerTrackId, setPreviousMonthWinnerTrackId] = useState<string | null>(
+    null
+  );
   const [likedTrackIds, setLikedTrackIds] = useState<string[]>([]);
   const [likeLoadingTrackId, setLikeLoadingTrackId] = useState<string | null>(null);
   const [followingArtistIds, setFollowingArtistIds] = useState<Set<string>>(new Set());
@@ -503,6 +514,48 @@ export default function DiscoverPage() {
   useEffect(() => {
     let alive = true;
 
+    async function loadPreviousMonthWinner() {
+      const trackIds = tracks.map((track) => track.id).filter(Boolean);
+
+      if (!trackIds.length) {
+        setPreviousMonthWinnerTrackId(null);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from("track_likes_monthly")
+          .select("track_id,month,likes")
+          .eq("month", monthStartDateString(-1))
+          .in("track_id", trackIds)
+          .order("likes", { ascending: false })
+          .limit(1);
+
+        if (error) throw error;
+        if (!alive) return;
+
+        const winner = ((data ?? []) as TrackLikesMonthlyRow[]).find(
+          (row) => typeof row.track_id === "string" && row.track_id.length > 0
+        );
+
+        setPreviousMonthWinnerTrackId(winner?.track_id ?? null);
+      } catch (error) {
+        console.warn("discover previous winner warning:", error);
+        if (!alive) return;
+        setPreviousMonthWinnerTrackId(null);
+      }
+    }
+
+    void loadPreviousMonthWinner();
+
+    return () => {
+      alive = false;
+    };
+  }, [tracks]);
+
+  useEffect(() => {
+    let alive = true;
+
     async function loadViewerLikes() {
       if (!viewerUserId) {
         setLikedTrackIds([]);
@@ -733,6 +786,20 @@ export default function DiscoverPage() {
   const startIndex = (currentPage - 1) * PAGE_SIZE;
   const endIndex = Math.min(startIndex + PAGE_SIZE, totalTracks);
   const visibleTracks = displayedTracks.slice(startIndex, endIndex);
+  const currentMonthWinnerTrackId = useMemo(() => {
+    let topTrackId: string | null = null;
+    let topLikes = 0;
+
+    for (const track of displayedTracks) {
+      const likes = likesMonthByTrackId[track.id] ?? 0;
+      if (likes > topLikes) {
+        topTrackId = track.id;
+        topLikes = likes;
+      }
+    }
+
+    return topLikes > 0 ? topTrackId : null;
+  }, [displayedTracks, likesMonthByTrackId]);
 
   const selectedPlaylist = useMemo(
     () => playlists.find((p) => p.id === selectedPlaylistId) ?? null,
@@ -1284,6 +1351,9 @@ export default function DiscoverPage() {
                   isLiked={likedTrackIds.includes(t.id)}
                   likeLoading={likeLoadingTrackId === t.id}
                   canLike={viewerCanLike}
+                  artistIsFounding={Boolean(t.artistIsFounding)}
+                  isCurrentMonthWinner={currentMonthWinnerTrackId === t.id}
+                  isPreviousMonthWinner={previousMonthWinnerTrackId === t.id}
                   artistId={t.user_id}
                   trackHref={`/track/${t.id}`}
                   artistHref={
