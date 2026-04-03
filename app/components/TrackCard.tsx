@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
 import { usePlayer } from "@/app/components/PlayerContext";
+import LikeButton from "@/app/components/LikeButton";
 
 type Track = {
   id: string;
@@ -30,6 +31,8 @@ type TrackCardProps = {
   onFollow?: () => void;
 
   likeCount?: number;
+  allTimeLikeCount?: number;
+  monthLikeCount?: number;
   isLiked?: boolean;
   likeLoading?: boolean;
   canLike?: boolean;
@@ -98,6 +101,8 @@ export default function TrackCard({
   onLike,
   onFollow,
   likeCount = 0,
+  allTimeLikeCount,
+  monthLikeCount,
   isLiked = false,
   likeLoading = false,
   canLike = true,
@@ -122,6 +127,8 @@ export default function TrackCard({
 
   const fullTitle = getTitle(track);
   const shortTitle = shortenTitle(fullTitle, 20);
+  const resolvedAllTimeLikeCount = allTimeLikeCount ?? likeCount;
+  const resolvedMonthLikeCount = monthLikeCount ?? likeCount;
 
   useEffect(() => {
     if (shareLabel !== "Copied!") return;
@@ -231,7 +238,7 @@ export default function TrackCard({
               </span>
 
               <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
-                Likes: {likeCount}
+                All-time likes: {resolvedAllTimeLikeCount}
               </span>
             </div>
           </button>
@@ -267,22 +274,17 @@ export default function TrackCard({
         </div>
 
         <div className="hidden shrink-0 items-center gap-2 md:flex">
-          <button
-            type="button"
-            onClick={() => {
+          <LikeButton
+            trackId={String(track.id)}
+            liked={isLiked}
+            onToggle={() => {
               if (canLike && onLike) void onLike();
             }}
-            disabled={!canLike || likeLoading}
-            className={`min-w-[52px] rounded-2xl px-3 py-2 text-sm font-semibold transition ${
-              !canLike
-                ? "cursor-not-allowed bg-white/5 text-white/35"
-                : isLiked
-                  ? "bg-white/10 text-cyan-200 hover:bg-white/15"
-                  : "bg-white/10 text-white hover:bg-white/15"
-            }`}
-          >
-            {likeLoading ? "..." : `♡ ${likeCount}`}
-          </button>
+            likesCount={resolvedMonthLikeCount}
+            disabled={!canLike}
+            loading={likeLoading}
+            showCount
+          />
 
           <button
             type="button"
@@ -311,22 +313,17 @@ export default function TrackCard({
       </div>
 
       <div className="relative mt-4 flex flex-wrap gap-2 md:hidden">
-        <button
-          type="button"
-          onClick={() => {
+        <LikeButton
+          trackId={String(track.id)}
+          liked={isLiked}
+          onToggle={() => {
             if (canLike && onLike) void onLike();
           }}
-          disabled={!canLike || likeLoading}
-          className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
-            !canLike
-              ? "cursor-not-allowed bg-white/5 text-white/35"
-              : isLiked
-                ? "bg-white/10 text-cyan-200 hover:bg-white/15"
-                : "bg-white/10 text-white hover:bg-white/15"
-          }`}
-        >
-          {likeLoading ? "..." : `♡ ${likeCount}`}
-        </button>
+          likesCount={resolvedMonthLikeCount}
+          disabled={!canLike}
+          loading={likeLoading}
+          showCount
+        />
 
         <button
           type="button"

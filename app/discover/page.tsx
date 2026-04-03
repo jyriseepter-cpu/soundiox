@@ -18,6 +18,14 @@ import {
 import { SOUNDIOX_GENRES, isSoundioXGenre } from "@/lib/genres";
 import { normalizeAccessPlan } from "@/lib/lifetimeCampaign";
 import { formatEuroPrice, SOUNDIOX_PRICING } from "@/lib/pricing";
+import {
+  addTrackToPlaylist as addTrackToPlaylistEntry,
+  broadcastTrackLikeChanged,
+  fetchUserLikedTrackIds,
+  fetchUserPlaylists,
+  likeTrack,
+  unlikeTrack,
+} from "@/lib/trackEngagement";
 
 type TrackRow = {
   id: string;
@@ -162,6 +170,7 @@ export default function DiscoverPage() {
 
   const nowPlayingId = (currentTrack as any)?.id ?? null;
   const authReadyRef = useRef(false);
+  const likedTrackIdsRef = useRef<string[]>([]);
 
   const viewerIsArtist =
     viewerIsFounding || viewerRole === "artist" || viewerPlan === "artist";
@@ -177,6 +186,10 @@ export default function DiscoverPage() {
     setToast(text);
     window.setTimeout(() => setToast(null), 2200);
   }
+
+  useEffect(() => {
+    likedTrackIdsRef.current = likedTrackIds;
+  }, [likedTrackIds]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -497,20 +510,8 @@ export default function DiscoverPage() {
       }
 
       try {
-        const monthStart = monthStartDateString();
-
-        const { data, error } = await supabase
-          .from("likes")
-          .select("track_id")
-          .eq("user_id", viewerUserId)
-          .eq("month", monthStart);
-
-        if (error) throw error;
+        const ids = await fetchUserLikedTrackIds(viewerUserId);
         if (!alive) return;
-
-        const ids = ((data ?? []) as LikeRow[])
-          .map((row) => row.track_id)
-          .filter((id): id is string => typeof id === "string" && id.length > 0);
 
         setLikedTrackIds(ids);
       } catch (error) {
@@ -526,6 +527,40 @@ export default function DiscoverPage() {
       alive = false;
     };
   }, [viewerUserId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    function handleTrackLikeChanged(event: Event) {
+      const detail = (event as CustomEvent<{ trackId?: string; liked?: boolean }>).detail;
+      const trackId = detail?.trackId;
+      const liked = detail?.liked;
+
+      if (!trackId || typeof liked !== "boolean") return;
+
+      const wasLiked = likedTrackIdsRef.current.includes(trackId);
+      if (wasLiked === liked) return;
+
+      setLikedTrackIds((prev) =>
+        liked
+          ? (prev.includes(trackId) ? prev : [...prev, trackId])
+          : prev.filter((id) => id !== trackId)
+      );
+      setLikesMonthByTrackId((prev) => ({
+        ...prev,
+        [trackId]: Math.max(0, (prev[trackId] ?? 0) + (liked ? 1 : -1)),
+      }));
+      setLikesAllTimeByTrackId((prev) => ({
+        ...prev,
+        [trackId]: Math.max(0, (prev[trackId] ?? 0) + (liked ? 1 : -1)),
+      }));
+    }
+
+    window.addEventListener("soundiox:track-like-changed", handleTrackLikeChanged);
+    return () => {
+      window.removeEventListener("soundiox:track-like-changed", handleTrackLikeChanged);
+    };
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -604,26 +639,18 @@ export default function DiscoverPage() {
   }, [tracks, viewerUserId]);
 
   async function fetchPlaylists(userId: string) {
-    const { data, error } = await supabase
-      .from("playlists")
-      .select("id,name,created_at,user_id")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false });
-
-    if (error) {
+    try {
+      const list = await fetchUserPlaylists(userId);
+      setPlaylists(list);
+      setSelectedPlaylistId((prev) => {
+        if (prev && list.some((p) => p.id === prev)) return prev;
+        return list[0]?.id ?? "";
+      });
+    } catch (error) {
       console.warn("discover playlists warning:", error);
       setPlaylists([]);
       setSelectedPlaylistId("");
-      return;
     }
-
-    const list = (data ?? []) as Playlist[];
-    setPlaylists(list);
-
-    setSelectedPlaylistId((prev) => {
-      if (prev && list.some((p) => p.id === prev)) return prev;
-      return list[0]?.id ?? "";
-    });
   }
 
   useEffect(() => {
@@ -772,14 +799,9 @@ export default function DiscoverPage() {
       return;
     }
 
-    const { error } = await supabase.from("playlist_tracks").insert([
-      {
-        playlist_id: selectedPlaylistId,
-        track_id: track.id,
-      },
-    ]);
-
-    if (error) {
+    try {
+      await addTrackToPlaylistEntry(selectedPlaylistId, track.id);
+    } catch {
       showToast("This track is already in that playlist");
       return;
     }
@@ -810,22 +832,15 @@ export default function DiscoverPage() {
       return;
     }
 
-    const month = monthStartDateString();
     const alreadyLiked = likedTrackIds.includes(trackId);
 
     try {
       setLikeLoadingTrackId(trackId);
 
       if (alreadyLiked) {
-        const { error } = await supabase
-          .from("likes")
-          .delete()
-          .eq("user_id", viewerUserId)
-          .eq("track_id", trackId)
-          .eq("month", month);
+        await unlikeTrack(viewerUserId, trackId);
 
-        if (error) throw error;
-
+        likedTrackIdsRef.current = likedTrackIdsRef.current.filter((id) => id !== trackId);
         setLikedTrackIds((prev) => prev.filter((id) => id !== trackId));
         setLikesMonthByTrackId((prev) => ({
           ...prev,
@@ -835,19 +850,15 @@ export default function DiscoverPage() {
           ...prev,
           [trackId]: Math.max(0, (prev[trackId] ?? 0) - 1),
         }));
+        broadcastTrackLikeChanged(trackId, false);
         return;
       }
 
-      const { error } = await supabase.from("likes").insert([
-        {
-          user_id: viewerUserId,
-          track_id: trackId,
-          month,
-        },
-      ]);
+      await likeTrack(viewerUserId, trackId);
 
-      if (error) throw error;
-
+      likedTrackIdsRef.current = likedTrackIdsRef.current.includes(trackId)
+        ? likedTrackIdsRef.current
+        : [...likedTrackIdsRef.current, trackId];
       setLikedTrackIds((prev) => (prev.includes(trackId) ? prev : [...prev, trackId]));
       setLikesMonthByTrackId((prev) => ({
         ...prev,
@@ -857,6 +868,7 @@ export default function DiscoverPage() {
         ...prev,
         [trackId]: (prev[trackId] ?? 0) + 1,
       }));
+      broadcastTrackLikeChanged(trackId, true);
     } catch (error: any) {
       console.warn("toggle like warning:", error?.message || error);
       showToast(error?.message || "Like failed");
@@ -1267,7 +1279,8 @@ export default function DiscoverPage() {
                   onAdd={() => void addTrackToSelectedPlaylist(t)}
                   onLike={() => void toggleLike(t.id)}
                   onFollow={() => void toggleArtistFollow(t.user_id ?? "")}
-                  likeCount={likesAllTimeByTrackId[t.id] ?? 0}
+                  allTimeLikeCount={likesAllTimeByTrackId[t.id] ?? 0}
+                  monthLikeCount={likesMonthByTrackId[t.id] ?? 0}
                   isLiked={likedTrackIds.includes(t.id)}
                   likeLoading={likeLoadingTrackId === t.id}
                   canLike={viewerCanLike}
