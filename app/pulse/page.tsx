@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { usePlayer } from "@/app/components/PlayerContext";
 import CustomSelect from "@/app/components/CustomSelect";
+import LikeButton from "@/app/components/LikeButton";
 import { SOUNDIOX_GENRES, isSoundioXGenre } from "@/lib/genres";
 import { normalizeAccessPlan } from "@/lib/lifetimeCampaign";
 import { formatEuroPrice, SOUNDIOX_PRICING } from "@/lib/pricing";
@@ -832,16 +833,15 @@ export default function PulsePage() {
                   </div>
 
                   <div className="col-span-2 flex items-center justify-end gap-3 text-right tabular-nums text-white/80">
-                    <span>{likes}</span>
-                    <button
-                      onClick={() => toggleLike(id)}
-                      className={`text-xl leading-none transition ${
-                        liked ? "text-red-500" : "text-cyan-300 hover:text-cyan-200"
-                      } ${!liked && (!userId || isOwnTrack || !viewerCanLike || likesRemaining <= 0) ? "opacity-50" : ""}`}
+                    <LikeButton
+                      trackId={id}
+                      liked={liked}
+                      likesCount={likes}
+                      onToggle={toggleLike}
                       title={likeDisabledReason}
-                    >
-                      ♥
-                    </button>
+                      disabled={!userId || isOwnTrack || !viewerCanLike || likesRemaining <= 0}
+                      showCount
+                    />
                   </div>
 
                   <div className="col-span-3 flex justify-end gap-2">
