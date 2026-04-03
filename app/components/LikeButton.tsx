@@ -34,9 +34,9 @@ export default function LikeButton({
         disabled={disabled || loading}
         title={title}
         data-track-id={trackId}
-        className={`${buttonClassName} leading-none transition ${
+        className={`${buttonClassName} cursor-pointer leading-none transition ${
           liked ? "text-red-500" : "text-cyan-300 hover:text-cyan-200"
-        } ${!liked && disabled ? "opacity-50" : ""}`.trim()}
+        } ${!liked && disabled ? "opacity-50" : ""} disabled:cursor-not-allowed`.trim()}
       >
         {loading ? "..." : "♥"}
       </button>

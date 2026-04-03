@@ -774,7 +774,7 @@ export default function PulsePage() {
             type="button"
             onClick={() => setPage((prev) => Math.max(1, prev - 1))}
             disabled={currentPage === 1}
-            className="rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+            className="cursor-pointer rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Previous
           </button>
@@ -787,7 +787,7 @@ export default function PulsePage() {
             type="button"
             onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
             disabled={currentPage >= totalPages}
-            className="rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+            className="cursor-pointer rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Next
           </button>
@@ -906,7 +906,7 @@ export default function PulsePage() {
                         {t.artistSlug ? (
                           <Link
                             href={`/artists/${encodeURIComponent(t.artistSlug)}`}
-                            className="hover:text-white"
+                            className="cursor-pointer hover:text-white"
                           >
                             {safeStr(t.artistDisplayName || t.artist || "AI Artist")}
                           </Link>
@@ -920,7 +920,7 @@ export default function PulsePage() {
                             <button
                               onClick={() => toggleFollow(artistId)}
                               disabled={followLoading}
-                              className="text-sm text-white/60 transition hover:text-white disabled:opacity-60"
+                              className="cursor-pointer text-sm text-white/60 transition hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               {followLoading ? "..." : isFollowing ? "Following" : "Follow"}
                             </button>
@@ -965,7 +965,7 @@ export default function PulsePage() {
                           playTrack(t as any, rows as any);
                         }
                       }}
-                      className="rounded-xl bg-gradient-to-r from-cyan-400 to-purple-500 px-4 py-2 text-white"
+                      className="cursor-pointer rounded-xl bg-gradient-to-r from-cyan-400 to-purple-500 px-4 py-2 text-white"
                     >
                       {isCurrent ? (isPlaying ? "Pause" : "Play") : "Play"}
                     </button>

@@ -1230,7 +1230,7 @@ export default function DiscoverPage() {
             <button
               type="button"
               onClick={() => setSelectedPlaylistId("")}
-              className="rounded-xl bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/80 ring-1 ring-white/10 transition hover:bg-white/15"
+              className="cursor-pointer rounded-xl bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/80 ring-1 ring-white/10 transition hover:bg-white/15"
             >
               Close
             </button>
@@ -1272,7 +1272,7 @@ export default function DiscoverPage() {
                       setSelectedTrack(track);
                       void playTrack(track as any, selectedPlaylistTracks as any);
                     }}
-                    className="self-start rounded-xl bg-gradient-to-r from-purple-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 sm:self-auto"
+                    className="cursor-pointer self-start rounded-xl bg-gradient-to-r from-purple-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 sm:self-auto"
                   >
                     Play
                   </button>
@@ -1308,7 +1308,7 @@ export default function DiscoverPage() {
                 type="button"
                 onClick={() => setPage((prev) => Math.max(1, prev - 1))}
                 disabled={currentPage === 1}
-                className="rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+                className="cursor-pointer rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Previous
               </button>
@@ -1321,7 +1321,7 @@ export default function DiscoverPage() {
                 type="button"
                 onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
                 disabled={currentPage >= totalPages}
-                className="rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+                className="cursor-pointer rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Next
               </button>

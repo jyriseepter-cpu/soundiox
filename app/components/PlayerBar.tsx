@@ -4,7 +4,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { normalizeAccessPlan } from "@/lib/lifetimeCampaign";
 import { usePlayer } from "@/app/components/PlayerContext";
-import LikeButton from "@/app/components/LikeButton";
 import {
   addTrackToPlaylist,
   broadcastTrackLikeChanged,
@@ -30,6 +29,7 @@ export default function PlayerBar() {
   const {
     currentTrack,
     isPlaying,
+    isShuffleEnabled,
     toggle,
     next,
     prev,
@@ -300,7 +300,7 @@ export default function PlayerBar() {
           <div className="flex items-center justify-between gap-1 sm:justify-start lg:gap-2">
             <button
               onClick={prev}
-              className="rounded-md bg-white/10 px-1.5 py-0.5 text-[11px] font-semibold text-white ring-1 ring-white/10 hover:bg-white/15 lg:rounded-xl lg:px-3 lg:py-2 lg:text-sm"
+              className="cursor-pointer rounded-md bg-white/10 px-1.5 py-0.5 text-[11px] font-semibold text-white ring-1 ring-white/10 hover:bg-white/15 lg:rounded-xl lg:px-3 lg:py-2 lg:text-sm"
               aria-label="Previous"
               type="button"
             >
@@ -309,7 +309,7 @@ export default function PlayerBar() {
 
             <button
               onClick={toggle}
-              className="min-w-[50px] rounded-md bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white ring-1 ring-white/10 hover:bg-white/15 lg:min-w-[84px] lg:rounded-xl lg:px-4 lg:py-2 lg:text-sm"
+              className="cursor-pointer min-w-[50px] rounded-md bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white ring-1 ring-white/10 hover:bg-white/15 lg:min-w-[84px] lg:rounded-xl lg:px-4 lg:py-2 lg:text-sm"
               aria-label={isPlaying ? "Pause" : "Play"}
               type="button"
             >
@@ -318,7 +318,7 @@ export default function PlayerBar() {
 
             <button
               onClick={next}
-              className="rounded-md bg-white/10 px-1.5 py-0.5 text-[11px] font-semibold text-white ring-1 ring-white/10 hover:bg-white/15 lg:rounded-xl lg:px-3 lg:py-2 lg:text-sm"
+              className="cursor-pointer rounded-md bg-white/10 px-1.5 py-0.5 text-[11px] font-semibold text-white ring-1 ring-white/10 hover:bg-white/15 lg:rounded-xl lg:px-3 lg:py-2 lg:text-sm"
               aria-label="Next"
               type="button"
             >
@@ -352,14 +352,19 @@ export default function PlayerBar() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 lg:ml-auto" ref={menuRef}>
-            <LikeButton
-              trackId={currentTrackId || "current-track"}
-              liked={isLiked}
-              onToggle={() => void handleToggleLike()}
-              disabled={!currentTrackId}
-              loading={likeLoading}
-            />
+          <div className="flex items-center gap-3 lg:ml-auto" ref={menuRef}>
+            <button
+              type="button"
+              onClick={() => void handleToggleLike()}
+              disabled={!currentTrackId || likeLoading}
+              className={`cursor-pointer rounded-xl px-3 py-1.5 text-[11px] font-semibold text-white ring-1 transition lg:px-4 lg:py-2 lg:text-sm ${
+                isLiked
+                  ? "bg-gradient-to-r from-rose-500 to-red-500 ring-rose-200/35 hover:opacity-95"
+                  : "bg-gradient-to-r from-cyan-400 to-sky-400 ring-cyan-200/30 hover:opacity-95"
+              } disabled:cursor-not-allowed disabled:opacity-50`}
+            >
+              {likeLoading ? "..." : "Like"}
+            </button>
 
             <div className="relative">
               <button
@@ -369,7 +374,7 @@ export default function PlayerBar() {
                   setPlaylistMenuOpen((prev) => !prev);
                 }}
                 disabled={!currentTrackId}
-                className="rounded-xl bg-gradient-to-r from-cyan-400 to-sky-400 px-3 py-1.5 text-[11px] font-semibold text-white ring-1 ring-cyan-200/30 transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50 lg:px-4 lg:py-2 lg:text-sm"
+                className="cursor-pointer rounded-xl bg-gradient-to-r from-cyan-400 to-sky-400 px-3 py-1.5 text-[11px] font-semibold text-white ring-1 ring-cyan-200/30 transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50 lg:px-4 lg:py-2 lg:text-sm"
               >
                 Add
               </button>
@@ -394,7 +399,7 @@ export default function PlayerBar() {
                           type="button"
                           onClick={() => void handleAddToPlaylist(playlist.id)}
                           disabled={addingPlaylistId !== null}
-                          className="flex w-full items-center justify-between rounded-xl bg-white/8 px-3 py-2 text-left text-sm font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/12 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="flex w-full cursor-pointer items-center justify-between rounded-xl bg-white/8 px-3 py-2 text-left text-sm font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/12 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           <span className="truncate">{playlist.name}</span>
                           {addingPlaylistId === playlist.id ? (
@@ -414,7 +419,11 @@ export default function PlayerBar() {
               type="button"
               onClick={shuffleQueue}
               disabled={!currentTrack}
-              className="rounded-xl bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50 lg:px-4 lg:py-2 lg:text-sm"
+              className={`px-3 py-1.5 text-[11px] font-semibold ring-1 transition lg:px-4 lg:py-2 lg:text-sm ${
+                isShuffleEnabled
+                  ? "cursor-pointer rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 text-white ring-emerald-200/40 shadow-[0_0_18px_rgba(74,222,128,0.35)] hover:opacity-95"
+                  : "cursor-pointer rounded-xl bg-white/10 text-white ring-white/10 hover:bg-white/15"
+              } disabled:cursor-not-allowed disabled:opacity-50`}
             >
               Shuffle
             </button>

@@ -216,7 +216,7 @@ export default function TrackCard({
           <button
             type="button"
             onClick={handleTrackOpen}
-            className={`relative h-16 w-16 overflow-hidden rounded-2xl border bg-white/5 text-left ${artworkBorderClassName}`}
+            className={`relative h-16 w-16 cursor-pointer overflow-hidden rounded-2xl border bg-white/5 text-left ${artworkBorderClassName}`}
           >
             <Image
               src={getArtworkSrc(track)}
@@ -244,7 +244,7 @@ export default function TrackCard({
           <button
             type="button"
             onClick={handleTrackOpen}
-            className="block w-full text-left"
+            className="block w-full cursor-pointer text-left"
           >
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <div
@@ -282,7 +282,7 @@ export default function TrackCard({
             <button
               type="button"
               onClick={handleArtistOpen}
-              className="truncate text-left transition hover:text-white"
+              className="cursor-pointer truncate text-left transition hover:text-white"
               title={`${getArtistName(track)} • ${getGenreName(track)}`}
             >
               {getArtistName(track)} • {getGenreName(track)}
@@ -296,7 +296,7 @@ export default function TrackCard({
                   onFollow?.();
                 }}
                 disabled={followLoading}
-                className={`shrink-0 bg-transparent p-0 text-sm font-medium transition ${
+                className={`shrink-0 cursor-pointer bg-transparent p-0 text-sm font-medium transition ${
                   isFollowing
                     ? "text-white/75 hover:text-white"
                     : "text-cyan-200 hover:text-cyan-100"
@@ -324,7 +324,7 @@ export default function TrackCard({
           <button
             type="button"
             onClick={handleShare}
-            className="min-w-[88px] rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15"
+            className="min-w-[88px] cursor-pointer rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15"
           >
             {shareLabel}
           </button>
@@ -332,7 +332,7 @@ export default function TrackCard({
           <button
             type="button"
             onClick={onAdd}
-            className="min-w-[64px] rounded-2xl bg-gradient-to-r from-cyan-400 to-sky-400 px-4 py-2 text-sm font-semibold text-white transition hover:scale-[1.02] active:scale-[0.98]"
+            className="min-w-[64px] cursor-pointer rounded-2xl bg-gradient-to-r from-cyan-400 to-sky-400 px-4 py-2 text-sm font-semibold text-white transition hover:scale-[1.02] active:scale-[0.98]"
           >
             Add
           </button>
@@ -340,7 +340,7 @@ export default function TrackCard({
           <button
             type="button"
             onClick={handlePlay}
-            className="min-w-[72px] rounded-2xl bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-5 py-2 text-sm font-semibold text-white shadow-[0_0_30px_rgba(168,85,247,0.25)] transition hover:scale-[1.02] active:scale-[0.98]"
+            className="min-w-[72px] cursor-pointer rounded-2xl bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-5 py-2 text-sm font-semibold text-white shadow-[0_0_30px_rgba(168,85,247,0.25)] transition hover:scale-[1.02] active:scale-[0.98]"
           >
             {isCurrentTrack && isPlaying ? "Pause" : "Play"}
           </button>
@@ -363,7 +363,7 @@ export default function TrackCard({
         <button
           type="button"
           onClick={handleShare}
-          className="rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15"
+          className="cursor-pointer rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15"
         >
           {shareLabel}
         </button>
@@ -371,7 +371,7 @@ export default function TrackCard({
         <button
           type="button"
           onClick={onAdd}
-          className="rounded-2xl bg-gradient-to-r from-cyan-400 to-sky-400 px-4 py-2 text-sm font-semibold text-white transition hover:scale-[1.02] active:scale-[0.98]"
+          className="cursor-pointer rounded-2xl bg-gradient-to-r from-cyan-400 to-sky-400 px-4 py-2 text-sm font-semibold text-white transition hover:scale-[1.02] active:scale-[0.98]"
         >
           Add
         </button>
@@ -379,7 +379,7 @@ export default function TrackCard({
         <button
           type="button"
           onClick={handlePlay}
-          className="rounded-2xl bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-5 py-2 text-sm font-semibold text-white shadow-[0_0_30px_rgba(168,85,247,0.25)] transition hover:scale-[1.02] active:scale-[0.98]"
+          className="cursor-pointer rounded-2xl bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-5 py-2 text-sm font-semibold text-white shadow-[0_0_30px_rgba(168,85,247,0.25)] transition hover:scale-[1.02] active:scale-[0.98]"
         >
           {isCurrentTrack && isPlaying ? "Pause" : "Play"}
         </button>
