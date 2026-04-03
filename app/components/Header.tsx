@@ -189,7 +189,7 @@ export default function Header() {
   }
 
   const linkClass = (href: string) =>
-    `relative flex items-center gap-2 text-base font-bold transition ${
+    `relative flex cursor-pointer items-center gap-2 text-base font-bold transition ${
       pathname === href ? "text-white" : "text-white/75 hover:text-white"
     }`;
 
@@ -197,7 +197,7 @@ export default function Header() {
     <header className="relative z-40 px-6 py-8">
       <div className="mx-auto max-w-6xl">
         <div className="flex items-center justify-between rounded-[10px] border border-white/10 bg-[linear-gradient(90deg,rgba(34,211,238,0.18),rgba(99,102,241,0.14),rgba(217,70,239,0.18))] px-6 py-5 shadow-[0_18px_60px_rgba(0,0,0,0.28)] backdrop-blur-xl">
-          <Link href="/" className="flex items-center gap-3">
+          <Link href="/" className="flex cursor-pointer items-center gap-3">
             <Image
               src="/logo-new.png"
               alt="SoundioX"
@@ -237,7 +237,7 @@ export default function Header() {
           <button
             type="button"
             onClick={() => setMobileMenuOpen((prev) => !prev)}
-            className="md:hidden rounded-lg border border-white/15 bg-black/20 px-3 py-2 text-sm font-bold text-white/90"
+            className="cursor-pointer md:hidden rounded-lg border border-white/15 bg-black/20 px-3 py-2 text-sm font-bold text-white/90"
           >
             {mobileMenuOpen ? "Close" : "Menu"}
           </button>
@@ -250,7 +250,7 @@ export default function Header() {
                 <button
                   type="button"
                   onClick={handleAccount}
-                  className="rounded-lg bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-5 py-2 text-sm font-bold text-white transition hover:opacity-90"
+                  className="cursor-pointer rounded-lg bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-5 py-2 text-sm font-bold text-white transition hover:opacity-90"
                 >
                   {profile.display_name?.trim() || "Account"}
                 </button>
@@ -259,7 +259,7 @@ export default function Header() {
                   type="button"
                   onClick={handleLogout}
                   disabled={loggingOut}
-                  className="rounded-lg border border-white/15 bg-black/20 px-4 py-2 text-sm font-bold text-white/90 transition hover:bg-white/10 disabled:opacity-60"
+                  className="cursor-pointer rounded-lg border border-white/15 bg-black/20 px-4 py-2 text-sm font-bold text-white/90 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {loggingOut ? "Logging out..." : "Log out"}
                 </button>
@@ -267,7 +267,7 @@ export default function Header() {
             ) : (
               <Link
                 href="/login"
-                className="rounded-lg bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-5 py-2 text-sm font-bold text-white transition hover:opacity-90"
+                className="cursor-pointer rounded-lg bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-5 py-2 text-sm font-bold text-white transition hover:opacity-90"
               >
                 Get Started
               </Link>
@@ -306,7 +306,7 @@ export default function Header() {
                   <button
                     type="button"
                     onClick={handleAccount}
-                    className="rounded-lg bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-5 py-2 text-sm font-bold text-white transition hover:opacity-90"
+                    className="cursor-pointer rounded-lg bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-5 py-2 text-sm font-bold text-white transition hover:opacity-90"
                   >
                     {profile.display_name?.trim() || "Account"}
                   </button>
@@ -315,7 +315,7 @@ export default function Header() {
                     type="button"
                     onClick={handleLogout}
                     disabled={loggingOut}
-                    className="rounded-lg border border-white/15 bg-black/20 px-4 py-2 text-sm font-bold text-white/90 transition hover:bg-white/10 disabled:opacity-60"
+                    className="cursor-pointer rounded-lg border border-white/15 bg-black/20 px-4 py-2 text-sm font-bold text-white/90 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {loggingOut ? "Logging out..." : "Log out"}
                   </button>
@@ -323,7 +323,7 @@ export default function Header() {
               ) : (
                 <Link
                   href="/login"
-                  className="rounded-lg bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-5 py-2 text-sm font-bold text-white transition hover:opacity-90"
+                  className="cursor-pointer rounded-lg bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-5 py-2 text-sm font-bold text-white transition hover:opacity-90"
                 >
                   Get Started
                 </Link>

@@ -36,6 +36,7 @@ type PlayerContextValue = {
   queue: Track[];
   currentTrack: Track | null;
   isPlaying: boolean;
+  isShuffleEnabled: boolean;
 
   currentTime: number;
   duration: number;
@@ -88,6 +89,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [queue, setQueue] = useState<Track[]>([]);
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isShuffleEnabled, setIsShuffleEnabled] = useState(false);
 
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -228,9 +230,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (Array.isArray(allTracks) && allTracks.length) {
       setQueue(allTracks);
       queueRef.current = allTracks;
+      setIsShuffleEnabled(false);
     } else if (!queueRef.current.length) {
       setQueue([track]);
       queueRef.current = [track];
+      setIsShuffleEnabled(false);
     }
 
     setCurrentTrack(track);
@@ -243,9 +247,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (Array.isArray(allTracks) && allTracks.length) {
       setQueue(allTracks);
       queueRef.current = allTracks;
+      setIsShuffleEnabled(false);
     } else if (!queueRef.current.length) {
       setQueue([track]);
       queueRef.current = [track];
+      setIsShuffleEnabled(false);
     }
 
     setCurrentTrack(track);
@@ -307,6 +313,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
     if (!q.length) return;
 
+    if (isShuffleEnabled) {
+      setIsShuffleEnabled(false);
+      return;
+    }
+
     const rest = cur
       ? q.filter((track) => String(track.id) !== String(cur.id))
       : [...q];
@@ -321,6 +332,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const nextQueue = cur ? [cur, ...rest] : rest;
     setQueue(nextQueue);
     queueRef.current = nextQueue;
+    setIsShuffleEnabled(true);
   };
 
   const seek = (timeSeconds: number) => {
@@ -338,6 +350,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       queue,
       currentTrack,
       isPlaying,
+      isShuffleEnabled,
       currentTime,
       duration,
       seek,
@@ -350,7 +363,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       prev,
       shuffleQueue,
     }),
-    [queue, currentTrack, isPlaying, currentTime, duration]
+    [queue, currentTrack, isPlaying, isShuffleEnabled, currentTime, duration]
   );
 
   return (

@@ -1141,7 +1141,7 @@ export default function DiscoverPage() {
             <button
               type="button"
               onClick={() => setPlaylistMenuOpen((prev) => !prev)}
-              className="flex h-10 w-full items-center justify-between rounded-xl bg-gradient-to-r from-cyan-400 to-sky-400 px-4 text-sm font-semibold text-white ring-1 ring-cyan-200/40 backdrop-blur transition hover:opacity-95"
+              className="flex h-10 w-full cursor-pointer items-center justify-between rounded-xl bg-gradient-to-r from-cyan-400 to-sky-400 px-4 text-sm font-semibold text-white ring-1 ring-cyan-200/40 backdrop-blur transition hover:opacity-95"
             >
               <span className="truncate">
                 {selectedPlaylist ? `Playlist: ${selectedPlaylist.name}` : "My Playlists"}
@@ -1174,7 +1174,7 @@ export default function DiscoverPage() {
                                 setSelectedPlaylistId(playlist.id);
                                 setPlaylistMenuOpen(false);
                               }}
-                              className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-semibold transition ${
+                              className={`flex w-full cursor-pointer items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-semibold transition ${
                                 isActive
                                   ? "bg-white/30 text-white"
                                   : "bg-white/10 text-white/95 hover:bg-white/18"
@@ -1203,7 +1203,7 @@ export default function DiscoverPage() {
                       <button
                         type="button"
                         onClick={createPlaylist}
-                        className="h-10 rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-500 px-4 text-sm font-bold text-white ring-1 ring-white/15"
+                        className="h-10 cursor-pointer rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-500 px-4 text-sm font-bold text-white ring-1 ring-white/15"
                       >
                         Create
                       </button>

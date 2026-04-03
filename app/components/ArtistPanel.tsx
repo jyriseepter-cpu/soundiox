@@ -155,7 +155,7 @@ export default function ArtistPanel(props: Props) {
             {artistSlug ? (
               <Link
                 href={`/artists/${encodeURIComponent(artistSlug)}`}
-                className="truncate text-base font-bold text-white transition hover:text-cyan-300"
+                className="cursor-pointer truncate text-base font-bold text-white transition hover:text-cyan-300"
               >
                 {artistName}
               </Link>
@@ -176,7 +176,7 @@ export default function ArtistPanel(props: Props) {
                 type="button"
                 onClick={handleFollowClick}
                 disabled={followLoading}
-                className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 transition ${
+                className={`cursor-pointer rounded-full px-3 py-1 text-xs font-semibold ring-1 transition ${
                   isFollowing
                     ? "bg-white/10 text-white ring-white/10 hover:bg-white/14"
                     : "bg-gradient-to-r from-cyan-400/20 to-fuchsia-500/20 text-cyan-100 ring-cyan-300/20 hover:from-cyan-400/25 hover:to-fuchsia-500/25"
@@ -224,7 +224,10 @@ export default function ArtistPanel(props: Props) {
                   {((t as any).title ?? (t as any).name ?? "Untitled").toString()}
                 </div>
 
-                <button onClick={() => onPlayClick(t)} className={`${playBtnClass} shrink-0`}>
+                <button
+                  onClick={() => onPlayClick(t)}
+                  className={`${playBtnClass} shrink-0 cursor-pointer`}
+                >
                   {isCurrent && isPlaying ? "Playing" : "Play"}
                 </button>
               </div>

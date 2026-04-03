@@ -73,6 +73,7 @@ export default function PlayerBar() {
     viewerPlan === "lifetime";
 
   const isLiked = currentTrackId ? likedTrackIds.includes(currentTrackId) : false;
+  const transportDisabled = !currentTrack;
 
   useEffect(() => {
     let alive = true;
@@ -300,7 +301,8 @@ export default function PlayerBar() {
           <div className="flex items-center justify-between gap-1 sm:justify-start lg:gap-2">
             <button
               onClick={prev}
-              className="cursor-pointer rounded-md bg-white/10 px-1.5 py-0.5 text-[11px] font-semibold text-white ring-1 ring-white/10 hover:bg-white/15 lg:rounded-xl lg:px-3 lg:py-2 lg:text-sm"
+              disabled={transportDisabled}
+              className="cursor-pointer rounded-md bg-white/10 px-1.5 py-0.5 text-[11px] font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50 lg:rounded-xl lg:px-3 lg:py-2 lg:text-sm"
               aria-label="Previous"
               type="button"
             >
@@ -309,7 +311,8 @@ export default function PlayerBar() {
 
             <button
               onClick={toggle}
-              className="cursor-pointer min-w-[50px] rounded-md bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white ring-1 ring-white/10 hover:bg-white/15 lg:min-w-[84px] lg:rounded-xl lg:px-4 lg:py-2 lg:text-sm"
+              disabled={transportDisabled}
+              className="cursor-pointer min-w-[50px] rounded-md bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50 lg:min-w-[84px] lg:rounded-xl lg:px-4 lg:py-2 lg:text-sm"
               aria-label={isPlaying ? "Pause" : "Play"}
               type="button"
             >
@@ -318,7 +321,8 @@ export default function PlayerBar() {
 
             <button
               onClick={next}
-              className="cursor-pointer rounded-md bg-white/10 px-1.5 py-0.5 text-[11px] font-semibold text-white ring-1 ring-white/10 hover:bg-white/15 lg:rounded-xl lg:px-3 lg:py-2 lg:text-sm"
+              disabled={transportDisabled}
+              className="cursor-pointer rounded-md bg-white/10 px-1.5 py-0.5 text-[11px] font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50 lg:rounded-xl lg:px-3 lg:py-2 lg:text-sm"
               aria-label="Next"
               type="button"
             >
@@ -421,7 +425,7 @@ export default function PlayerBar() {
               disabled={!currentTrack}
               className={`px-3 py-1.5 text-[11px] font-semibold ring-1 transition lg:px-4 lg:py-2 lg:text-sm ${
                 isShuffleEnabled
-                  ? "cursor-pointer rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 text-white ring-emerald-200/40 shadow-[0_0_18px_rgba(74,222,128,0.35)] hover:opacity-95"
+                  ? "cursor-pointer rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 text-white ring-emerald-200/40 shadow-[0_0_18px_rgba(74,222,128,0.35)]"
                   : "cursor-pointer rounded-xl bg-white/10 text-white ring-white/10 hover:bg-white/15"
               } disabled:cursor-not-allowed disabled:opacity-50`}
             >

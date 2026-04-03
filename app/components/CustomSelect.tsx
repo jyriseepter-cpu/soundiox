@@ -43,7 +43,7 @@ export default function CustomSelect({
         type="button"
         onClick={() => setOpen((prev) => !prev)}
         className="
-          flex h-10 w-full items-center justify-between rounded-xl
+          flex h-10 w-full cursor-pointer items-center justify-between rounded-xl
           bg-gradient-to-r from-cyan-400 to-sky-400
           px-4 text-sm font-semibold text-white
           ring-1 ring-cyan-200/40
@@ -82,7 +82,7 @@ export default function CustomSelect({
                     onChange(option.value);
                     setOpen(false);
                   }}
-                  className={`w-full rounded-xl px-3 py-2 text-left text-sm font-semibold transition ${
+                  className={`w-full cursor-pointer rounded-xl px-3 py-2 text-left text-sm font-semibold transition ${
                     isActive
                       ? "bg-white/30 text-white"
                       : "bg-white/10 text-white/95 hover:bg-white/18"

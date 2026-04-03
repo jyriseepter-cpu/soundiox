@@ -144,6 +144,10 @@ export default function TrackCard({
     : isPreviousMonthWinner
       ? "border-yellow-100/90 shadow-[0_0_0_2px_rgba(245,158,11,0.45),0_0_22px_rgba(245,158,11,0.38)]"
       : "border-white/10";
+  const canOpenTrack = Boolean(trackHref);
+  const canOpenArtist = Boolean(artistHref);
+  const canAdd = Boolean(onAdd);
+  const canToggleLike = canLike && Boolean(onLike);
 
   useEffect(() => {
     if (shareLabel !== "Copied!") return;
@@ -216,7 +220,10 @@ export default function TrackCard({
           <button
             type="button"
             onClick={handleTrackOpen}
-            className={`relative h-16 w-16 cursor-pointer overflow-hidden rounded-2xl border bg-white/5 text-left ${artworkBorderClassName}`}
+            disabled={!canOpenTrack}
+            className={`relative h-16 w-16 overflow-hidden rounded-2xl border bg-white/5 text-left ${
+              canOpenTrack ? "cursor-pointer" : "cursor-not-allowed opacity-70"
+            } ${artworkBorderClassName}`}
           >
             <Image
               src={getArtworkSrc(track)}
@@ -244,7 +251,10 @@ export default function TrackCard({
           <button
             type="button"
             onClick={handleTrackOpen}
-            className="block w-full cursor-pointer text-left"
+            disabled={!canOpenTrack}
+            className={`block w-full text-left ${
+              canOpenTrack ? "cursor-pointer" : "cursor-not-allowed"
+            }`}
           >
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <div
@@ -282,7 +292,10 @@ export default function TrackCard({
             <button
               type="button"
               onClick={handleArtistOpen}
-              className="cursor-pointer truncate text-left transition hover:text-white"
+              disabled={!canOpenArtist}
+              className={`truncate text-left transition hover:text-white ${
+                canOpenArtist ? "cursor-pointer" : "cursor-not-allowed opacity-70"
+              }`}
               title={`${getArtistName(track)} • ${getGenreName(track)}`}
             >
               {getArtistName(track)} • {getGenreName(track)}
@@ -313,10 +326,10 @@ export default function TrackCard({
             trackId={String(track.id)}
             liked={isLiked}
             onToggle={() => {
-              if (canLike && onLike) void onLike();
+              if (canToggleLike && onLike) void onLike();
             }}
             likesCount={resolvedMonthLikeCount}
-            disabled={!canLike}
+            disabled={!canToggleLike}
             loading={likeLoading}
             showCount
           />
@@ -332,7 +345,8 @@ export default function TrackCard({
           <button
             type="button"
             onClick={onAdd}
-            className="min-w-[64px] cursor-pointer rounded-2xl bg-gradient-to-r from-cyan-400 to-sky-400 px-4 py-2 text-sm font-semibold text-white transition hover:scale-[1.02] active:scale-[0.98]"
+            disabled={!canAdd}
+            className="min-w-[64px] cursor-pointer rounded-2xl bg-gradient-to-r from-cyan-400 to-sky-400 px-4 py-2 text-sm font-semibold text-white transition hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
           >
             Add
           </button>
@@ -352,10 +366,10 @@ export default function TrackCard({
           trackId={String(track.id)}
           liked={isLiked}
           onToggle={() => {
-            if (canLike && onLike) void onLike();
+            if (canToggleLike && onLike) void onLike();
           }}
           likesCount={resolvedMonthLikeCount}
-          disabled={!canLike}
+          disabled={!canToggleLike}
           loading={likeLoading}
           showCount
         />
@@ -371,7 +385,8 @@ export default function TrackCard({
         <button
           type="button"
           onClick={onAdd}
-          className="cursor-pointer rounded-2xl bg-gradient-to-r from-cyan-400 to-sky-400 px-4 py-2 text-sm font-semibold text-white transition hover:scale-[1.02] active:scale-[0.98]"
+          disabled={!canAdd}
+          className="cursor-pointer rounded-2xl bg-gradient-to-r from-cyan-400 to-sky-400 px-4 py-2 text-sm font-semibold text-white transition hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
         >
           Add
         </button>
