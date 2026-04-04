@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
 import Image from "next/image";
 import { supabase } from "@/lib/supabaseClient";
@@ -32,6 +33,20 @@ type TrackRow = {
   plays_this_month: number | null;
   is_promo: boolean | null;
   user_id: string | null;
+  album_id?: string | null;
+  track_number?: number | null;
+};
+
+type AlbumRow = {
+  id: string;
+  user_id: string;
+  title: string;
+  description: string | null;
+  artwork_url: string | null;
+  genre: string | null;
+  release_date: string | null;
+  is_published: boolean | null;
+  created_at?: string | null;
 };
 
 type TrackLikeMonthlyRow = {
@@ -74,6 +89,17 @@ function normalizeSlug(value: string) {
   return decodeURIComponent(value || "").trim().toLowerCase();
 }
 
+function formatReleaseDate(dateStr?: string | null) {
+  if (!dateStr) return "Unscheduled";
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return "Unscheduled";
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 export default function ArtistPage() {
   const router = useRouter();
   const params = useParams();
@@ -83,6 +109,7 @@ export default function ArtistPage() {
   const [loading, setLoading] = useState(true);
   const [artist, setArtist] = useState<ProfileArtistRow | null>(null);
   const [tracks, setTracks] = useState<TrackRow[]>([]);
+  const [albums, setAlbums] = useState<AlbumRow[]>([]);
   const [likesMonth, setLikesMonth] = useState<number>(0);
   const [likesAllTime, setLikesAllTime] = useState<number>(0);
   const [donateLoading, setDonateLoading] = useState<number | null>(null);
@@ -145,6 +172,16 @@ export default function ArtistPage() {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3)
       .map(([name]) => name);
+  }, [tracks]);
+  const albumTrackCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    tracks.forEach((track) => {
+      if (!track.album_id) return;
+      counts.set(track.album_id, (counts.get(track.album_id) ?? 0) + 1);
+    });
+
+    return counts;
   }, [tracks]);
 
   async function handleDonate(artistSlug: string, amountCents: number) {
@@ -313,6 +350,7 @@ export default function ArtistPage() {
       if (!a?.id) {
         setNotFound(true);
         setTracks([]);
+        setAlbums([]);
         setLikesMonth(0);
         setLikesAllTime(0);
         setFollowerCount(0);
@@ -326,7 +364,7 @@ export default function ArtistPage() {
       const { data: trackData, error: trackErr } = await supabase
         .from("tracks")
         .select(
-          "id,title,artist,genre,isrc,audio_url,artwork_url,created_at,plays_all_time,plays_this_month,is_promo,user_id"
+          "id,title,artist,genre,isrc,audio_url,artwork_url,created_at,plays_all_time,plays_this_month,is_promo,user_id,album_id,track_number"
         )
         .eq("user_id", a.id)
         .eq("is_published", true)
@@ -339,6 +377,23 @@ export default function ArtistPage() {
 
       const t = ((trackData as TrackRow[]) || []).filter(Boolean);
       setTracks(t);
+
+      const { data: albumData, error: albumErr } = await supabase
+        .from("albums")
+        .select(
+          "id,user_id,title,description,artwork_url,genre,release_date,is_published,created_at"
+        )
+        .eq("user_id", a.id)
+        .eq("is_published", true)
+        .order("release_date", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false });
+
+      if (albumErr) {
+        console.error("artist albums load error:", albumErr);
+      }
+      if (cancelled) return;
+
+      setAlbums(((albumData as AlbumRow[]) || []).filter(Boolean));
 
       const trackIds = t.map((x) => x.id);
       if (!trackIds.length) {
@@ -591,6 +646,63 @@ export default function ArtistPage() {
             ) : null}
           </div>
         </div>
+      </div>
+
+      <div className="mt-6 rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="text-sm font-semibold text-white">Albums</div>
+          <div className="text-xs text-white/60">
+            {albums.length} album{albums.length === 1 ? "" : "s"}
+          </div>
+        </div>
+
+        {albums.length === 0 ? (
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-6 text-sm text-white/70">
+            No albums published yet for this artist.
+          </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {albums.map((album) => (
+              <Link
+                key={album.id}
+                href={`/albums/${album.id}`}
+                className="group rounded-[28px] border border-white/10 bg-black/20 p-4 transition hover:border-cyan-300/25 hover:bg-white/10"
+              >
+                <div className="relative aspect-square overflow-hidden rounded-[24px] border border-white/10 bg-white/5">
+                  {album.artwork_url ? (
+                    <Image
+                      src={album.artwork_url}
+                      alt={album.title}
+                      fill
+                      className="object-cover transition duration-300 group-hover:scale-[1.02]"
+                      sizes="(max-width: 768px) 100vw, 33vw"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-5xl text-white/35">
+                      ♪
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-4">
+                  <div className="text-lg font-semibold text-white">{album.title}</div>
+                  <div className="mt-1 text-sm text-white/60">
+                    {(album.genre || "").trim() || "—"} • {formatReleaseDate(album.release_date)}
+                  </div>
+                  <div className="mt-2 text-xs text-white/55">
+                    {albumTrackCounts.get(album.id) ?? 0} track
+                    {(albumTrackCounts.get(album.id) ?? 0) === 1 ? "" : "s"}
+                  </div>
+                  {album.description ? (
+                    <div className="mt-3 line-clamp-3 text-sm text-white/65">
+                      {album.description}
+                    </div>
+                  ) : null}
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="mt-6 rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
