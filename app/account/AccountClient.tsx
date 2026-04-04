@@ -257,6 +257,10 @@ export default function AccountClient() {
   const [albumUploadMessage, setAlbumUploadMessage] = useState("");
   const [albumArtworkDragActive, setAlbumArtworkDragActive] = useState(false);
   const [albumTracksDragActive, setAlbumTracksDragActive] = useState(false);
+  const [albumPickerAlbumId, setAlbumPickerAlbumId] = useState("");
+  const [albumPickerSelection, setAlbumPickerSelection] = useState<string[]>([]);
+  const [savingAlbumTrackLinks, setSavingAlbumTrackLinks] = useState(false);
+  const [albumPickerMessage, setAlbumPickerMessage] = useState("");
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -303,6 +307,9 @@ export default function AccountClient() {
     });
 
     return counts;
+  }, [myTracks]);
+  const unassignedTracks = useMemo(() => {
+    return myTracks.filter((track) => !track.album_id);
   }, [myTracks]);
 
   async function loadProfile(user: any, options?: { skipCreate?: boolean }) {
@@ -812,6 +819,64 @@ export default function AccountClient() {
 
     if (droppedFiles.length > 0) {
       handleAlbumTracksSelected(droppedFiles);
+    }
+  }
+
+  function toggleAlbumPickerTrack(trackId: string) {
+    setAlbumPickerSelection((prev) =>
+      prev.includes(trackId)
+        ? prev.filter((id) => id !== trackId)
+        : [...prev, trackId]
+    );
+  }
+
+  async function attachTracksToAlbum(album: AlbumRow) {
+    if (!userId || !albumPickerSelection.length) return;
+
+    setSavingAlbumTrackLinks(true);
+    setAlbumPickerMessage("");
+    setError("");
+
+    try {
+      const currentAlbumTracks = myTracks
+        .filter((track) => track.album_id === album.id)
+        .sort(
+          (a, b) => (a.track_number ?? 0) - (b.track_number ?? 0)
+        );
+
+      const currentMaxTrackNumber = currentAlbumTracks.reduce(
+        (max, track) => Math.max(max, track.track_number ?? 0),
+        0
+      );
+
+      for (let index = 0; index < albumPickerSelection.length; index += 1) {
+        const trackId = albumPickerSelection[index];
+        const nextTrackNumber = currentMaxTrackNumber + index + 1;
+
+        const { error: updateError } = await supabase
+          .from("tracks")
+          .update({
+            album_id: album.id,
+            track_number: nextTrackNumber,
+            artwork_url: album.artwork_url,
+            genre: album.genre,
+          })
+          .eq("id", trackId)
+          .eq("user_id", userId);
+
+        if (updateError) {
+          throw updateError;
+        }
+      }
+
+      await Promise.all([loadMyTracks(userId), loadMyAlbums(userId)]);
+      setAlbumPickerSelection([]);
+      setAlbumPickerAlbumId("");
+      setAlbumPickerMessage("Tracks added to album.");
+    } catch (err: any) {
+      setError(err?.message || "Could not add tracks to album.");
+    } finally {
+      setSavingAlbumTrackLinks(false);
     }
   }
 
@@ -1647,37 +1712,166 @@ export default function AccountClient() {
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {myAlbums.map((album) => {
         const artworkSrc = getAvatarUrl(album.artwork_url) || "/logo-new.png";
+        const isPickerOpen = albumPickerAlbumId === album.id;
 
         return (
-          <Link
-            key={album.id}
-            href={`/albums/${album.id}`}
-            className="group rounded-[28px] border border-white/10 bg-black/20 p-4 transition hover:border-cyan-300/25 hover:bg-white/8"
-          >
-            <div className="relative aspect-square overflow-hidden rounded-[24px] border border-white/10 bg-white/5">
-              <Image
-                src={artworkSrc}
-                alt={album.title || "Album artwork"}
-                fill
-                className="object-cover transition duration-300 group-hover:scale-[1.02]"
-                sizes="(max-width: 768px) 100vw, 33vw"
-              />
+          <div key={album.id} className="group relative">
+            <div
+              onClick={() => router.push(`/albums/${album.id}`)}
+              className="cursor-pointer rounded-[28px] border border-white/10 bg-black/20 p-4 transition hover:border-cyan-300/25 hover:bg-white/8"
+            >
+              <div className="relative aspect-square overflow-hidden rounded-[24px] border border-white/10 bg-white/5">
+                <Image
+                  src={artworkSrc}
+                  alt={album.title || "Album artwork"}
+                  fill
+                  className="object-cover transition duration-300 group-hover:scale-[1.02]"
+                  sizes="(max-width: 768px) 100vw, 33vw"
+                />
+              </div>
+
+              <div className="mt-4">
+                <div className="text-lg font-semibold text-white">
+                  {album.title || "Untitled album"}
+                </div>
+                <div className="mt-1 text-sm text-white/60">
+                  {getOfficialGenreLabel(album.genre) || "No genre"} •{" "}
+                  {formatReleaseDate(album.release_date)}
+                </div>
+                <div className="mt-2 text-xs text-white/55">
+                  {albumTrackCounts.get(album.id) ?? 0} track
+                  {(albumTrackCounts.get(album.id) ?? 0) === 1 ? "" : "s"}
+                </div>
+              </div>
             </div>
 
-            <div className="mt-4">
-              <div className="text-lg font-semibold text-white">
-                {album.title || "Untitled album"}
-              </div>
-              <div className="mt-1 text-sm text-white/60">
-                {getOfficialGenreLabel(album.genre) || "No genre"} •{" "}
-                {formatReleaseDate(album.release_date)}
-              </div>
-              <div className="mt-2 text-xs text-white/55">
-                {albumTrackCounts.get(album.id) ?? 0} track
-                {(albumTrackCounts.get(album.id) ?? 0) === 1 ? "" : "s"}
-              </div>
+            <div className="absolute right-2 top-2 flex gap-2 opacity-0 transition group-hover:opacity-100">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setAlbumPickerMessage("");
+                  setAlbumPickerSelection([]);
+                  setAlbumPickerAlbumId((current) =>
+                    current === album.id ? "" : album.id
+                  );
+                }}
+                className="rounded bg-cyan-500/20 px-2 py-1 text-xs text-cyan-200 hover:bg-cyan-500/35"
+              >
+                Add tracks
+              </button>
+
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  const newTitle = window.prompt("Edit album title", album.title);
+                  if (!newTitle) return;
+
+                  await supabase
+                    .from("albums")
+                    .update({ title: newTitle })
+                    .eq("id", album.id);
+
+                  window.location.reload();
+                }}
+                className="rounded bg-white/10 px-2 py-1 text-xs hover:bg-white/20"
+              >
+                Edit
+              </button>
+
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+
+                  if (!window.confirm("Delete this album?")) return;
+
+                  await supabase.from("albums").delete().eq("id", album.id);
+                  window.location.reload();
+                }}
+                className="rounded bg-red-500/20 px-2 py-1 text-xs text-red-300 hover:bg-red-500/40"
+              >
+                Delete
+              </button>
             </div>
-          </Link>
+
+            {isPickerOpen ? (
+              <div className="mt-3 rounded-[24px] border border-white/10 bg-black/30 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-white">
+                      Add tracks to {album.title || "album"}
+                    </div>
+                    <div className="mt-1 text-xs text-white/55">
+                      Only tracks not already assigned to an album are shown.
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAlbumPickerAlbumId("");
+                      setAlbumPickerSelection([]);
+                    }}
+                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/70 hover:bg-white/10"
+                  >
+                    Close
+                  </button>
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  {unassignedTracks.length === 0 ? (
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-sm text-white/60">
+                      No available tracks. Upload or detach a track first.
+                    </div>
+                  ) : (
+                    unassignedTracks.map((track) => (
+                      <label
+                        key={track.id}
+                        className="flex cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80 transition hover:bg-white/10"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={albumPickerSelection.includes(track.id)}
+                          onChange={() => toggleAlbumPickerTrack(track.id)}
+                          className="h-4 w-4 rounded border-white/20 bg-transparent text-cyan-300"
+                        />
+
+                        <div className="min-w-0">
+                          <div className="truncate font-medium text-white">
+                            {track.title || "Untitled"}
+                          </div>
+                          <div className="truncate text-xs text-white/50">
+                            {getOfficialGenreLabel(track.genre) || "No genre"}
+                          </div>
+                        </div>
+                      </label>
+                    ))
+                  )}
+                </div>
+
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => void attachTracksToAlbum(album)}
+                    disabled={!albumPickerSelection.length || savingAlbumTrackLinks}
+                    className="inline-flex h-10 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-4 text-sm font-medium text-white transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {savingAlbumTrackLinks ? "Adding..." : "Add selected tracks"}
+                  </button>
+
+                  {albumPickerSelection.length > 0 ? (
+                    <div className="text-xs text-white/55">
+                      {albumPickerSelection.length} track
+                      {albumPickerSelection.length === 1 ? "" : "s"} selected
+                    </div>
+                  ) : null}
+
+                  {albumPickerMessage ? (
+                    <div className="text-xs text-emerald-200">{albumPickerMessage}</div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+          </div>
         );
       })}
     </div>
