@@ -511,6 +511,34 @@ export default function PulsePage() {
   const endIndex = Math.min(startIndex + PAGE_SIZE, totalRows);
   const visibleRows = rows.slice(startIndex, endIndex);
 
+  async function shareTrack(trackId: string) {
+    if (typeof window === "undefined") return;
+
+    const url = `${window.location.origin}/track/${trackId}`;
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = url;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+
+      setActionMessage("Track link copied.");
+      window.setTimeout(() => setActionMessage(""), 1600);
+    } catch {
+      setActionMessage("Could not copy track link.");
+      window.setTimeout(() => setActionMessage(""), 1600);
+    }
+  }
+
   async function toggleLike(trackId: string) {
     setActionMessage("");
 
@@ -794,7 +822,7 @@ export default function PulsePage() {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-2xl bg-white/10 ring-1 ring-white/10">
+      <div className="hidden overflow-hidden rounded-2xl bg-white/10 ring-1 ring-white/10 md:block">
         <div className="grid grid-cols-12 gap-2 px-4 py-3 text-xs font-semibold tracking-widest text-white/60">
           <div className="col-span-5">TRACK</div>
           <div className="col-span-2 text-right">PLAYS</div>
@@ -969,6 +997,192 @@ export default function PulsePage() {
                     >
                       {isCurrent ? (isPlaying ? "Pause" : "Play") : "Play"}
                     </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <div className="space-y-2.5 md:hidden">
+        {loading ? (
+          <div className="rounded-2xl bg-white/10 p-4 text-white/60 ring-1 ring-white/10">
+            Loading…
+          </div>
+        ) : visibleRows.length === 0 ? (
+          <div className="rounded-2xl bg-white/10 p-4 text-white/60 ring-1 ring-white/10">
+            No tracks.
+          </div>
+        ) : (
+          visibleRows.map((t, idx) => {
+            const id = String(t.id);
+            const liked = likedSet.has(id);
+            const likes = likesMonth.get(id) ?? 0;
+            const plays = Number(t.plays_this_month ?? 0) || 0;
+            const isCurrent = currentTrack?.id && String((currentTrack as any).id) === id;
+            const artistId = t.user_id;
+            const showFollowButton =
+              Boolean(userId) && Boolean(artistId) && userId !== artistId;
+            const isFollowing = artistId ? followingSet.has(artistId) : false;
+            const followLoading = followLoadingId === artistId;
+            const followerCount = artistId ? followerCounts.get(artistId) ?? 0 : 0;
+            const isOwnTrack = Boolean(userId && artistId && userId === artistId);
+            const isFoundingArtist = Boolean(t.artistIsFounding);
+            const isCurrentMonthWinner = currentMonthWinnerTrackId === id;
+            const isPreviousMonthWinner = previousMonthWinnerTrackId === id;
+            const likeDisabledReason = !userId
+              ? "Log in to like"
+              : liked
+                ? "Unlike"
+                : isOwnTrack
+                  ? "You can’t like your own track"
+                  : !viewerCanLike
+                    ? "Upgrade required to like"
+                    : likesRemaining <= 0
+                      ? "Monthly like limit reached"
+                      : "Like";
+
+            return (
+              <div
+                key={id}
+                className={`relative overflow-hidden rounded-[26px] border border-white/10 bg-white/5 p-3.5 shadow-[0_10px_24px_rgba(0,0,0,0.22)] backdrop-blur-xl ${
+                  isCurrent
+                    ? "ring-1 ring-cyan-300/30 bg-[linear-gradient(135deg,rgba(34,211,238,0.08),rgba(217,70,239,0.08))]"
+                    : ""
+                }`}
+              >
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.10),transparent_35%),radial-gradient(circle_at_bottom_left,rgba(168,85,247,0.12),transparent_35%)] opacity-80" />
+
+                <div className="relative flex items-start gap-3">
+                  <div className="flex w-7 shrink-0 flex-col items-center pt-0.5 text-xs font-semibold text-white/45">
+                    {startIndex + idx + 1}
+                  </div>
+
+                  <div
+                    className={`relative shrink-0 ${
+                      isFoundingArtist
+                        ? "rounded-[18px] bg-[linear-gradient(135deg,rgba(250,204,21,0.98),rgba(244,114,182,0.98),rgba(34,211,238,0.98))] p-[2px] shadow-[0_0_0_1px_rgba(250,204,21,0.5),0_0_18px_rgba(244,114,182,0.3)]"
+                        : ""
+                    }`}
+                  >
+                    <img
+                      src={getArtworkSrc(t)}
+                      alt={safeStr(t.title) || "Cover"}
+                      className={`h-14 w-14 rounded-2xl object-cover ring-1 ${
+                        isCurrentMonthWinner
+                          ? "ring-amber-200 shadow-[0_0_12px_rgba(250,204,21,0.3)]"
+                          : isPreviousMonthWinner
+                            ? "ring-orange-200 shadow-[0_0_10px_rgba(249,115,22,0.24)]"
+                            : "ring-white/10"
+                      }`}
+                      loading="lazy"
+                    />
+
+                    {isCurrentMonthWinner ? (
+                      <span className="pointer-events-none absolute -top-2 left-1/2 w-full max-w-[54px] -translate-x-1/2 overflow-hidden rounded-full border border-yellow-100/80 bg-[linear-gradient(135deg,rgba(254,240,138,1),rgba(245,158,11,1))] px-1 py-0.5 text-center text-[7px] font-black uppercase tracking-[0.06em] text-slate-950 shadow-[0_0_14px_rgba(250,204,21,0.44)]">
+                        #1 Now
+                      </span>
+                    ) : null}
+
+                    {isFoundingArtist ? (
+                      <span className="pointer-events-none absolute -bottom-2 left-1/2 w-full max-w-[54px] -translate-x-1/2 overflow-hidden rounded-full border border-amber-200/70 bg-[linear-gradient(135deg,rgba(250,204,21,0.98),rgba(244,114,182,0.92))] px-1 py-0.5 text-center text-[7px] font-black uppercase tracking-[0.06em] text-slate-950 shadow-[0_0_12px_rgba(244,114,182,0.28)]">
+                        Founding
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                      <div className="min-w-0 truncate text-sm font-semibold text-white">
+                        {safeStr(t.title) || "Untitled"}
+                      </div>
+
+                      {isPreviousMonthWinner ? (
+                        <span className="inline-flex items-center rounded-full border border-amber-200/70 bg-[linear-gradient(135deg,rgba(254,240,138,0.24),rgba(245,158,11,0.28))] px-1.5 py-0.5 text-[9px] font-semibold text-amber-100 shadow-[0_0_12px_rgba(250,204,21,0.14)]">
+                          🏆 Last month #1
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-white/60">
+                      {t.artistSlug ? (
+                        <Link
+                          href={`/artists/${encodeURIComponent(t.artistSlug)}`}
+                          className="cursor-pointer hover:text-white"
+                        >
+                          {safeStr(t.artistDisplayName || t.artist || "AI Artist")}
+                        </Link>
+                      ) : (
+                        <span>{safeStr(t.artistDisplayName || t.artist || "AI Artist")}</span>
+                      )}
+
+                      <span>•</span>
+                      <span>{getOfficialGenreLabel(t.genre) || "-"}</span>
+
+                      {followerCount > 0 ? (
+                        <>
+                          <span>•</span>
+                          <span>
+                            {followerCount} follower{followerCount === 1 ? "" : "s"}
+                          </span>
+                        </>
+                      ) : null}
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-white/65">
+                      <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">
+                        Plays this month: {plays}
+                      </span>
+                      <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">
+                        Likes this month: {likes}
+                      </span>
+                    </div>
+
+                    <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                      <LikeButton
+                        trackId={id}
+                        liked={liked}
+                        likesCount={likes}
+                        onToggle={toggleLike}
+                        title={likeDisabledReason}
+                        disabled={!userId || isOwnTrack || !viewerCanLike || likesRemaining <= 0}
+                        showCount
+                      />
+
+                      {showFollowButton ? (
+                        <button
+                          type="button"
+                          onClick={() => toggleFollow(artistId)}
+                          disabled={followLoading}
+                          className="cursor-pointer rounded-2xl bg-white/10 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {followLoading ? "..." : isFollowing ? "Following" : "Follow"}
+                        </button>
+                      ) : null}
+
+                      <button
+                        type="button"
+                        onClick={() => void shareTrack(id)}
+                        className="cursor-pointer rounded-2xl bg-white/10 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/15"
+                      >
+                        Share
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isCurrent) {
+                            toggle();
+                          } else {
+                            playTrack(t as any, rows as any);
+                          }
+                        }}
+                        className="cursor-pointer rounded-2xl bg-gradient-to-r from-cyan-400 to-purple-500 px-4 py-1.5 text-xs font-semibold text-white"
+                      >
+                        {isCurrent ? (isPlaying ? "Pause" : "Play") : "Play"}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

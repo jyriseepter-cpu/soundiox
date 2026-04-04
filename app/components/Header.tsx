@@ -275,34 +275,57 @@ export default function Header() {
           </div>
         </div>
 
+        <div className="mt-3 grid grid-cols-3 gap-2 md:hidden">
+          <Link
+            href="/discover"
+            className={`justify-center rounded-xl border px-3 py-3 text-sm ${
+              pathname === "/discover"
+                ? "border-cyan-300/40 bg-cyan-400/15 text-white"
+                : "border-white/10 bg-white/5 text-white/75 hover:text-white"
+            } ${linkClass("/discover")}`}
+          >
+            Discover
+          </Link>
+
+          <Link
+            href="/pulse"
+            className={`justify-center rounded-xl border px-3 py-3 text-sm ${
+              pathname === "/pulse"
+                ? "border-cyan-300/40 bg-cyan-400/15 text-white"
+                : "border-white/10 bg-white/5 text-white/75 hover:text-white"
+            } ${linkClass("/pulse")}`}
+          >
+            <span className="relative inline-flex items-center gap-2">
+              <span
+                className={`relative inline-flex h-2.5 w-2.5 rounded-full ${
+                  pathname === "/pulse" ? "bg-cyan-300" : "bg-cyan-400/90"
+                }`}
+              >
+                <span className="absolute inset-0 rounded-full bg-cyan-300/80 animate-ping" />
+              </span>
+              Pulse
+            </span>
+          </Link>
+
+          <Link
+            href="/artists"
+            className={`justify-center rounded-xl border px-3 py-3 text-sm ${
+              pathname === "/artists"
+                ? "border-cyan-300/40 bg-cyan-400/15 text-white"
+                : "border-white/10 bg-white/5 text-white/75 hover:text-white"
+            } ${linkClass("/artists")}`}
+          >
+            Artists
+          </Link>
+        </div>
+
         {mobileMenuOpen ? (
           <div className="md:hidden border-t border-white/10 px-6 py-4">
             <div className="flex flex-col gap-3">
-              <Link href="/discover" className={linkClass("/discover")}>
-                Discover
-              </Link>
-
-              <Link href="/pulse" className={linkClass("/pulse")}>
-                <span className="relative inline-flex items-center gap-2">
-                  <span
-                    className={`relative inline-flex h-2.5 w-2.5 rounded-full ${
-                      pathname === "/pulse" ? "bg-cyan-300" : "bg-cyan-400/90"
-                    }`}
-                  >
-                    <span className="absolute inset-0 rounded-full bg-cyan-300/80 animate-ping" />
-                  </span>
-                  Pulse
-                </span>
-              </Link>
-
-              <Link href="/artists" className={linkClass("/artists")}>
-                Artists
-              </Link>
-
               {loading ? (
                 <div className="text-sm text-white/60">Loading...</div>
               ) : profile ? (
-                <>
+                <div className="flex flex-col gap-3">
                   <button
                     type="button"
                     onClick={handleAccount}
@@ -319,7 +342,7 @@ export default function Header() {
                   >
                     {loggingOut ? "Logging out..." : "Log out"}
                   </button>
-                </>
+                </div>
               ) : (
                 <Link
                   href="/login"

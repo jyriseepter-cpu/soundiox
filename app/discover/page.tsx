@@ -1112,19 +1112,21 @@ export default function DiscoverPage() {
         />
       </div>
 
-      <div className="mb-4 block rounded-2xl bg-white/8 p-4 ring-1 ring-white/10 lg:hidden">
-        <div className="mb-3">
-          <div className="text-base font-semibold text-white">Unlock more on SoundioX</div>
-          <div className="text-sm text-white/60">
-            Upgrade or join the artist campaign without scrolling through the full track list.
+      {!viewerHasPaidPlan ? (
+        <div className="mb-4 block rounded-2xl bg-white/8 p-4 ring-1 ring-white/10 lg:hidden">
+          <div className="mb-3">
+            <div className="text-base font-semibold text-white">Unlock more on SoundioX</div>
+            <div className="text-sm text-white/60">
+              Upgrade or join the artist campaign without scrolling through the full track list.
+            </div>
           </div>
-        </div>
 
-        <UpgradeButtons
-          onUpgradePlan={handleUpgradePlan}
-          viewerHasPaidPlan={viewerHasPaidPlan}
-        />
-      </div>
+          <UpgradeButtons
+            onUpgradePlan={handleUpgradePlan}
+            viewerHasPaidPlan={viewerHasPaidPlan}
+          />
+        </div>
+      ) : null}
 
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="hidden lg:block" />

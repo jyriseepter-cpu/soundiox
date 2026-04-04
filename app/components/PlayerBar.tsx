@@ -280,19 +280,19 @@ export default function PlayerBar() {
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/10 bg-[rgba(7,10,20,0.9)] shadow-[0_-8px_30px_rgba(0,0,0,0.6)] backdrop-blur-xl lg:bottom-[5mm]">
       <div
-        className="mx-auto max-w-6xl px-4 py-2 lg:py-3"
-        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.2rem)" }}
+        className="mx-auto max-w-6xl px-3 py-1.5 lg:px-4 lg:py-3"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.12rem)" }}
       >
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-4">
+        <div className="flex flex-col gap-1.5 lg:flex-row lg:items-center lg:gap-4">
           <div className="min-w-0 lg:w-[220px]">
-            <div className="truncate text-[11px] font-semibold leading-tight text-white lg:text-sm">
+            <div className="truncate text-[10px] font-semibold leading-tight text-white lg:text-sm">
               {title}
             </div>
-            <div className="truncate text-[9px] leading-tight text-white/70 lg:text-xs">
+            <div className="truncate text-[8px] leading-tight text-white/70 lg:text-xs">
               {artist}
             </div>
             {feedback ? (
-              <div className="mt-1 truncate text-[9px] text-cyan-200 lg:text-[11px]">
+              <div className="mt-0.5 truncate text-[8px] text-cyan-200 lg:text-[11px]">
                 {feedback}
               </div>
             ) : null}
@@ -302,7 +302,7 @@ export default function PlayerBar() {
             <button
               onClick={prev}
               disabled={transportDisabled}
-              className="cursor-pointer rounded-md bg-white/10 px-1.5 py-0.5 text-[11px] font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50 lg:rounded-xl lg:px-3 lg:py-2 lg:text-sm"
+              className="cursor-pointer rounded-md bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50 lg:rounded-xl lg:px-3 lg:py-2 lg:text-sm"
               aria-label="Previous"
               type="button"
             >
@@ -312,7 +312,7 @@ export default function PlayerBar() {
             <button
               onClick={toggle}
               disabled={transportDisabled}
-              className="cursor-pointer min-w-[50px] rounded-md bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50 lg:min-w-[84px] lg:rounded-xl lg:px-4 lg:py-2 lg:text-sm"
+              className="cursor-pointer min-w-[46px] rounded-md bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50 lg:min-w-[84px] lg:rounded-xl lg:px-4 lg:py-2 lg:text-sm"
               aria-label={isPlaying ? "Pause" : "Play"}
               type="button"
             >
@@ -322,7 +322,7 @@ export default function PlayerBar() {
             <button
               onClick={next}
               disabled={transportDisabled}
-              className="cursor-pointer rounded-md bg-white/10 px-1.5 py-0.5 text-[11px] font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50 lg:rounded-xl lg:px-3 lg:py-2 lg:text-sm"
+              className="cursor-pointer rounded-md bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50 lg:rounded-xl lg:px-3 lg:py-2 lg:text-sm"
               aria-label="Next"
               type="button"
             >
@@ -331,7 +331,7 @@ export default function PlayerBar() {
           </div>
 
           <div className="flex items-center gap-1 lg:gap-3">
-            <div className="w-7 text-right text-[8px] leading-none text-white/70 lg:w-12 lg:text-xs">
+            <div className="w-7 text-right text-[7px] leading-none text-white/70 lg:w-12 lg:text-xs">
               {formatTime(currentTime ?? 0)}
             </div>
 
@@ -351,17 +351,17 @@ export default function PlayerBar() {
               />
             </div>
 
-            <div className="w-7 text-[8px] leading-none text-white/70 lg:w-12 lg:text-xs">
+            <div className="w-7 text-[7px] leading-none text-white/70 lg:w-12 lg:text-xs">
               {formatTime(duration ?? 0)}
             </div>
           </div>
 
-          <div className="flex items-center gap-3 lg:ml-auto" ref={menuRef}>
+          <div className="flex flex-wrap items-center gap-2 lg:ml-auto lg:flex-nowrap lg:gap-3" ref={menuRef}>
             <button
               type="button"
               onClick={() => void handleToggleLike()}
               disabled={!currentTrackId || likeLoading}
-              className={`cursor-pointer rounded-xl px-3 py-1.5 text-[11px] font-semibold text-white ring-1 transition lg:px-4 lg:py-2 lg:text-sm ${
+              className={`cursor-pointer rounded-xl px-2.5 py-1 text-[10px] font-semibold text-white ring-1 transition lg:px-4 lg:py-2 lg:text-sm ${
                 isLiked
                   ? "bg-gradient-to-r from-rose-500 to-red-500 ring-rose-200/35 hover:opacity-95"
                   : "bg-gradient-to-r from-cyan-400 to-sky-400 ring-cyan-200/30 hover:opacity-95"
@@ -378,7 +378,7 @@ export default function PlayerBar() {
                   setPlaylistMenuOpen((prev) => !prev);
                 }}
                 disabled={!currentTrackId}
-                className="cursor-pointer rounded-xl bg-gradient-to-r from-cyan-400 to-sky-400 px-3 py-1.5 text-[11px] font-semibold text-white ring-1 ring-cyan-200/30 transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50 lg:px-4 lg:py-2 lg:text-sm"
+                className="cursor-pointer rounded-xl bg-gradient-to-r from-cyan-400 to-sky-400 px-2.5 py-1 text-[10px] font-semibold text-white ring-1 ring-cyan-200/30 transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50 lg:px-4 lg:py-2 lg:text-sm"
               >
                 Add
               </button>
@@ -423,7 +423,7 @@ export default function PlayerBar() {
               type="button"
               onClick={shuffleQueue}
               disabled={!currentTrack}
-              className={`px-3 py-1.5 text-[11px] font-semibold ring-1 transition lg:px-4 lg:py-2 lg:text-sm ${
+              className={`px-2.5 py-1 text-[10px] font-semibold ring-1 transition lg:px-4 lg:py-2 lg:text-sm ${
                 isShuffleEnabled
                   ? "cursor-pointer rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 text-white ring-emerald-200/40 shadow-[0_0_18px_rgba(74,222,128,0.35)]"
                   : "cursor-pointer rounded-xl bg-white/10 text-white ring-white/10 hover:bg-white/15"
