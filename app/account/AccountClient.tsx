@@ -7,6 +7,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import TrackCard from "@/app/components/TrackCard";
 import { usePlayer } from "@/app/components/PlayerContext";
+import CustomSelect from "@/app/components/CustomSelect";
+import { prepareTrackAudioFile } from "@/lib/audioProcessing";
 import {
   applyLaunchCampaignArtistAccess,
   isLifetimeCampaignActive,
@@ -16,7 +18,7 @@ import {
   shouldGrantLifetimeCampaignPlan,
 } from "@/lib/lifetimeCampaign";
 import { formatEuroPrice, SOUNDIOX_PRICING } from "@/lib/pricing";
-import { isSoundioXGenre } from "@/lib/genres";
+import { isSoundioXGenre, SOUNDIOX_GENRE_OPTIONS } from "@/lib/genres";
 
 type ProfileRow = {
   id: string;
@@ -75,6 +77,20 @@ type TrackRow = {
   plays_this_month?: number | null;
   is_promo?: boolean | null;
   user_id?: string | null;
+  album_id?: string | null;
+  track_number?: number | null;
+};
+
+type AlbumRow = {
+  id: string;
+  user_id: string;
+  title: string;
+  description: string | null;
+  artwork_url: string | null;
+  genre: string | null;
+  release_date: string | null;
+  is_published: boolean | null;
+  created_at?: string | null;
 };
 
 function slugify(value: string) {
@@ -150,12 +166,33 @@ function getOfficialGenreLabel(value: string | null | undefined) {
   return isSoundioXGenre(raw) ? raw : "";
 }
 
+function defaultTitleFromFileName(fileName: string) {
+  return fileName
+    .replace(/\.[^/.]+$/, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function formatReleaseDate(value: string | null | undefined) {
+  if (!value) return "Unscheduled";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 export default function AccountClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { playTrack } = usePlayer();
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const albumArtworkInputRef = useRef<HTMLInputElement | null>(null);
+  const albumTracksInputRef = useRef<HTMLInputElement | null>(null);
   const inviteHandledRef = useRef(false);
 
   const selectedPlan = searchParams.get("plan");
@@ -204,10 +241,22 @@ export default function AccountClient() {
   const [loadingLikedTracks, setLoadingLikedTracks] = useState(false);
   const [myTracks, setMyTracks] = useState<TrackRow[]>([]);
   const [loadingMyTracks, setLoadingMyTracks] = useState(false);
+  const [myAlbums, setMyAlbums] = useState<AlbumRow[]>([]);
+  const [loadingMyAlbums, setLoadingMyAlbums] = useState(false);
   const [editingTrackId, setEditingTrackId] = useState<string>("");
   const [editTitle, setEditTitle] = useState("");
   const [savingTrackId, setSavingTrackId] = useState<string>("");
   const [deletingTrackId, setDeletingTrackId] = useState<string>("");
+  const [albumTitle, setAlbumTitle] = useState("");
+  const [albumDescription, setAlbumDescription] = useState("");
+  const [albumGenre, setAlbumGenre] = useState("");
+  const [albumReleaseDate, setAlbumReleaseDate] = useState("");
+  const [albumArtwork, setAlbumArtwork] = useState<File | null>(null);
+  const [albumAudioFiles, setAlbumAudioFiles] = useState<File[]>([]);
+  const [uploadingAlbum, setUploadingAlbum] = useState(false);
+  const [albumUploadMessage, setAlbumUploadMessage] = useState("");
+  const [albumArtworkDragActive, setAlbumArtworkDragActive] = useState(false);
+  const [albumTracksDragActive, setAlbumTracksDragActive] = useState(false);
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -236,6 +285,25 @@ export default function AccountClient() {
 
   const showArtistCampaignCta =
     !isFounding && !canUpload && artistCampaignActive;
+  const canUploadAlbum = useMemo(() => {
+    return (
+      canUpload &&
+      Boolean(userId) &&
+      Boolean(albumTitle.trim()) &&
+      Boolean(albumGenre.trim()) &&
+      albumAudioFiles.length > 0
+    );
+  }, [albumAudioFiles.length, albumGenre, albumTitle, canUpload, userId]);
+  const albumTrackCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    myTracks.forEach((track) => {
+      if (!track.album_id) return;
+      counts.set(track.album_id, (counts.get(track.album_id) ?? 0) + 1);
+    });
+
+    return counts;
+  }, [myTracks]);
 
   async function loadProfile(user: any, options?: { skipCreate?: boolean }) {
     const { data: profile, error: profileError } = await supabase
@@ -544,7 +612,7 @@ export default function AccountClient() {
       const { data, error } = await supabase
         .from("tracks")
         .select(
-          "id,title,artist,genre,artwork_url,audio_url,created_at,plays_all_time,plays_this_month,is_promo,user_id"
+          "id,title,artist,genre,artwork_url,audio_url,created_at,plays_all_time,plays_this_month,is_promo,user_id,album_id,track_number"
         )
         .eq("user_id", ownerId)
         .order("created_at", { ascending: false });
@@ -557,6 +625,193 @@ export default function AccountClient() {
       setMyTracks([]);
     } finally {
       setLoadingMyTracks(false);
+    }
+  }
+
+  async function loadMyAlbums(ownerId: string) {
+    setLoadingMyAlbums(true);
+
+    try {
+      const { data, error } = await supabase
+        .from("albums")
+        .select(
+          "id,user_id,title,description,artwork_url,genre,release_date,is_published,created_at"
+        )
+        .eq("user_id", ownerId)
+        .order("release_date", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setMyAlbums((data ?? []) as AlbumRow[]);
+    } catch (err) {
+      console.error("my albums load error:", err);
+      setMyAlbums([]);
+    } finally {
+      setLoadingMyAlbums(false);
+    }
+  }
+
+  async function uploadAlbum() {
+    if (!userId || !canUploadAlbum) return;
+
+    setUploadingAlbum(true);
+    setAlbumUploadMessage("");
+    setError("");
+    setMessage("");
+
+    try {
+      if (!isSoundioXGenre(albumGenre.trim())) {
+        throw new Error("Please select one of the official SoundioX genres.");
+      }
+
+      const albumBucket = "tracks";
+      let artworkPublic: string | null = null;
+
+      if (albumArtwork) {
+        const artExt = albumArtwork.name.split(".").pop()?.toLowerCase() || "jpg";
+        const artPath = `albums/${userId}/${Date.now()}-${crypto.randomUUID()}-art.${artExt}`;
+
+        const { error: artUpErr } = await supabase.storage
+          .from(albumBucket)
+          .upload(artPath, albumArtwork, {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: albumArtwork.type || "image/jpeg",
+          });
+
+        if (artUpErr) {
+          throw new Error(`Album artwork upload failed: ${artUpErr.message}`);
+        }
+
+        artworkPublic = supabase.storage.from(albumBucket).getPublicUrl(artPath).data.publicUrl;
+      }
+
+      const { data: albumInsert, error: albumInsertErr } = await supabase
+        .from("albums")
+        .insert({
+          user_id: userId,
+          title: albumTitle.trim(),
+          description: albumDescription.trim() || null,
+          artwork_url: artworkPublic,
+          genre: albumGenre.trim(),
+          release_date: albumReleaseDate || null,
+          is_published: true,
+        })
+        .select(
+          "id,user_id,title,description,artwork_url,genre,release_date,is_published,created_at"
+        )
+        .single<AlbumRow>();
+
+      if (albumInsertErr || !albumInsert) {
+        throw new Error(albumInsertErr?.message || "Album creation failed.");
+      }
+
+      const artistName =
+        displayName.trim() || email.split("@")[0] || `artist-${userId.slice(0, 8)}`;
+
+      for (let index = 0; index < albumAudioFiles.length; index += 1) {
+        const sourceFile = albumAudioFiles[index];
+        setAlbumUploadMessage(
+          `Processing track ${index + 1} of ${albumAudioFiles.length}...`
+        );
+
+        const processedAudio = await prepareTrackAudioFile(sourceFile);
+        const audioExt = processedAudio.name.split(".").pop()?.toLowerCase() || "mp3";
+        const audioPath = `albums/${userId}/${albumInsert.id}/${index + 1}-${Date.now()}-${crypto.randomUUID()}.${audioExt}`;
+
+        const { error: audioUpErr } = await supabase.storage
+          .from(albumBucket)
+          .upload(audioPath, processedAudio, {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: processedAudio.type || "audio/mpeg",
+          });
+
+        if (audioUpErr) {
+          throw new Error(`Album track upload failed: ${audioUpErr.message}`);
+        }
+
+        const audioPublic = supabase.storage.from(albumBucket).getPublicUrl(audioPath).data.publicUrl;
+
+        const { error: trackInsertErr } = await supabase.from("tracks").insert({
+          title: defaultTitleFromFileName(sourceFile.name) || `Track ${index + 1}`,
+          artist: artistName,
+          genre: albumGenre.trim(),
+          audio_url: audioPublic,
+          artwork_url: artworkPublic,
+          user_id: userId,
+          is_published: true,
+          is_promo: false,
+          album_id: albumInsert.id,
+          track_number: index + 1,
+        });
+
+        if (trackInsertErr) {
+          throw new Error(`Album track insert failed: ${trackInsertErr.message}`);
+        }
+      }
+
+      setAlbumTitle("");
+      setAlbumDescription("");
+      setAlbumGenre("");
+      setAlbumReleaseDate("");
+      setAlbumArtwork(null);
+      setAlbumAudioFiles([]);
+      setAlbumUploadMessage("Album uploaded ✅");
+      setMessage("Album uploaded.");
+
+      await Promise.all([loadMyTracks(userId), loadMyAlbums(userId)]);
+    } catch (err: any) {
+      setError(err?.message || "Album upload failed.");
+    } finally {
+      setUploadingAlbum(false);
+    }
+  }
+
+  function handleAlbumArtworkSelected(file: File | null) {
+    setAlbumArtwork(file);
+  }
+
+  function handleAlbumTracksSelected(files: FileList | File[]) {
+    setAlbumAudioFiles(Array.from(files));
+  }
+
+  function handleDropzoneDragOver(
+    event: React.DragEvent<HTMLButtonElement | HTMLDivElement>
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function handleAlbumArtworkDrop(
+    event: React.DragEvent<HTMLButtonElement | HTMLDivElement>
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+    setAlbumArtworkDragActive(false);
+
+    const droppedFile = Array.from(event.dataTransfer.files).find((file) =>
+      file.type.startsWith("image/")
+    );
+
+    if (droppedFile) {
+      handleAlbumArtworkSelected(droppedFile);
+    }
+  }
+
+  function handleAlbumTracksDrop(
+    event: React.DragEvent<HTMLButtonElement | HTMLDivElement>
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+    setAlbumTracksDragActive(false);
+
+    const droppedFiles = Array.from(event.dataTransfer.files).filter((file) =>
+      file.type.startsWith("audio/")
+    );
+
+    if (droppedFiles.length > 0) {
+      handleAlbumTracksSelected(droppedFiles);
     }
   }
 
@@ -693,6 +948,7 @@ export default function AccountClient() {
           loadPlaylists(user.id),
           loadLikedTracks(user.id),
           loadMyTracks(user.id),
+          loadMyAlbums(user.id),
         ]);
       } catch (err: any) {
         setError(err?.message || "Account page failed to load.");
@@ -720,6 +976,7 @@ export default function AccountClient() {
         loadPlaylists(session.user.id),
         loadLikedTracks(session.user.id),
         loadMyTracks(session.user.id),
+        loadMyAlbums(session.user.id),
       ]);
     });
 
@@ -1369,6 +1626,67 @@ export default function AccountClient() {
 <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
   <div className="mb-4 flex items-center justify-between gap-3">
     <div>
+      <h2 className="text-lg font-semibold text-white">My Albums</h2>
+      <p className="mt-1 text-sm text-white/60">
+        Larger release cards for your projects and multi-track drops.
+      </p>
+    </div>
+
+    <div className="text-sm font-medium text-white/55">{myAlbums.length} total</div>
+  </div>
+
+  {loadingMyAlbums ? (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+      Loading albums...
+    </div>
+  ) : myAlbums.length === 0 ? (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+      No albums uploaded yet.
+    </div>
+  ) : (
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {myAlbums.map((album) => {
+        const artworkSrc = getAvatarUrl(album.artwork_url) || "/logo-new.png";
+
+        return (
+          <Link
+            key={album.id}
+            href={`/albums/${album.id}`}
+            className="group rounded-[28px] border border-white/10 bg-black/20 p-4 transition hover:border-cyan-300/25 hover:bg-white/8"
+          >
+            <div className="relative aspect-square overflow-hidden rounded-[24px] border border-white/10 bg-white/5">
+              <Image
+                src={artworkSrc}
+                alt={album.title || "Album artwork"}
+                fill
+                className="object-cover transition duration-300 group-hover:scale-[1.02]"
+                sizes="(max-width: 768px) 100vw, 33vw"
+              />
+            </div>
+
+            <div className="mt-4">
+              <div className="text-lg font-semibold text-white">
+                {album.title || "Untitled album"}
+              </div>
+              <div className="mt-1 text-sm text-white/60">
+                {getOfficialGenreLabel(album.genre) || "No genre"} •{" "}
+                {formatReleaseDate(album.release_date)}
+              </div>
+              <div className="mt-2 text-xs text-white/55">
+                {albumTrackCounts.get(album.id) ?? 0} track
+                {(albumTrackCounts.get(album.id) ?? 0) === 1 ? "" : "s"}
+              </div>
+            </div>
+          </Link>
+        );
+      })}
+    </div>
+  )}
+</section>
+
+<section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+  <div className="mb-4 flex items-center justify-between gap-3">
+    <div>
       <h2 className="text-lg font-semibold text-white">My Tracks</h2>
       <p className="mt-1 text-sm text-white/60">
         Manage your uploaded tracks.
@@ -1588,9 +1906,9 @@ export default function AccountClient() {
     </div>
   ) : (
     <div className="space-y-2">
-      {likedTracks.map((track) => (
+      {likedTracks.map((track, index) => (
         <TrackCard
-          key={track.id}
+          key={`${track.id}-${index}`}
           track={track as any}
           allTracks={likedTracks as any}
           onPlay={() => {
@@ -1709,6 +2027,188 @@ export default function AccountClient() {
             )}.
           </p>
         </>
+      )}
+    </div>
+  </section>
+
+  <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+    <h2 className="text-lg font-semibold text-white">Upload album</h2>
+    <p className="mt-2 text-sm text-white/65">
+      {canUpload
+        ? "Create a release with one cover image and multiple tracks in a fixed order."
+        : "Unlock artist access to upload albums and organize releases."}
+    </p>
+
+    <div className="mt-5 space-y-4">
+      {canUpload ? (
+        <>
+          <div>
+            <label className="mb-2 block text-sm text-white/75">Album title</label>
+            <input
+              value={albumTitle}
+              onChange={(e) => setAlbumTitle(e.target.value)}
+              placeholder="Album title"
+              className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm text-white/75">Genre</label>
+            <CustomSelect
+              value={albumGenre}
+              onChange={setAlbumGenre}
+              options={SOUNDIOX_GENRE_OPTIONS}
+              className="w-full"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm text-white/75">Release date</label>
+            <input
+              type="date"
+              value={albumReleaseDate}
+              onChange={(e) => setAlbumReleaseDate(e.target.value)}
+              className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-white outline-none transition focus:border-cyan-300/40"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm text-white/75">Description</label>
+            <textarea
+              value={albumDescription}
+              onChange={(e) => setAlbumDescription(e.target.value)}
+              rows={4}
+              placeholder="Short album story, credits, or release notes..."
+              className="w-full rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm text-white/75">Album artwork</label>
+            <input
+              ref={albumArtworkInputRef}
+              type="file"
+              accept="image/*"
+              onChange={(e) => handleAlbumArtworkSelected(e.target.files?.[0] || null)}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => albumArtworkInputRef.current?.click()}
+              onDragEnter={() => setAlbumArtworkDragActive(true)}
+              onDragOver={handleDropzoneDragOver}
+              onDragLeave={() => setAlbumArtworkDragActive(false)}
+              onDrop={handleAlbumArtworkDrop}
+              className={`flex w-full cursor-pointer flex-col items-center justify-center rounded-[24px] border border-dashed px-4 py-6 text-center transition ${
+                albumArtworkDragActive
+                  ? "border-cyan-300/60 bg-cyan-400/10 shadow-[0_0_0_1px_rgba(103,232,249,0.18)]"
+                  : "border-white/15 bg-white/6 hover:border-cyan-300/35 hover:bg-white/10"
+              }`}
+            >
+              <span className="text-sm font-medium text-white">
+                Click or drop album artwork here
+              </span>
+              <span className="mt-2 text-xs text-white/50">
+                Accepts one image file for the album cover.
+              </span>
+              {albumArtwork ? (
+                <span className="mt-3 rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-white/70">
+                  {albumArtwork.name}
+                </span>
+              ) : null}
+            </button>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm text-white/75">Album tracks</label>
+            <input
+              ref={albumTracksInputRef}
+              type="file"
+              accept="audio/*"
+              multiple
+              onChange={(e) => handleAlbumTracksSelected(e.target.files ?? [])}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => albumTracksInputRef.current?.click()}
+              onDragEnter={() => setAlbumTracksDragActive(true)}
+              onDragOver={handleDropzoneDragOver}
+              onDragLeave={() => setAlbumTracksDragActive(false)}
+              onDrop={handleAlbumTracksDrop}
+              className={`flex w-full cursor-pointer flex-col items-center justify-center rounded-[24px] border border-dashed px-4 py-6 text-center transition ${
+                albumTracksDragActive
+                  ? "border-cyan-300/60 bg-cyan-400/10 shadow-[0_0_0_1px_rgba(103,232,249,0.18)]"
+                  : "border-white/15 bg-white/6 hover:border-cyan-300/35 hover:bg-white/10"
+              }`}
+            >
+              <span className="text-sm font-medium text-white">
+                Click or drop album tracks here
+              </span>
+              <span className="mt-2 text-xs text-white/50">
+                Accepts multiple audio files and keeps your selected order.
+              </span>
+              {albumAudioFiles.length > 0 ? (
+                <span className="mt-3 rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-white/70">
+                  {albumAudioFiles.length} file{albumAudioFiles.length === 1 ? "" : "s"} selected
+                </span>
+              ) : null}
+            </button>
+            <p className="mt-2 text-xs leading-6 text-white/45">
+              Track titles default from filenames and order follows your selected files.
+            </p>
+          </div>
+
+          {albumAudioFiles.length > 0 ? (
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <div className="text-sm font-medium text-white">Track order preview</div>
+              <div className="mt-3 space-y-2">
+                {albumAudioFiles.map((file, index) => (
+                  <div
+                    key={`${file.name}-${index}`}
+                    className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2"
+                  >
+                    <div className="text-xs text-white/45">Track {index + 1}</div>
+                    <div className="truncate text-sm font-medium text-white">
+                      {defaultTitleFromFileName(file.name) || `Track ${index + 1}`}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <button
+            type="button"
+            onClick={uploadAlbum}
+            disabled={!canUploadAlbum || uploadingAlbum}
+            className="inline-flex h-12 w-full items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {uploadingAlbum ? "Uploading album..." : "Upload album"}
+          </button>
+
+          {albumUploadMessage ? (
+            <p className="text-xs leading-6 text-white/45">{albumUploadMessage}</p>
+          ) : null}
+        </>
+      ) : showArtistCampaignCta ? (
+        <>
+          <button
+            type="button"
+            onClick={handleClaimArtistCampaign}
+            disabled={claimingArtistCampaign}
+            className="inline-flex h-12 w-full items-center justify-center rounded-full bg-gradient-to-r from-rose-600 via-red-500 to-orange-500 px-6 text-sm font-semibold text-white transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {claimingArtistCampaign ? "Activating..." : "Unlock album uploads"}
+          </button>
+          <p className="text-xs leading-6 text-rose-200/90">
+            Free forever if you join before {LIFETIME_CAMPAIGN_END_LABEL}.
+          </p>
+        </>
+      ) : (
+        <p className="text-xs leading-6 text-white/45">
+          Become an artist to upload albums from your account page.
+        </p>
       )}
     </div>
   </section>
