@@ -71,6 +71,7 @@ export default function PlayerBar() {
     viewerPlan === "premium" ||
     viewerPlan === "artist" ||
     viewerPlan === "lifetime";
+  const likesRemaining = Math.max(0, 100 - likedTrackIds.length);
 
   const isLiked = currentTrackId ? likedTrackIds.includes(currentTrackId) : false;
   const transportDisabled = !currentTrack;
@@ -229,6 +230,11 @@ export default function PlayerBar() {
 
     if (!viewerUserId) {
       setFeedback("Please log in first");
+      return;
+    }
+
+    if (!isLiked && likesRemaining <= 0) {
+      setFeedback("You've used all monthly likes.");
       return;
     }
 

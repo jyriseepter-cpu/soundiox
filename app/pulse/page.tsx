@@ -224,7 +224,12 @@ export default function PulsePage() {
         setViewerLikesUsed(0);
       } else {
         if (!alive) return;
-        setViewerLikesUsed((myMonthLikes ?? []).length);
+        const uniqueTrackIds = new Set(
+          ((myMonthLikes ?? []) as Array<{ track_id: string | null }>)
+            .map((row) => row.track_id)
+            .filter((trackId): trackId is string => typeof trackId === "string" && trackId.length > 0)
+        );
+        setViewerLikesUsed(uniqueTrackIds.size);
       }
     }
 
@@ -596,7 +601,7 @@ export default function PulsePage() {
     }
 
     if (viewerLikesUsed >= MONTHLY_LIKE_LIMIT) {
-      setActionMessage("Your monthly like limit has been reached.");
+      setActionMessage("You've used all monthly likes.");
       return;
     }
 
@@ -851,6 +856,10 @@ export default function PulsePage() {
             const isFoundingArtist = Boolean(t.artistIsFounding);
             const isCurrentMonthWinner = currentMonthWinnerTrackId === id;
             const isPreviousMonthWinner = previousMonthWinnerTrackId === id;
+            const likeDisabled =
+              !userId ||
+              isOwnTrack ||
+              (!liked && (!viewerCanLike || likesRemaining <= 0));
             const likeDisabledReason = !userId
               ? "Log in to like"
               : liked
@@ -979,7 +988,7 @@ export default function PulsePage() {
                       likesCount={likes}
                       onToggle={toggleLike}
                       title={likeDisabledReason}
-                      disabled={!userId || isOwnTrack || !viewerCanLike || likesRemaining <= 0}
+                      disabled={likeDisabled}
                       showCount
                     />
                   </div>
@@ -1031,6 +1040,10 @@ export default function PulsePage() {
             const isFoundingArtist = Boolean(t.artistIsFounding);
             const isCurrentMonthWinner = currentMonthWinnerTrackId === id;
             const isPreviousMonthWinner = previousMonthWinnerTrackId === id;
+            const likeDisabled =
+              !userId ||
+              isOwnTrack ||
+              (!liked && (!viewerCanLike || likesRemaining <= 0));
             const likeDisabledReason = !userId
               ? "Log in to like"
               : liked
@@ -1139,14 +1152,16 @@ export default function PulsePage() {
                       </span>
                     </div>
 
-                    <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                    <div className="mt-2.5 flex flex-wrap items-center gap-2">
                       <LikeButton
                         trackId={id}
                         liked={liked}
                         likesCount={likes}
                         onToggle={toggleLike}
                         title={likeDisabledReason}
-                        disabled={!userId || isOwnTrack || !viewerCanLike || likesRemaining <= 0}
+                        disabled={likeDisabled}
+                        wrapperClassName="min-w-[56px] items-center justify-start gap-2 rounded-2xl bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/80"
+                        buttonClassName="text-base"
                         showCount
                       />
 
@@ -1155,7 +1170,7 @@ export default function PulsePage() {
                           type="button"
                           onClick={() => toggleFollow(artistId)}
                           disabled={followLoading}
-                          className="cursor-pointer rounded-2xl bg-white/10 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="min-w-[88px] cursor-pointer rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {followLoading ? "..." : isFollowing ? "Following" : "Follow"}
                         </button>
@@ -1164,7 +1179,7 @@ export default function PulsePage() {
                       <button
                         type="button"
                         onClick={() => void shareTrack(id)}
-                        className="cursor-pointer rounded-2xl bg-white/10 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/15"
+                        className="min-w-[88px] cursor-pointer rounded-2xl bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15"
                       >
                         Share
                       </button>
@@ -1178,7 +1193,7 @@ export default function PulsePage() {
                             playTrack(t as any, rows as any);
                           }
                         }}
-                        className="cursor-pointer rounded-2xl bg-gradient-to-r from-cyan-400 to-purple-500 px-4 py-1.5 text-xs font-semibold text-white"
+                        className="min-w-[72px] cursor-pointer rounded-2xl bg-gradient-to-r from-cyan-400 to-purple-500 px-5 py-2 text-sm font-semibold text-white"
                       >
                         {isCurrent ? (isPlaying ? "Pause" : "Play") : "Play"}
                       </button>

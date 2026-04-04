@@ -84,6 +84,7 @@ type ViewerProfile = {
 
 type UpgradeTier = "premium" | "artist";
 
+const MONTHLY_LIKE_LIMIT = 100;
 const PAGE_SIZE = 50;
 
 function pickTitle(t: DiscoverTrack) {
@@ -192,6 +193,7 @@ export default function DiscoverPage() {
     viewerPlan === "artist" ||
     viewerPlan === "lifetime";
   const viewerHasPaidPlan = viewerCanLike || viewerIsArtist;
+  const likesRemaining = Math.max(0, MONTHLY_LIKE_LIMIT - likedTrackIds.length);
 
   function showToast(text: string) {
     setToast(text);
@@ -790,7 +792,7 @@ export default function DiscoverPage() {
     let topTrackId: string | null = null;
     let topLikes = 0;
 
-    for (const track of displayedTracks) {
+    for (const track of tracks) {
       const likes = likesMonthByTrackId[track.id] ?? 0;
       if (likes > topLikes) {
         topTrackId = track.id;
@@ -799,7 +801,7 @@ export default function DiscoverPage() {
     }
 
     return topLikes > 0 ? topTrackId : null;
-  }, [displayedTracks, likesMonthByTrackId]);
+  }, [tracks, likesMonthByTrackId]);
 
   const selectedPlaylist = useMemo(
     () => playlists.find((p) => p.id === selectedPlaylistId) ?? null,
@@ -900,6 +902,11 @@ export default function DiscoverPage() {
     }
 
     const alreadyLiked = likedTrackIds.includes(trackId);
+
+    if (!alreadyLiked && likesRemaining <= 0) {
+      showToast("You've used all monthly likes.");
+      return;
+    }
 
     try {
       setLikeLoadingTrackId(trackId);
