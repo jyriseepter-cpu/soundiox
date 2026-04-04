@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import CustomSelect from "@/app/components/CustomSelect";
+import { prepareTrackAudioFile } from "@/lib/audioProcessing";
 import { SOUNDIOX_GENRE_OPTIONS, isSoundioXGenre } from "@/lib/genres";
 
 type ProfileRow = {
@@ -179,18 +180,21 @@ export default function MyArtistPage() {
         throw new Error("Please select one of the official SoundioX genres.");
       }
 
+      setUploadMsg("Preparing audio...");
+
+      const processedAudio = await prepareTrackAudioFile(upAudio);
       const audioBucket = "tracks";
       const artBucket = "tracks";
 
-      const audioExt = upAudio.name.split(".").pop() || "mp3";
+      const audioExt = processedAudio.name.split(".").pop()?.toLowerCase() || "mp3";
       const audioPath = `audio/${userId}/${Date.now()}-${crypto.randomUUID()}.${audioExt}`;
 
       const { error: audioUpErr } = await supabase.storage
         .from(audioBucket)
-        .upload(audioPath, upAudio, {
+        .upload(audioPath, processedAudio, {
           cacheControl: "3600",
           upsert: false,
-          contentType: upAudio.type || "audio/mpeg",
+          contentType: processedAudio.type || "audio/mpeg",
         });
 
       if (audioUpErr) throw new Error(`Audio upload failed: ${audioUpErr.message}`);

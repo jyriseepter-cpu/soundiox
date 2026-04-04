@@ -1,10 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { FFmpeg } from "@ffmpeg/ffmpeg";
-import { fetchFile, toBlobURL } from "@ffmpeg/util";
 import CustomSelect from "@/app/components/CustomSelect";
 import { supabase } from "@/lib/supabaseClient";
+import { prepareTrackAudioFile, shouldCompressToMp3 } from "@/lib/audioProcessing";
 import {
   SOUNDIOX_GENRES,
   SOUNDIOX_GENRE_OPTIONS,
@@ -64,156 +63,6 @@ function formatSupabaseError(error: SupabaseErrorLike) {
   ].filter(Boolean);
 
   return parts.join(" | ");
-}
-
-function sanitizeBaseName(fileName: string) {
-  return fileName
-    .replace(/\.[^/.]+$/, "")
-    .replace(/[^a-zA-Z0-9-_]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-function shouldCompressToMp3(file: File) {
-  const name = file.name.toLowerCase();
-  const type = (file.type || "").toLowerCase();
-
-  return (
-    type.includes("wav") ||
-    type.includes("wave") ||
-    type.includes("aiff") ||
-    type.includes("flac") ||
-    name.endsWith(".wav") ||
-    name.endsWith(".wave") ||
-    name.endsWith(".aif") ||
-    name.endsWith(".aiff") ||
-    name.endsWith(".flac")
-  );
-}
-
-function toArrayBuffer(data: Uint8Array | ArrayBuffer | string): ArrayBuffer {
-  if (data instanceof Uint8Array) {
-    return data.slice().buffer;
-  }
-
-  if (data instanceof ArrayBuffer) {
-    return data.slice(0);
-  }
-
-  return new TextEncoder().encode(data).buffer;
-}
-
-let ffmpegSingleton: FFmpeg | null = null;
-let ffmpegLoadPromise: Promise<FFmpeg> | null = null;
-let currentTextSetter: ((value: string) => void) | null = null;
-let currentProgressSetter: ((value: number | null) => void) | null = null;
-
-async function getFfmpeg(setProcessingText?: (value: string) => void) {
-  if (ffmpegSingleton) {
-    currentTextSetter = setProcessingText ?? null;
-    return ffmpegSingleton;
-  }
-
-  if (!ffmpegLoadPromise) {
-    ffmpegLoadPromise = (async () => {
-      const ffmpeg = new FFmpeg();
-
-      ffmpeg.on("log", ({ message }) => {
-        if (message && currentTextSetter) {
-          currentTextSetter(message);
-        }
-      });
-
-      ffmpeg.on("progress", ({ progress }) => {
-        if (!currentProgressSetter) return;
-        const percent = Math.max(
-          0,
-          Math.min(100, Math.round((progress || 0) * 100))
-        );
-        currentProgressSetter(percent);
-        if (currentTextSetter) {
-          currentTextSetter(`Compressing audio... ${percent}%`);
-        }
-      });
-
-      const baseURL =
-        "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
-
-      await ffmpeg.load({
-        coreURL: await toBlobURL(
-          `${baseURL}/ffmpeg-core.js`,
-          "text/javascript"
-        ),
-        wasmURL: await toBlobURL(
-          `${baseURL}/ffmpeg-core.wasm`,
-          "application/wasm"
-        ),
-      });
-
-      ffmpegSingleton = ffmpeg;
-      return ffmpeg;
-    })();
-  }
-
-  currentTextSetter = setProcessingText ?? null;
-  return ffmpegLoadPromise;
-}
-
-async function compressAudioToMp3(
-  inputFile: File,
-  setProcessingText: (value: string) => void,
-  setProcessingProgress: (value: number | null) => void
-) {
-  currentTextSetter = setProcessingText;
-  currentProgressSetter = setProcessingProgress;
-
-  const ffmpeg = await getFfmpeg(setProcessingText);
-
-  const safeBaseName = sanitizeBaseName(inputFile.name) || "track";
-  const inputExt = inputFile.name.split(".").pop()?.toLowerCase() || "wav";
-  const inputName = `input.${inputExt}`;
-  const outputName = `${safeBaseName}.mp3`;
-
-  setProcessingText("Preparing audio engine...");
-  setProcessingProgress(0);
-
-  await ffmpeg.writeFile(inputName, await fetchFile(inputFile));
-
-  setProcessingText("Converting to MP3 192 kbps...");
-
-  await ffmpeg.exec([
-    "-i",
-    inputName,
-    "-vn",
-    "-ar",
-    "44100",
-    "-ac",
-    "2",
-    "-b:a",
-    "192k",
-    outputName,
-  ]);
-
-  const outputData = await ffmpeg.readFile(outputName);
-  const outputBuffer = toArrayBuffer(outputData);
-
-  try {
-    await ffmpeg.deleteFile(inputName);
-  } catch {}
-
-  try {
-    await ffmpeg.deleteFile(outputName);
-  } catch {}
-
-  setProcessingProgress(100);
-  setProcessingText("Compression finished.");
-
-  currentProgressSetter = null;
-
-  return new File([outputBuffer], outputName, {
-    type: "audio/mpeg",
-    lastModified: Date.now(),
-  });
 }
 
 export default function UploadPage() {
@@ -310,11 +159,10 @@ export default function UploadPage() {
       if (shouldCompressToMp3(audioFile)) {
         setProcessingAudio(true);
         setProcessingText("Preparing audio compression...");
-        uploadAudioFile = await compressAudioToMp3(
-          audioFile,
-          setProcessingText,
-          setProcessingProgress
-        );
+        uploadAudioFile = await prepareTrackAudioFile(audioFile, {
+          onStatus: setProcessingText,
+          onProgress: setProcessingProgress,
+        });
       }
 
       const audioExt =
@@ -416,8 +264,6 @@ export default function UploadPage() {
     } finally {
       setUploading(false);
       setProcessingAudio(false);
-      currentProgressSetter = null;
-      currentTextSetter = null;
     }
   }
 
