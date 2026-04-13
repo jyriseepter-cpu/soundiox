@@ -260,6 +260,8 @@ export default function PulsePage() {
   }, [month]);
 
   useEffect(() => {
+    let alive = true;
+
     const load = async () => {
       setLoading(true);
 
@@ -354,23 +356,37 @@ export default function PulsePage() {
       const ids = enrichedTracks.map((t) => t.id).filter(Boolean);
 
       if (ids.length > 0) {
-        const { data: likeRows, error: likeErr } = await supabase
-          .from("track_likes_monthly")
-          .select("track_id,month,likes")
-          .eq("month", month)
-          .in("track_id", ids);
+        try {
+          const response = await fetch("/api/pulse-like-counts", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ trackIds: ids }),
+          });
 
-        if (likeErr) {
-          console.warn("Pulse likes query error:", likeErr);
+          const payload = await response.json().catch(() => null);
+
+          if (!response.ok) {
+            throw new Error(payload?.error || "Could not load Pulse like counts");
+          }
+
+          const map = new Map<string, number>();
+          const counts = payload?.counts as Record<string, number> | undefined;
+
+          Object.entries(counts ?? {}).forEach(([trackId, likes]) => {
+            const safeTrackId = String(trackId || "").trim();
+            if (!safeTrackId) return;
+            map.set(safeTrackId, Number(likes ?? 0));
+          });
+
+          if (!alive) return;
+          setLikesMonth(map);
+        } catch (error) {
+          console.warn("Pulse likes query error:", error);
+          if (!alive) return;
+          setLikesMonth(new Map());
         }
-
-        const map = new Map<string, number>();
-        ((likeRows ?? []) as TrackLikeMonthlyRow[]).forEach((row) => {
-          const trackId = String(row.track_id || "");
-          if (!trackId) return;
-          map.set(trackId, Number(row.likes ?? 0));
-        });
-        setLikesMonth(map);
 
         const { data: previousWinnerRows, error: previousWinnerError } = await supabase
           .from("track_likes_monthly")
@@ -438,6 +454,10 @@ export default function PulsePage() {
     };
 
     void load();
+
+    return () => {
+      alive = false;
+    };
   }, [userId, month, category]);
 
   useEffect(() => {
