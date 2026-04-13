@@ -1,15 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import {
-  applyLaunchCampaignArtistAccess,
-  isLifetimeCampaignActive,
-} from "@/lib/lifetimeCampaign";
 
 export const runtime = "nodejs";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 export async function GET(request: Request) {
   try {
@@ -41,27 +36,6 @@ export async function GET(request: Request) {
     const user = session.user;
     if (!user?.id) {
       return NextResponse.redirect(`${origin}/login?error=user_missing`);
-    }
-
-    const admin = createClient(supabaseUrl, serviceRoleKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    });
-
-    if (isLifetimeCampaignActive()) {
-      try {
-        await applyLaunchCampaignArtistAccess({
-          supabase: admin,
-          userId: user.id,
-          profile: {
-            email: user.email || null,
-          },
-        });
-      } catch {
-        return NextResponse.redirect(`${origin}/login?error=profile_update_failed`);
-      }
     }
 
     return NextResponse.redirect(`${origin}/discover`);

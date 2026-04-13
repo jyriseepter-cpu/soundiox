@@ -15,7 +15,6 @@ import {
   LIFETIME_CAMPAIGN_END_LABEL,
   needsLaunchCampaignArtistBackfill,
   normalizeAccessPlan,
-  shouldGrantLifetimeCampaignPlan,
 } from "@/lib/lifetimeCampaign";
 import { formatEuroPrice, SOUNDIOX_PRICING } from "@/lib/pricing";
 import { isSoundioXGenre, SOUNDIOX_GENRE_OPTIONS } from "@/lib/genres";
@@ -333,11 +332,6 @@ export default function AccountClient() {
     const nextRole = normalizeProfileRole(profile?.role);
     const nextPlan = normalizeAccessPlan(profile?.plan);
     const nextFounding = Boolean(profile?.is_founding);
-    const shouldGrantLifetime = shouldGrantLifetimeCampaignPlan({
-      plan: profile?.plan,
-      isFounding: nextFounding,
-    });
-    const effectivePlan = shouldGrantLifetime ? "lifetime" : nextPlan;
 
     setRole(nextRole);
     setDisplayName(nextDisplayName);
@@ -345,7 +339,7 @@ export default function AccountClient() {
     setCountry(profile?.country || "");
     setSlug(nextSlug);
     setAvatarUrl(profile?.avatar_url || "");
-    setPlan(effectivePlan);
+    setPlan(nextPlan);
     setIsFounding(nextFounding);
 
     if (profile && needsLaunchCampaignArtistBackfill(profile)) {
@@ -370,25 +364,9 @@ export default function AccountClient() {
       setAvatarUrl((upgradedProfile.avatar_url as string | null) || "");
       setPlan("lifetime");
       setIsFounding(false);
-    } else if (profile && shouldGrantLifetime) {
-      const { error: upgradeError } = await supabase
-        .from("profiles")
-        .update({ plan: "lifetime" })
-        .eq("id", user.id);
-
-      if (upgradeError) {
-        console.warn("lifetime campaign profile update warning:", upgradeError);
-      }
     }
 
     if (!profile && !options?.skipCreate) {
-      const defaultPlan = shouldGrantLifetimeCampaignPlan({
-        plan: null,
-        isFounding: false,
-      })
-        ? "lifetime"
-        : "free";
-
       const insertPayload = {
         id: user.id,
         email: user.email ?? null,
@@ -398,7 +376,7 @@ export default function AccountClient() {
         country: null,
         avatar_url: null,
         slug: nextSlug,
-        plan: defaultPlan,
+        plan: "free",
         is_founding: false,
       };
 
@@ -416,7 +394,7 @@ export default function AccountClient() {
       setCountry("");
       setSlug(nextSlug);
       setAvatarUrl("");
-      setPlan(defaultPlan);
+      setPlan("free");
       setIsFounding(false);
     }
   }
