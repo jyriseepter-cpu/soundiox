@@ -1494,9 +1494,7 @@ export default function AccountClient() {
                       disabled={claimingArtistCampaign}
                       className="rounded-full border border-rose-300/25 bg-gradient-to-r from-rose-600 via-red-500 to-orange-500 px-4 py-2 text-sm font-semibold text-white transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-70"
                     >
-                      {claimingArtistCampaign
-                        ? "Activating..."
-                        : "Launch Campaign: Free Forever"}
+                      {claimingArtistCampaign ? "Activating..." : "Become Artist"}
                     </button>
                   ) : (
                     <Link
@@ -1543,11 +1541,6 @@ export default function AccountClient() {
                     : "Free Listener"}
                 </span>
               </div>
-              {!canUpload && artistCampaignActive ? (
-                <div className="mt-1 text-xs text-rose-200/90">
-                  Free artist campaign active until {LIFETIME_CAMPAIGN_END_LABEL}.
-                </div>
-              ) : null}
             </div>
           </div>
         </section>
@@ -1572,12 +1565,12 @@ export default function AccountClient() {
 
         {!isFounding && !isArtistAccount ? (
           <section className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-[28px] border border-rose-300/15 bg-[radial-gradient(circle_at_top_left,rgba(244,63,94,0.22),transparent_35%),radial-gradient(circle_at_top_right,rgba(249,115,22,0.18),transparent_35%),rgba(255,255,255,0.04)] p-6 backdrop-blur-xl">
+            <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
               <h2 className="text-lg font-semibold text-white">
-                Artist campaign
+                Artist access
               </h2>
               <p className="mt-2 text-sm leading-6 text-white/75">
-                Join before {LIFETIME_CAMPAIGN_END_LABEL} and unlock artist access for free forever.
+                Unlock artist access to upload tracks, manage releases, and build your public SoundioX profile.
               </p>
 
               <div className="mt-5">
@@ -1588,9 +1581,7 @@ export default function AccountClient() {
                     disabled={claimingArtistCampaign}
                     className="inline-flex h-12 items-center justify-center rounded-full bg-gradient-to-r from-rose-600 via-red-500 to-orange-500 px-6 text-sm font-semibold text-white transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-70"
                   >
-                    {claimingArtistCampaign
-                      ? "Activating..."
-                      : "Launch Campaign: Free Forever"}
+                    {claimingArtistCampaign ? "Activating..." : "Become Artist"}
                   </button>
                 ) : (
                   <Link
@@ -2170,8 +2161,6 @@ export default function AccountClient() {
     <p className="mt-2 text-sm text-white/65">
       {canUpload
         ? "Publish a new song to your SoundioX profile and discovery feed."
-        : showArtistCampaignCta
-        ? `Join before ${LIFETIME_CAMPAIGN_END_LABEL} and unlock artist access for free forever.`
         : "Unlock artist access to upload tracks and build your public SoundioX profile."}
     </p>
 
@@ -2197,14 +2186,8 @@ export default function AccountClient() {
             disabled={claimingArtistCampaign}
             className="inline-flex h-12 w-full items-center justify-center rounded-full bg-gradient-to-r from-rose-600 via-red-500 to-orange-500 px-6 text-sm font-semibold text-white transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-70"
           >
-            {claimingArtistCampaign
-              ? "Activating..."
-              : "Launch Campaign: Free Forever"}
+            {claimingArtistCampaign ? "Activating..." : "Become Artist"}
           </button>
-
-          <p className="text-xs leading-6 text-rose-200/90">
-            Free forever if you join before {LIFETIME_CAMPAIGN_END_LABEL}. No payment required.
-          </p>
         </>
       ) : (
         <>
