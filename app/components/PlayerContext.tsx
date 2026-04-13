@@ -54,6 +54,7 @@ type PlayerContextValue = {
 };
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
+const MIN_PLAY_COUNT_SECONDS = 10;
 
 function isAbsoluteUrl(u: string) {
   return /^https?:\/\//i.test(u);
@@ -83,6 +84,14 @@ function pickAudioSrc(t: Track) {
   return toAbsoluteUrl(raw);
 }
 
+function getPlayCountThreshold(duration: number) {
+  if (!Number.isFinite(duration) || duration <= 0) {
+    return MIN_PLAY_COUNT_SECONDS;
+  }
+
+  return Math.max(3, Math.min(MIN_PLAY_COUNT_SECONDS, duration * 0.5));
+}
+
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -96,6 +105,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const queueRef = useRef<Track[]>([]);
   const currentTrackRef = useRef<Track | null>(null);
+  const playbackSessionIdRef = useRef<string>("");
+  const countedPlaybackSessionIdRef = useRef<string>("");
+  const playbackSessionCounterRef = useRef(0);
 
   useEffect(() => {
     queueRef.current = queue;
@@ -119,6 +131,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const startPlaybackSession = (track: Track) => {
+    playbackSessionCounterRef.current += 1;
+    playbackSessionIdRef.current = `${String(track.id)}:${playbackSessionCounterRef.current}`;
+    countedPlaybackSessionIdRef.current = "";
+  };
+
   const loadTrack = (track: Track) => {
     const a = audioRef.current;
     if (!a) return false;
@@ -133,6 +151,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     a.currentTime = 0;
     setCurrentTime(0);
     setDuration(0);
+    startPlaybackSession(track);
 
     return true;
   };
@@ -153,6 +172,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     a.currentTime = 0;
     setCurrentTime(0);
     setDuration(0);
+    startPlaybackSession(track);
 
     try {
       await a.play();
@@ -183,7 +203,6 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     currentTrackRef.current = nextTrack;
 
     await loadAndPlay(nextTrack);
-    void incrementPlays(String(nextTrack.id));
   };
 
   useEffect(() => {
@@ -195,7 +214,27 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
-    const onTimeUpdate = () => setCurrentTime(a.currentTime || 0);
+    const onTimeUpdate = () => {
+      const nextTime = a.currentTime || 0;
+      setCurrentTime(nextTime);
+
+      const current = currentTrackRef.current;
+      const playbackSessionId = playbackSessionIdRef.current;
+      if (!current || !playbackSessionId || countedPlaybackSessionIdRef.current === playbackSessionId) {
+        return;
+      }
+
+      if (a.paused) return;
+
+      const threshold = getPlayCountThreshold(
+        Number.isFinite(a.duration) ? a.duration : 0
+      );
+
+      if (nextTime < threshold) return;
+
+      countedPlaybackSessionIdRef.current = playbackSessionId;
+      void incrementPlays(String(current.id));
+    };
     const onLoadedMeta = () => {
       setDuration(Number.isFinite(a.duration) ? a.duration : 0);
       setCurrentTime(a.currentTime || 0);
@@ -204,6 +243,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       setDuration(Number.isFinite(a.duration) ? a.duration : 0);
     };
     const onEnded = async () => {
+      if (queueRef.current.length <= 1) {
+        setIsPlaying(false);
+        return;
+      }
+
       await goRelative(+1);
     };
 
@@ -258,7 +302,6 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     currentTrackRef.current = track;
 
     await loadAndPlay(track);
-    void incrementPlays(String(track.id));
   };
 
   const play = async () => {
