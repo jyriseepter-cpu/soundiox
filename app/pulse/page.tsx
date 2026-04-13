@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
@@ -10,6 +10,12 @@ import LikeButton from "@/app/components/LikeButton";
 import { SOUNDIOX_GENRES, isSoundioXGenre } from "@/lib/genres";
 import { normalizeAccessPlan } from "@/lib/lifetimeCampaign";
 import { formatEuroPrice, SOUNDIOX_PRICING } from "@/lib/pricing";
+import {
+  broadcastTrackLikeChanged,
+  fetchUserLikedTrackIds,
+  likeTrack,
+  unlikeTrack,
+} from "@/lib/trackEngagement";
 
 type SortKey = "plays_month" | "likes_month";
 type CategoryKey = "global" | "new_rising" | "estonia";
@@ -51,6 +57,12 @@ type ViewerProfile = {
   role: string | null;
   plan: string | null;
   is_founding: boolean | null;
+};
+
+type TrackLikeMonthlyRow = {
+  track_id: string | null;
+  month: string | null;
+  likes: number | null;
 };
 
 const MONTHLY_LIKE_LIMIT = 100;
@@ -158,6 +170,8 @@ export default function PulsePage() {
   const [loading, setLoading] = useState(true);
   const [actionMessage, setActionMessage] = useState("");
   const month = useMemo(() => monthStartISO(), []);
+  const likedSetRef = useRef<Set<string>>(new Set());
+  const trackIdsRef = useRef<Set<string>>(new Set());
 
   const viewerCanLike =
     viewerIsFounding ||
@@ -167,6 +181,14 @@ export default function PulsePage() {
     viewerPlan === "lifetime";
 
   const likesRemaining = Math.max(0, MONTHLY_LIKE_LIMIT - viewerLikesUsed);
+
+  useEffect(() => {
+    likedSetRef.current = likedSet;
+  }, [likedSet]);
+
+  useEffect(() => {
+    trackIdsRef.current = new Set(tracks.map((track) => String(track.id)));
+  }, [tracks]);
 
   useEffect(() => {
     let alive = true;
@@ -212,24 +234,14 @@ export default function PulsePage() {
         setViewerIsFounding(Boolean(profile?.is_founding));
       }
 
-      const { data: myMonthLikes, error: myMonthLikesError } = await supabase
-        .from("likes")
-        .select("track_id")
-        .eq("user_id", user.id)
-        .eq("month", month);
-
-      if (myMonthLikesError) {
-        console.warn("Pulse monthly usage warning:", myMonthLikesError);
+      try {
+        const likedTrackIds = await fetchUserLikedTrackIds(user.id);
+        if (!alive) return;
+        setViewerLikesUsed(likedTrackIds.length);
+      } catch (error) {
+        console.warn("Pulse monthly usage warning:", error);
         if (!alive) return;
         setViewerLikesUsed(0);
-      } else {
-        if (!alive) return;
-        const uniqueTrackIds = new Set(
-          ((myMonthLikes ?? []) as Array<{ track_id: string | null }>)
-            .map((row) => row.track_id)
-            .filter((trackId): trackId is string => typeof trackId === "string" && trackId.length > 0)
-        );
-        setViewerLikesUsed(uniqueTrackIds.size);
       }
     }
 
@@ -343,8 +355,8 @@ export default function PulsePage() {
 
       if (ids.length > 0) {
         const { data: likeRows, error: likeErr } = await supabase
-          .from("likes")
-          .select("track_id")
+          .from("track_likes_monthly")
+          .select("track_id,month,likes")
           .eq("month", month)
           .in("track_id", ids);
 
@@ -353,9 +365,10 @@ export default function PulsePage() {
         }
 
         const map = new Map<string, number>();
-        (likeRows ?? []).forEach((row: { track_id: string }) => {
-          const trackId = String(row.track_id);
-          map.set(trackId, (map.get(trackId) ?? 0) + 1);
+        ((likeRows ?? []) as TrackLikeMonthlyRow[]).forEach((row) => {
+          const trackId = String(row.track_id || "");
+          if (!trackId) return;
+          map.set(trackId, Number(row.likes ?? 0));
         });
         setLikesMonth(map);
 
@@ -384,20 +397,16 @@ export default function PulsePage() {
       }
 
       if (userId && ids.length > 0) {
-        const { data: myLikes, error: myErr } = await supabase
-          .from("likes")
-          .select("track_id")
-          .eq("user_id", userId)
-          .eq("month", month)
-          .in("track_id", ids);
-
-        if (myErr) {
-          console.warn("Pulse my likes error:", myErr);
+        try {
+          const likedTrackIds = await fetchUserLikedTrackIds(userId);
+          const visibleTrackIds = new Set(ids.map((id) => String(id)));
+          setLikedSet(
+            new Set(likedTrackIds.filter((trackId) => visibleTrackIds.has(String(trackId))))
+          );
+        } catch (error) {
+          console.warn("Pulse my likes error:", error);
+          setLikedSet(new Set());
         }
-
-        const set = new Set<string>();
-        (myLikes ?? []).forEach((r: { track_id: string }) => set.add(String(r.track_id)));
-        setLikedSet(set);
       } else {
         setLikedSet(new Set());
       }
@@ -430,6 +439,47 @@ export default function PulsePage() {
 
     void load();
   }, [userId, month, category]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    function handleTrackLikeChanged(event: Event) {
+      const detail = (event as CustomEvent<{ trackId?: string; liked?: boolean }>).detail;
+      const trackId = String(detail?.trackId || "");
+      const liked = detail?.liked;
+
+      if (!trackId || typeof liked !== "boolean") return;
+
+      const wasLiked = likedSetRef.current.has(trackId);
+      if (wasLiked === liked) return;
+
+      setLikedSet((prev) => {
+        const next = new Set(prev);
+        if (liked) {
+          next.add(trackId);
+        } else {
+          next.delete(trackId);
+        }
+        return next;
+      });
+
+      setViewerLikesUsed((prev) => Math.max(0, prev + (liked ? 1 : -1)));
+
+      if (!trackIdsRef.current.has(trackId)) return;
+
+      setLikesMonth((prev) => {
+        const next = new Map(prev);
+        next.set(trackId, Math.max(0, (next.get(trackId) ?? 0) + (liked ? 1 : -1)));
+        return next;
+      });
+    }
+
+    window.addEventListener("soundiox:track-like-changed", handleTrackLikeChanged);
+
+    return () => {
+      window.removeEventListener("soundiox:track-like-changed", handleTrackLikeChanged);
+    };
+  }, []);
 
   const rewardPool = useMemo(() => {
     let sum = 0;
@@ -556,14 +606,9 @@ export default function PulsePage() {
     const liked = likedSet.has(trackId);
 
     if (liked) {
-      const { error } = await supabase
-        .from("likes")
-        .delete()
-        .eq("user_id", userId)
-        .eq("track_id", trackId)
-        .eq("month", month);
-
-      if (error) {
+      try {
+        await unlikeTrack(userId, trackId);
+      } catch (error) {
         console.error("Unlike error:", error);
         setActionMessage("Could not remove like right now.");
         return;
@@ -582,6 +627,7 @@ export default function PulsePage() {
       });
 
       setViewerLikesUsed((prev) => Math.max(0, prev - 1));
+      broadcastTrackLikeChanged(trackId, false);
       return;
     }
 
@@ -605,13 +651,9 @@ export default function PulsePage() {
       return;
     }
 
-    const { error } = await supabase.from("likes").insert({
-      user_id: userId,
-      track_id: trackId,
-      month,
-    });
-
-    if (error) {
+    try {
+      await likeTrack(userId, trackId);
+    } catch (error: any) {
       console.error("Like error:", error);
 
       if (
@@ -633,6 +675,7 @@ export default function PulsePage() {
       return m;
     });
     setViewerLikesUsed((prev) => prev + 1);
+    broadcastTrackLikeChanged(trackId, true);
   }
 
   async function toggleFollow(artistId: string | null) {
