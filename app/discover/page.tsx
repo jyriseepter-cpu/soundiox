@@ -54,10 +54,6 @@ type PlaylistTrackRow = {
   track_id: string;
 };
 
-type LikeRow = {
-  track_id: string;
-};
-
 type FollowRow = {
   following_profile_id: string;
 };
@@ -481,22 +477,29 @@ export default function DiscoverPage() {
       }
 
       try {
-        const monthStart = monthStartDateString();
-        const { data, error } = await supabase
-          .from("likes")
-          .select("track_id")
-          .eq("month", monthStart)
-          .in("track_id", trackIds);
+        const response = await fetch("/api/pulse-like-counts", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ trackIds }),
+        });
 
-        if (error) throw error;
+        const payload = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          throw new Error(payload?.error || "Could not load monthly likes");
+        }
         if (!alive) return;
 
         const map: Record<string, number> = {};
-        for (const row of (data ?? []) as LikeRow[]) {
-          if (row.track_id) {
-            map[row.track_id] = (map[row.track_id] ?? 0) + 1;
-          }
-        }
+        const counts = payload?.counts as Record<string, number> | undefined;
+
+        Object.entries(counts ?? {}).forEach(([trackId, likes]) => {
+          const safeTrackId = String(trackId || "").trim();
+          if (!safeTrackId) return;
+          map[safeTrackId] = Number(likes ?? 0);
+        });
 
         setLikesMonthByTrackId(map);
       } catch (error) {
@@ -1103,7 +1106,7 @@ export default function DiscoverPage() {
 
       {viewerLoggedIn && !viewerHasPaidPlan ? (
         <div className="mb-4 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-400/10 px-4 py-3 text-sm text-fuchsia-100">
-          Free account active. Playlists are enabled. Upgrade to Premium for likes at {formatEuroPrice(
+          Free account active. Playlists are enabled. Upgrade to Premium with a 7 day free trial at {formatEuroPrice(
             SOUNDIOX_PRICING.premium
           )} or become an Artist at {formatEuroPrice(SOUNDIOX_PRICING.artist)} to upload music.
         </div>
@@ -1124,7 +1127,7 @@ export default function DiscoverPage() {
           <div className="mb-3">
             <div className="text-base font-semibold text-white">Unlock more on SoundioX</div>
             <div className="text-sm text-white/60">
-              Upgrade or join the artist campaign without scrolling through the full track list.
+              Start Premium with a 7 day free trial or upgrade to Artist without scrolling through the full track list.
             </div>
           </div>
 

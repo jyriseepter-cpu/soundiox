@@ -208,7 +208,7 @@ export default function UpgradeButtons({
           </button>
 
           <div className="text-center text-xs font-semibold text-white/55">
-            Premium unlocks monthly likes for{" "}
+            Premium unlocks monthly likes with a 7 day free trial, then{" "}
             {formatEuroPrice(SOUNDIOX_PRICING.premium)}. Playlists stay
             available for logged-in users.
           </div>
