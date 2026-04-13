@@ -227,7 +227,7 @@ export default function UpgradeButtons({
           </button>
 
           <div className="text-center text-xs font-semibold text-white/55">
-            {`Artist unlocks uploads and artist access for ${formatEuroPrice(
+            {`Artist unlocks uploads and artist access with a 7 day free trial, then ${formatEuroPrice(
               SOUNDIOX_PRICING.artist
             )}.`}
           </div>
