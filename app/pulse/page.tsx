@@ -639,6 +639,8 @@ export default function PulsePage() {
         s.delete(trackId);
         return s;
       });
+      likedSetRef.current = new Set(likedSetRef.current);
+      likedSetRef.current.delete(trackId);
 
       setLikesMonth((prev) => {
         const m = new Map(prev);
@@ -689,6 +691,7 @@ export default function PulsePage() {
     }
 
     setLikedSet((prev) => new Set(prev).add(trackId));
+    likedSetRef.current = new Set(likedSetRef.current).add(trackId);
     setLikesMonth((prev) => {
       const m = new Map(prev);
       m.set(trackId, (m.get(trackId) ?? 0) + 1);
