@@ -140,19 +140,12 @@ export default function UpgradeButtons({
   }
 
   async function handleArtistClick() {
-    const campaignActive = isLifetimeCampaignActive();
-
     if (viewerIsFounding) {
       return;
     }
 
     if (!userId) {
       router.push("/login");
-      return;
-    }
-
-    if (campaignActive) {
-      router.push("/account");
       return;
     }
 

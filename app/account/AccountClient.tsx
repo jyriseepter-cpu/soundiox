@@ -286,8 +286,7 @@ export default function AccountClient() {
     plan === "artist" ||
     plan === "lifetime";
 
-  const showArtistCampaignCta =
-    !isFounding && !canUpload && artistCampaignActive;
+  const showArtistCampaignCta = false;
   const canUploadAlbum = useMemo(() => {
     return (
       canUpload &&
@@ -1371,6 +1370,66 @@ export default function AccountClient() {
     }
   }
 
+  async function handleUpgradePlan(nextPlan: "premium" | "artist") {
+    setError("");
+    setMessage("");
+
+    try {
+      if (nextPlan === "artist") {
+        setClaimingArtistCampaign(true);
+      }
+
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        throw sessionError;
+      }
+
+      if (!session?.access_token) {
+        router.push("/login");
+        return;
+      }
+
+      const res = await fetch("/api/stripe/subscribe", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          tier: nextPlan,
+        }),
+      });
+
+      const payload = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(
+          payload?.message ||
+            payload?.error ||
+            JSON.stringify(payload) ||
+            "Stripe checkout failed"
+        );
+      }
+
+      if (payload?.url) {
+        window.location.href = payload.url;
+        return;
+      }
+
+      throw new Error("Checkout URL missing");
+    } catch (err: any) {
+      setError(err?.message || "Checkout failed.");
+    } finally {
+      if (nextPlan === "artist") {
+        setClaimingArtistCampaign(false);
+      }
+    }
+  }
+
   async function handleLogout() {
     setError("");
     setMessage("");
@@ -1465,22 +1524,15 @@ export default function AccountClient() {
                     >
                       Upload track
                     </Link>
-                  ) : showArtistCampaignCta ? (
+                  ) : (
                     <button
                       type="button"
-                      onClick={handleClaimArtistCampaign}
+                      onClick={() => void handleUpgradePlan("artist")}
                       disabled={claimingArtistCampaign}
                       className="rounded-full border border-rose-300/25 bg-gradient-to-r from-rose-600 via-red-500 to-orange-500 px-4 py-2 text-sm font-semibold text-white transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-70"
                     >
-                      {claimingArtistCampaign ? "Activating..." : "Become Artist"}
+                      {claimingArtistCampaign ? "Opening..." : "Become Artist"}
                     </button>
-                  ) : (
-                    <Link
-                      href="/discover"
-                      className="rounded-full border border-fuchsia-300/20 bg-fuchsia-400/10 px-4 py-2 text-sm text-fuchsia-100 transition hover:bg-fuchsia-400/15"
-                    >
-                      Become Artist
-                    </Link>
                   )}
 
                   <button
@@ -1552,23 +1604,16 @@ export default function AccountClient() {
               </p>
 
               <div className="mt-5">
-                {showArtistCampaignCta ? (
+                {
                   <button
                     type="button"
-                    onClick={handleClaimArtistCampaign}
+                    onClick={() => void handleUpgradePlan("artist")}
                     disabled={claimingArtistCampaign}
                     className="inline-flex h-12 items-center justify-center rounded-full bg-gradient-to-r from-rose-600 via-red-500 to-orange-500 px-6 text-sm font-semibold text-white transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-70"
                   >
-                    {claimingArtistCampaign ? "Activating..." : "Become Artist"}
+                    {claimingArtistCampaign ? "Opening..." : "Become Artist"}
                   </button>
-                ) : (
-                  <Link
-                    href="/discover"
-                    className="inline-flex h-12 items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:scale-[1.01]"
-                  >
-                    Become Artist
-                  </Link>
-                )}
+                }
               </div>
             </div>
 
@@ -2156,25 +2201,17 @@ export default function AccountClient() {
             Upload audio, cover art, title and genre to publish a new track.
           </p>
         </>
-      ) : showArtistCampaignCta ? (
+      ) : (
         <>
           <button
             type="button"
-            onClick={handleClaimArtistCampaign}
+            onClick={() => void handleUpgradePlan("artist")}
             disabled={claimingArtistCampaign}
             className="inline-flex h-12 w-full items-center justify-center rounded-full bg-gradient-to-r from-rose-600 via-red-500 to-orange-500 px-6 text-sm font-semibold text-white transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-70"
           >
-            {claimingArtistCampaign ? "Activating..." : "Become Artist"}
+            {claimingArtistCampaign ? "Opening..." : "Become Artist • "}
+            {claimingArtistCampaign ? "" : formatEuroPrice(SOUNDIOX_PRICING.artist)}
           </button>
-        </>
-      ) : (
-        <>
-          <Link
-            href="/discover"
-            className="inline-flex h-12 w-full items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:scale-[1.01]"
-          >
-            Become Artist • {formatEuroPrice(SOUNDIOX_PRICING.artist)}
-          </Link>
 
           <p className="text-xs leading-6 text-white/45">
             Upgrade your access to start uploading tracks and shaping your artist profile for {formatEuroPrice(
@@ -2345,20 +2382,6 @@ export default function AccountClient() {
           {albumUploadMessage ? (
             <p className="text-xs leading-6 text-white/45">{albumUploadMessage}</p>
           ) : null}
-        </>
-      ) : showArtistCampaignCta ? (
-        <>
-          <button
-            type="button"
-            onClick={handleClaimArtistCampaign}
-            disabled={claimingArtistCampaign}
-            className="inline-flex h-12 w-full items-center justify-center rounded-full bg-gradient-to-r from-rose-600 via-red-500 to-orange-500 px-6 text-sm font-semibold text-white transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            {claimingArtistCampaign ? "Activating..." : "Unlock album uploads"}
-          </button>
-          <p className="text-xs leading-6 text-rose-200/90">
-            Free forever if you join before {LIFETIME_CAMPAIGN_END_LABEL}.
-          </p>
         </>
       ) : (
         <p className="text-xs leading-6 text-white/45">
