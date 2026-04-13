@@ -1,4 +1,4 @@
-export const LIFETIME_CAMPAIGN_END = "2026-04-12T23:59:00+03:00";
+export const LIFETIME_CAMPAIGN_END = "2026-04-13T23:59:00+03:00";
 
 function formatCampaignEndLabel(value: string) {
   const parts = new Intl.DateTimeFormat("en-US", {
