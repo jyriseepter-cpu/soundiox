@@ -81,6 +81,12 @@ function monthStartOffsetISO(offsetMonths: number) {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
+function monthBoundaryDateTimeISO(offsetMonths = 0) {
+  const now = new Date();
+  const boundary = new Date(now.getFullYear(), now.getMonth() + offsetMonths, 1, 0, 0, 0, 0);
+  return boundary.toISOString();
+}
+
 function safeStr(v: unknown) {
   return (v ?? "").toString();
 }
@@ -352,13 +358,16 @@ export default function PulsePage() {
       setTracks(enrichedTracks);
 
       const ids = enrichedTracks.map((t) => t.id).filter(Boolean);
+      const monthStart = monthBoundaryDateTimeISO();
+      const nextMonthStart = monthBoundaryDateTimeISO(1);
 
       if (ids.length > 0) {
         const { data: likeRows, error: likeErr } = await supabase
           .from("likes")
           .select("track_id")
-          .eq("month", month)
-          .in("track_id", ids);
+          .in("track_id", ids)
+          .gte("created_at", monthStart)
+          .lt("created_at", nextMonthStart);
 
         if (likeErr) {
           console.warn("Pulse likes query error:", likeErr);
