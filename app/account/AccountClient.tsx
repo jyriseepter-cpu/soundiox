@@ -192,6 +192,7 @@ export default function AccountClient() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const albumArtworkInputRef = useRef<HTMLInputElement | null>(null);
   const albumTracksInputRef = useRef<HTMLInputElement | null>(null);
+  const existingAlbumArtworkInputRef = useRef<HTMLInputElement | null>(null);
   const inviteHandledRef = useRef(false);
 
   const selectedPlan = searchParams.get("plan");
@@ -260,6 +261,11 @@ export default function AccountClient() {
   const [albumPickerSelection, setAlbumPickerSelection] = useState<string[]>([]);
   const [savingAlbumTrackLinks, setSavingAlbumTrackLinks] = useState(false);
   const [albumPickerMessage, setAlbumPickerMessage] = useState("");
+  const [existingAlbumTitle, setExistingAlbumTitle] = useState("");
+  const [existingAlbumArtwork, setExistingAlbumArtwork] = useState<File | null>(null);
+  const [existingAlbumTrackIds, setExistingAlbumTrackIds] = useState<string[]>([]);
+  const [creatingExistingAlbum, setCreatingExistingAlbum] = useState(false);
+  const [existingAlbumMessage, setExistingAlbumMessage] = useState("");
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -296,6 +302,9 @@ export default function AccountClient() {
       albumAudioFiles.length > 0
     );
   }, [albumAudioFiles.length, albumGenre, albumTitle, canUpload, userId]);
+  const canCreateExistingTrackAlbum = useMemo(() => {
+    return canUpload && Boolean(userId) && Boolean(existingAlbumTitle.trim()) && existingAlbumTrackIds.length > 0;
+  }, [canUpload, existingAlbumTitle, existingAlbumTrackIds.length, userId]);
   const albumTrackCounts = useMemo(() => {
     const counts = new Map<string, number>();
 
@@ -309,6 +318,12 @@ export default function AccountClient() {
   const unassignedTracks = useMemo(() => {
     return myTracks.filter((track) => !track.album_id);
   }, [myTracks]);
+  const existingAlbumSelectedTracks = useMemo(() => {
+    const trackMap = new Map(myTracks.map((track) => [track.id, track]));
+    return existingAlbumTrackIds
+      .map((trackId) => trackMap.get(trackId))
+      .filter((track): track is TrackRow => Boolean(track));
+  }, [existingAlbumTrackIds, myTracks]);
 
   async function loadProfile(user: any, options?: { skipCreate?: boolean }) {
     const { data: profile, error: profileError } = await supabase
@@ -807,6 +822,110 @@ export default function AccountClient() {
     );
   }
 
+  function toggleExistingAlbumTrack(trackId: string) {
+    setExistingAlbumTrackIds((prev) =>
+      prev.includes(trackId)
+        ? prev.filter((id) => id !== trackId)
+        : [...prev, trackId]
+    );
+  }
+
+  function moveExistingAlbumTrack(trackId: string, direction: "up" | "down") {
+    setExistingAlbumTrackIds((prev) => {
+      const index = prev.indexOf(trackId);
+      if (index === -1) return prev;
+
+      const targetIndex = direction === "up" ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= prev.length) return prev;
+
+      const next = [...prev];
+      const [item] = next.splice(index, 1);
+      next.splice(targetIndex, 0, item);
+      return next;
+    });
+  }
+
+  async function createAlbumFromExistingTracks() {
+    if (!userId || !canCreateExistingTrackAlbum) return;
+
+    setCreatingExistingAlbum(true);
+    setExistingAlbumMessage("");
+    setError("");
+    setMessage("");
+
+    try {
+      const albumBucket = "tracks";
+      let artworkPublic: string | null = null;
+
+      if (existingAlbumArtwork) {
+        const artExt = existingAlbumArtwork.name.split(".").pop()?.toLowerCase() || "jpg";
+        const artPath = `albums/${userId}/${Date.now()}-${crypto.randomUUID()}-existing-art.${artExt}`;
+
+        const { error: artUpErr } = await supabase.storage
+          .from(albumBucket)
+          .upload(artPath, existingAlbumArtwork, {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: existingAlbumArtwork.type || "image/jpeg",
+          });
+
+        if (artUpErr) {
+          throw new Error(`Album artwork upload failed: ${artUpErr.message}`);
+        }
+
+        artworkPublic = supabase.storage.from(albumBucket).getPublicUrl(artPath).data.publicUrl;
+      }
+
+      const selectedTracks = existingAlbumSelectedTracks;
+      const fallbackGenre = getOfficialGenreLabel(selectedTracks[0]?.genre) || null;
+
+      const { data: albumInsert, error: albumInsertErr } = await supabase
+        .from("albums")
+        .insert({
+          user_id: userId,
+          title: existingAlbumTitle.trim(),
+          artwork_url: artworkPublic,
+          genre: fallbackGenre,
+          is_published: true,
+        })
+        .select(
+          "id,user_id,title,description,artwork_url,genre,release_date,is_published,created_at"
+        )
+        .single<AlbumRow>();
+
+      if (albumInsertErr || !albumInsert) {
+        throw new Error(albumInsertErr?.message || "Album creation failed.");
+      }
+
+      for (let index = 0; index < existingAlbumTrackIds.length; index += 1) {
+        const trackId = existingAlbumTrackIds[index];
+        const { error: updateError } = await supabase
+          .from("tracks")
+          .update({
+            album_id: albumInsert.id,
+            track_number: index + 1,
+          })
+          .eq("id", trackId)
+          .eq("user_id", userId);
+
+        if (updateError) {
+          throw updateError;
+        }
+      }
+
+      setExistingAlbumTitle("");
+      setExistingAlbumArtwork(null);
+      setExistingAlbumTrackIds([]);
+      setExistingAlbumMessage("Album created from existing tracks.");
+      setMessage("Album created.");
+      await Promise.all([loadMyTracks(userId), loadMyAlbums(userId)]);
+    } catch (err: any) {
+      setError(err?.message || "Could not create album.");
+    } finally {
+      setCreatingExistingAlbum(false);
+    }
+  }
+
   async function attachTracksToAlbum(album: AlbumRow) {
     if (!userId || !albumPickerSelection.length) return;
 
@@ -835,8 +954,6 @@ export default function AccountClient() {
           .update({
             album_id: album.id,
             track_number: nextTrackNumber,
-            artwork_url: album.artwork_url,
-            genre: album.genre,
           })
           .eq("id", trackId)
           .eq("user_id", userId);
@@ -1713,6 +1830,197 @@ export default function AccountClient() {
 
     <div className="text-sm font-medium text-white/55">{myAlbums.length} total</div>
   </div>
+
+  {canUpload ? (
+    <div className="mb-6 rounded-[24px] border border-white/10 bg-black/20 p-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="max-w-xl">
+          <h3 className="text-base font-semibold text-white">
+            Create album from existing tracks
+          </h3>
+          <p className="mt-1 text-sm leading-6 text-white/60">
+            Build a release from tracks already uploaded on SoundioX. This only links
+            your original track rows into an album, so likes, plays, comments, and stats
+            stay attached.
+          </p>
+        </div>
+
+        {existingAlbumMessage ? (
+          <div className="text-sm text-emerald-200">{existingAlbumMessage}</div>
+        ) : null}
+      </div>
+
+      <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+        <div className="space-y-4">
+          <div>
+            <label className="mb-2 block text-sm text-white/75">Album title</label>
+            <input
+              value={existingAlbumTitle}
+              onChange={(e) => setExistingAlbumTitle(e.target.value)}
+              placeholder="Late Night Sketches"
+              className="h-12 w-full rounded-2xl border border-white/10 bg-white/6 px-4 text-white outline-none transition placeholder:text-white/30 focus:border-cyan-300/40"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm text-white/75">
+              Album artwork
+            </label>
+            <input
+              ref={existingAlbumArtworkInputRef}
+              type="file"
+              accept="image/*"
+              onChange={(e) => setExistingAlbumArtwork(e.target.files?.[0] || null)}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => existingAlbumArtworkInputRef.current?.click()}
+              className="flex w-full items-center justify-between rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-left text-sm text-white/75 transition hover:bg-white/10"
+            >
+              <span>
+                {existingAlbumArtwork ? existingAlbumArtwork.name : "Choose optional cover image"}
+              </span>
+              <span className="text-xs text-white/45">Optional</span>
+            </button>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-white">
+                  Selected track order
+                </div>
+                <div className="mt-1 text-xs text-white/50">
+                  Arrange the order before saving the album.
+                </div>
+              </div>
+              <div className="text-xs text-white/45">
+                {existingAlbumTrackIds.length} selected
+              </div>
+            </div>
+
+            <div className="mt-3 space-y-2">
+              {existingAlbumSelectedTracks.length === 0 ? (
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-3 text-sm text-white/55">
+                  Pick tracks from the list to build your album.
+                </div>
+              ) : (
+                existingAlbumSelectedTracks.map((track, index) => (
+                  <div
+                    key={track.id}
+                    className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3"
+                  >
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-xs font-semibold text-white/70">
+                      {index + 1}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-white">
+                        {track.title || "Untitled"}
+                      </div>
+                      <div className="truncate text-xs text-white/45">
+                        {track.album_id && track.album_id !== "" ? "Moves from existing album if assigned" : "Currently not in an album"}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => moveExistingAlbumTrack(track.id, "up")}
+                        disabled={index === 0}
+                        className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/70 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Up
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveExistingAlbumTrack(track.id, "down")}
+                        disabled={index === existingAlbumSelectedTracks.length - 1}
+                        className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/70 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Down
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => toggleExistingAlbumTrack(track.id)}
+                        className="rounded-full border border-rose-400/20 bg-rose-500/10 px-3 py-1 text-xs text-rose-200 transition hover:bg-rose-500/20"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void createAlbumFromExistingTracks()}
+            disabled={!canCreateExistingTrackAlbum || creatingExistingAlbum}
+            className="inline-flex h-12 w-full items-center justify-center rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {creatingExistingAlbum ? "Saving album..." : "Save album from existing tracks"}
+          </button>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-white">Your uploaded tracks</div>
+              <div className="mt-1 text-xs text-white/50">
+                Select tracks to include. Selecting a track already in another album will move it instead of duplicating it.
+              </div>
+            </div>
+            <div className="text-xs text-white/45">{myTracks.length} total</div>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            {myTracks.length === 0 ? (
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-3 text-sm text-white/55">
+                Upload your first track to start building albums.
+              </div>
+            ) : (
+              myTracks.map((track) => {
+                const isSelected = existingAlbumTrackIds.includes(track.id);
+                const currentAlbumTitle =
+                  myAlbums.find((album) => album.id === track.album_id)?.title || "";
+
+                return (
+                  <label
+                    key={track.id}
+                    className={`flex cursor-pointer items-center gap-3 rounded-2xl border px-3 py-3 text-sm transition ${
+                      isSelected
+                        ? "border-cyan-300/40 bg-cyan-400/10 text-white"
+                        : "border-white/10 bg-black/20 text-white/80 hover:bg-white/10"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleExistingAlbumTrack(track.id)}
+                      className="h-4 w-4 rounded border-white/20 bg-transparent text-cyan-300"
+                    />
+
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-medium text-white">
+                        {track.title || "Untitled"}
+                      </div>
+                      <div className="truncate text-xs text-white/50">
+                        {track.genre || "No genre"}
+                        {currentAlbumTitle ? ` • currently in ${currentAlbumTitle}` : " • not in an album"}
+                      </div>
+                    </div>
+                  </label>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  ) : null}
 
   {loadingMyAlbums ? (
     <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
