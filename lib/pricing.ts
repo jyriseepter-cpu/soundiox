@@ -1,6 +1,6 @@
 export const SOUNDIOX_PRICING = {
-  premium: 3.99,
-  artist: 6.99,
+  premium: 4.99,
+  artist: 8.99,
 } as const;
 
 export function formatEuroPrice(value: number) {
