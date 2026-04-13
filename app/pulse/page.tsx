@@ -355,8 +355,8 @@ export default function PulsePage() {
 
       if (ids.length > 0) {
         const { data: likeRows, error: likeErr } = await supabase
-          .from("track_likes_monthly")
-          .select("track_id,month,likes")
+          .from("likes")
+          .select("track_id")
           .eq("month", month)
           .in("track_id", ids);
 
@@ -365,10 +365,10 @@ export default function PulsePage() {
         }
 
         const map = new Map<string, number>();
-        ((likeRows ?? []) as TrackLikeMonthlyRow[]).forEach((row) => {
+        ((likeRows ?? []) as Array<{ track_id: string | null }>).forEach((row) => {
           const trackId = String(row.track_id || "");
           if (!trackId) return;
-          map.set(trackId, Number(row.likes ?? 0));
+          map.set(trackId, (map.get(trackId) ?? 0) + 1);
         });
         setLikesMonth(map);
 
