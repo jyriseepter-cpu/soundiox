@@ -98,23 +98,19 @@ function getR2Config() {
 function buildSignedPutUrl(params: {
   bucket: string;
   key: string;
-  contentType: string;
 }) {
-  const { bucket, key, contentType } = params;
+  const { bucket, key } = params;
   const r2 = getR2Config();
-  const endpointUrl = new URL(r2.endpoint);
-  const encodedPath = `/${bucket}/${key
+  const encodedPath = `/${key
     .split("/")
     .map((segment) => encodeURIComponent(segment))
     .join("/")}`;
   const request = new HttpRequest({
-    protocol: endpointUrl.protocol,
-    hostname: endpointUrl.hostname,
+    protocol: "https:",
+    hostname: `${bucket}.${r2.accountId}.r2.cloudflarestorage.com`,
     method: "PUT",
     path: encodedPath,
-    headers: {
-      "content-type": contentType,
-    },
+    headers: {},
   });
   const presigner = new S3RequestPresigner({
     credentials: r2.credentials,
@@ -191,7 +187,6 @@ export async function POST(request: NextRequest) {
     const signedRequest = await buildSignedPutUrl({
       bucket,
       key,
-      contentType,
     });
     const uploadUrl = formatUrl(signedRequest);
 
