@@ -65,6 +65,30 @@ function formatSupabaseError(error: SupabaseErrorLike) {
   return parts.join(" | ");
 }
 
+async function uploadAudioToR2(file: File, accessToken: string) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("kind", "track");
+
+  const response = await fetch("/api/r2-upload", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: formData,
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { url?: string; error?: string }
+    | null;
+
+  if (!response.ok || !payload?.url) {
+    throw new Error(payload?.error || "Audio upload failed.");
+  }
+
+  return payload.url;
+}
+
 export default function UploadPage() {
   const audioInputRef = useRef<HTMLInputElement | null>(null);
   const artInputRef = useRef<HTMLInputElement | null>(null);
@@ -148,6 +172,16 @@ export default function UploadPage() {
         typeof user.email === "string" && user.email.includes("@")
           ? user.email.split("@")[0]
           : null;
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const accessToken = session?.access_token || "";
+
+      if (!accessToken) {
+        alert("Please log in again.");
+        return;
+      }
 
       const artistName =
         profile?.display_name?.trim() ||
@@ -165,29 +199,11 @@ export default function UploadPage() {
         });
       }
 
-      const audioExt =
-        uploadAudioFile.name.split(".").pop()?.toLowerCase() || "mp3";
       const artExt = artFile.name.split(".").pop()?.toLowerCase() || "jpg";
 
       const timestamp = Date.now();
-      const audioFileName = `${timestamp}.${audioExt}`;
       const artFileName = `${timestamp}-art.${artExt}`;
-
-      const { error: audioError } = await supabase.storage
-        .from("tracks")
-        .upload(audioFileName, uploadAudioFile, {
-          contentType: uploadAudioFile.type || "audio/mpeg",
-          upsert: false,
-        });
-
-      if (audioError) {
-        const formattedAudioError = formatSupabaseError(audioError);
-        console.error("audio upload error:", audioError);
-        alert(
-          `Audio upload failed: ${formattedAudioError || "Unknown storage error."}`
-        );
-        return;
-      }
+      const audioUrl = await uploadAudioToR2(uploadAudioFile, accessToken);
 
       const { error: artError } = await supabase.storage
         .from("art")
@@ -204,10 +220,6 @@ export default function UploadPage() {
         );
         return;
       }
-
-      const {
-        data: { publicUrl: audioUrl },
-      } = supabase.storage.from("tracks").getPublicUrl(audioFileName);
 
       const {
         data: { publicUrl: artworkUrl },
