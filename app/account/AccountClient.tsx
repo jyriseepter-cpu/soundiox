@@ -184,37 +184,6 @@ function formatReleaseDate(value: string | null | undefined) {
   });
 }
 
-async function uploadAudioToR2(
-  file: File,
-  options: { kind: "track" | "album"; albumId?: string },
-  accessToken: string
-) {
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("kind", options.kind);
-  if (options.kind === "album" && options.albumId) {
-    formData.append("albumId", options.albumId);
-  }
-
-  const response = await fetch("/api/r2-upload", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: formData,
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { url?: string; error?: string }
-    | null;
-
-  if (!response.ok || !payload?.url) {
-    throw new Error(payload?.error || "Album track upload failed.");
-  }
-
-  return payload.url;
-}
-
 export default function AccountClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -690,15 +659,6 @@ export default function AccountClient() {
     setMessage("");
 
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const accessToken = session?.access_token || "";
-
-      if (!accessToken) {
-        throw new Error("Please log in again.");
-      }
-
       if (!isSoundioXGenre(albumGenre.trim())) {
         throw new Error("Please select one of the official SoundioX genres.");
       }
@@ -755,11 +715,22 @@ export default function AccountClient() {
         );
 
         const processedAudio = await prepareTrackAudioFile(sourceFile);
-        const audioPublic = await uploadAudioToR2(
-          processedAudio,
-          { kind: "album", albumId: albumInsert.id },
-          accessToken
-        );
+        const audioExt = processedAudio.name.split(".").pop()?.toLowerCase() || "mp3";
+        const audioPath = `albums/${userId}/${albumInsert.id}/${index + 1}-${Date.now()}-${crypto.randomUUID()}.${audioExt}`;
+
+        const { error: audioUpErr } = await supabase.storage
+          .from(albumBucket)
+          .upload(audioPath, processedAudio, {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: processedAudio.type || "audio/mpeg",
+          });
+
+        if (audioUpErr) {
+          throw new Error(`Album track upload failed: ${audioUpErr.message}`);
+        }
+
+        const audioPublic = supabase.storage.from(albumBucket).getPublicUrl(audioPath).data.publicUrl;
 
         const { error: trackInsertErr } = await supabase.from("tracks").insert({
           title: defaultTitleFromFileName(sourceFile.name) || `Track ${index + 1}`,
