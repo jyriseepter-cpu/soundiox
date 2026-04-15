@@ -4,6 +4,8 @@ import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 function getBearerToken(header: string | null) {
   if (!header) return null;
@@ -91,6 +93,16 @@ function createR2Client() {
 
 export async function POST(request: NextRequest) {
   try {
+    const method = request.method;
+    const contentLength = request.headers.get("content-length");
+    const hasAuthorization = Boolean(request.headers.get("authorization"));
+
+    console.log("r2 upload request:", {
+      method,
+      contentLength,
+      hasAuthorization,
+    });
+
     const supabaseUrl = readRequiredEnv("NEXT_PUBLIC_SUPABASE_URL");
     const supabaseAnonKey = readRequiredEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
     const accessToken = getBearerToken(request.headers.get("authorization"));
@@ -111,10 +123,14 @@ export async function POST(request: NextRequest) {
     } = await authClient.auth.getUser(accessToken);
 
     if (userError || !user) {
+      console.error("r2 upload auth error:", userError);
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    console.log("r2 upload auth ok:", { userId: user.id });
+
     const formData = await request.formData();
+    console.log("r2 upload POST reached formData parsing");
     const file = formData.get("file");
     const kind = String(formData.get("kind") || "").trim().toLowerCase();
     const albumIdRaw = formData.get("albumId");
@@ -150,8 +166,13 @@ export async function POST(request: NextRequest) {
       key,
       url: `${publicBaseUrl.replace(/\/+$/, "")}/${key}`,
     });
-  } catch (error) {
-    console.error("r2 upload error:", error);
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      console.error("r2 upload error message:", error.message);
+      console.error("r2 upload error stack:", error.stack);
+    } else {
+      console.error("r2 upload error:", error);
+    }
     const message = error instanceof Error ? error.message : "Upload failed.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
