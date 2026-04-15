@@ -113,7 +113,6 @@ function buildSignedPutUrl(params: {
     headers: {
       host: `${bucket}.${r2.accountId}.r2.cloudflarestorage.com`,
       "content-type": contentType,
-      "x-amz-content-sha256": "UNSIGNED-PAYLOAD",
     },
   });
   const presigner = new S3RequestPresigner({
