@@ -98,19 +98,23 @@ function getR2Config() {
 function buildSignedPutUrl(params: {
   bucket: string;
   key: string;
+  contentType: string;
 }) {
-  const { bucket, key } = params;
+  const { bucket, key, contentType } = params;
   const r2 = getR2Config();
-  const encodedPath = `/${key
-    .split("/")
-    .map((segment) => encodeURIComponent(segment))
-    .join("/")}`;
   const request = new HttpRequest({
     protocol: "https:",
     hostname: `${bucket}.${r2.accountId}.r2.cloudflarestorage.com`,
     method: "PUT",
-    path: encodedPath,
-    headers: {},
+    path: `/${key
+      .split("/")
+      .map((segment) => encodeURIComponent(segment))
+      .join("/")}`,
+    headers: {
+      host: `${bucket}.${r2.accountId}.r2.cloudflarestorage.com`,
+      "content-type": contentType,
+      "x-amz-content-sha256": "UNSIGNED-PAYLOAD",
+    },
   });
   const presigner = new S3RequestPresigner({
     credentials: r2.credentials,
@@ -122,6 +126,7 @@ function buildSignedPutUrl(params: {
     expiresIn: 60 * 15,
     signingRegion: r2.region,
     signingService: "s3",
+    unsignableHeaders: new Set(["content-length"]),
   });
 }
 
@@ -187,6 +192,7 @@ export async function POST(request: NextRequest) {
     const signedRequest = await buildSignedPutUrl({
       bucket,
       key,
+      contentType,
     });
     const uploadUrl = formatUrl(signedRequest);
 
