@@ -189,6 +189,13 @@ async function uploadAudioToR2(
   options: { kind: "track" | "album"; albumId?: string },
   accessToken: string
 ) {
+  console.log("ALBUM_UPLOAD_DEBUG uploadAudioToR2:start", {
+    fileName: file?.name || null,
+    fileSize: file?.size || null,
+    kind: options.kind,
+    albumId: options.albumId || null,
+    hasAccessToken: Boolean(accessToken),
+  });
   const formData = new FormData();
   formData.append("file", file);
   formData.append("kind", options.kind);
@@ -196,12 +203,17 @@ async function uploadAudioToR2(
     formData.append("albumId", options.albumId);
   }
 
+  console.log("ALBUM_UPLOAD_DEBUG uploadAudioToR2:before-fetch");
   const response = await fetch("/api/r2-upload", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
     body: formData,
+  });
+  console.log("ALBUM_UPLOAD_DEBUG uploadAudioToR2:response", {
+    status: response.status,
+    ok: response.ok,
   });
 
   const payload = (await response.json().catch(() => null)) as
@@ -683,6 +695,13 @@ export default function AccountClient() {
 
   async function uploadAlbum() {
     if (!userId || !canUploadAlbum) return;
+    console.log("ALBUM_UPLOAD_DEBUG uploadAlbum:start", {
+      hasUserId: Boolean(userId),
+      albumTitle: albumTitle.trim(),
+      albumGenre: albumGenre.trim(),
+      trackCount: albumAudioFiles.length,
+      hasArtwork: Boolean(albumArtwork),
+    });
 
     setUploadingAlbum(true);
     setAlbumUploadMessage("");
@@ -694,6 +713,10 @@ export default function AccountClient() {
         data: { session },
       } = await supabase.auth.getSession();
       const accessToken = session?.access_token || "";
+      console.log("ALBUM_UPLOAD_DEBUG uploadAlbum:session", {
+        hasSession: Boolean(session),
+        hasAccessToken: Boolean(accessToken),
+      });
 
       if (!accessToken) {
         throw new Error("Please log in again.");
@@ -750,11 +773,22 @@ export default function AccountClient() {
 
       for (let index = 0; index < albumAudioFiles.length; index += 1) {
         const sourceFile = albumAudioFiles[index];
+        console.log("ALBUM_UPLOAD_DEBUG uploadAlbum:track-loop", {
+          index,
+          fileName: sourceFile?.name || null,
+          fileSize: sourceFile?.size || null,
+        });
         setAlbumUploadMessage(
           `Processing track ${index + 1} of ${albumAudioFiles.length}...`
         );
 
         const processedAudio = await prepareTrackAudioFile(sourceFile);
+        console.log("ALBUM_UPLOAD_DEBUG uploadAlbum:before-r2-upload", {
+          index,
+          processedFileName: processedAudio?.name || null,
+          processedFileSize: processedAudio?.size || null,
+          albumId: albumInsert.id,
+        });
         const audioPublic = await uploadAudioToR2(
           processedAudio,
           { kind: "album", albumId: albumInsert.id },
@@ -790,6 +824,9 @@ export default function AccountClient() {
 
       await Promise.all([loadMyTracks(userId), loadMyAlbums(userId)]);
     } catch (err: any) {
+      console.error("ALBUM_UPLOAD_DEBUG uploadAlbum:error", {
+        message: err?.message || "Album upload failed.",
+      });
       setError(err?.message || "Album upload failed.");
     } finally {
       setUploadingAlbum(false);
