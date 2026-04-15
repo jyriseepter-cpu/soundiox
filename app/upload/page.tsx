@@ -66,37 +66,44 @@ function formatSupabaseError(error: SupabaseErrorLike) {
 }
 
 async function uploadAudioToR2(file: File, accessToken: string) {
-  console.log("UPLOAD_DEBUG uploadAudioToR2:start", {
-    fileName: file?.name || null,
-    fileSize: file?.size || null,
-    hasAccessToken: Boolean(accessToken),
-  });
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("kind", "track");
-
-  console.log("UPLOAD_DEBUG uploadAudioToR2:before-fetch");
-  const response = await fetch("/api/r2-upload", {
+  const presignResponse = await fetch("/api/r2-upload", {
     method: "POST",
     headers: {
+      "Content-Type": "application/json",
       Authorization: `Bearer ${accessToken}`,
     },
-    body: formData,
-  });
-  console.log("UPLOAD_DEBUG uploadAudioToR2:response", {
-    status: response.status,
-    ok: response.ok,
+    body: JSON.stringify({
+      kind: "track",
+      fileName: file.name,
+      contentType: file.type || "audio/mpeg",
+    }),
   });
 
-  const payload = (await response.json().catch(() => null)) as
-    | { url?: string; error?: string }
+  const presignPayload = (await presignResponse.json().catch(() => null)) as
+    | { uploadUrl?: string; publicUrl?: string; error?: string }
     | null;
 
-  if (!response.ok || !payload?.url) {
-    throw new Error(payload?.error || "Audio upload failed.");
+  if (
+    !presignResponse.ok ||
+    !presignPayload?.uploadUrl ||
+    !presignPayload.publicUrl
+  ) {
+    throw new Error(presignPayload?.error || "Audio upload failed.");
   }
 
-  return payload.url;
+  const uploadResponse = await fetch(presignPayload.uploadUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": file.type || "audio/mpeg",
+    },
+    body: file,
+  });
+
+  if (!uploadResponse.ok) {
+    throw new Error(`Audio upload failed with status ${uploadResponse.status}.`);
+  }
+
+  return presignPayload.publicUrl;
 }
 
 export default function UploadPage() {
@@ -117,14 +124,6 @@ export default function UploadPage() {
   );
 
   async function handleUpload() {
-    console.log("UPLOAD_DEBUG handleUpload:start", {
-      hasAudioFile: Boolean(audioFile),
-      audioFileName: audioFile?.name || null,
-      audioFileSize: audioFile?.size || null,
-      hasArtFile: Boolean(artFile),
-      title: title.trim(),
-      genre: genre.trim(),
-    });
     const normalizedIsrc = normalizeIsrc(isrc);
     const finalIsrc = normalizedIsrc || generateFallbackIsrc();
 
@@ -170,11 +169,6 @@ export default function UploadPage() {
     try {
       const { data: auth } = await supabase.auth.getUser();
       const user = auth?.user;
-      console.log("UPLOAD_DEBUG handleUpload:user", {
-        hasUser: Boolean(user),
-        userId: user?.id || null,
-      });
-
       if (!user) {
         alert("Please log in first.");
         return;
@@ -199,11 +193,6 @@ export default function UploadPage() {
       } = await supabase.auth.getSession();
 
       const accessToken = session?.access_token || "";
-      console.log("UPLOAD_DEBUG handleUpload:session", {
-        hasSession: Boolean(session),
-        hasAccessToken: Boolean(accessToken),
-      });
-
       if (!accessToken) {
         alert("Please log in again.");
         return;
@@ -229,10 +218,6 @@ export default function UploadPage() {
 
       const timestamp = Date.now();
       const artFileName = `${timestamp}-art.${artExt}`;
-      console.log("UPLOAD_DEBUG handleUpload:before-r2-upload", {
-        uploadAudioFileName: uploadAudioFile?.name || null,
-        uploadAudioFileSize: uploadAudioFile?.size || null,
-      });
       const audioUrl = await uploadAudioToR2(uploadAudioFile, accessToken);
 
       const { error: artError } = await supabase.storage
@@ -302,9 +287,6 @@ export default function UploadPage() {
     } catch (err: unknown) {
       console.error("unexpected upload error:", err);
       const message = err instanceof Error ? err.message : String(err);
-      console.error("UPLOAD_DEBUG handleUpload:error", {
-        message,
-      });
       alert(`Unexpected error: ${message}`);
     } finally {
       setUploading(false);

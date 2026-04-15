@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -93,16 +94,6 @@ function createR2Client() {
 
 export async function POST(request: NextRequest) {
   try {
-    const method = request.method;
-    const contentLength = request.headers.get("content-length");
-    const hasAuthorization = Boolean(request.headers.get("authorization"));
-
-    console.log("r2 upload request:", {
-      method,
-      contentLength,
-      hasAuthorization,
-    });
-
     const supabaseUrl = readRequiredEnv("NEXT_PUBLIC_SUPABASE_URL");
     const supabaseAnonKey = readRequiredEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
     const accessToken = getBearerToken(request.headers.get("authorization"));
@@ -123,20 +114,31 @@ export async function POST(request: NextRequest) {
     } = await authClient.auth.getUser(accessToken);
 
     if (userError || !user) {
-      console.error("r2 upload auth error:", userError);
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    console.log("r2 upload auth ok:", { userId: user.id });
+    const body = (await request.json().catch(() => null)) as
+      | {
+          kind?: unknown;
+          albumId?: unknown;
+          fileName?: unknown;
+          contentType?: unknown;
+        }
+      | null;
+    const kind = String(body?.kind || "").trim().toLowerCase();
+    const albumIdRaw =
+      typeof body?.albumId === "string" ? body.albumId : null;
+    const fileName =
+      typeof body?.fileName === "string" && body.fileName.trim()
+        ? body.fileName.trim()
+        : "upload.bin";
+    const contentType =
+      typeof body?.contentType === "string" && body.contentType.trim()
+        ? body.contentType.trim()
+        : "application/octet-stream";
 
-    const formData = await request.formData();
-    console.log("r2 upload POST reached formData parsing");
-    const file = formData.get("file");
-    const kind = String(formData.get("kind") || "").trim().toLowerCase();
-    const albumIdRaw = formData.get("albumId");
-
-    if (!(file instanceof File)) {
-      return NextResponse.json({ error: "Missing file." }, { status: 400 });
+    if (!kind) {
+      return NextResponse.json({ error: "Missing upload kind." }, { status: 400 });
     }
 
     const bucket = process.env.R2_BUCKET_NAME?.trim() || "soundiox-tracks";
@@ -148,31 +150,25 @@ export async function POST(request: NextRequest) {
       userId: user.id,
       albumIdRaw,
     });
-    const key = buildObjectKey(prefix, file.name || "upload.bin");
+    const key = buildObjectKey(prefix, fileName);
     const client = createR2Client();
-    const body = Buffer.from(await file.arrayBuffer());
-
-    await client.send(
-      new PutObjectCommand({
-        Bucket: bucket,
-        Key: key,
-        Body: body,
-        ContentType: file.type || "application/octet-stream",
-        CacheControl: "public, max-age=31536000, immutable",
-      })
-    );
+    const command = new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      ContentType: contentType,
+      CacheControl: "public, max-age=31536000, immutable",
+    });
+    const uploadUrl = await getSignedUrl(client, command, {
+      expiresIn: 60 * 15,
+    });
 
     return NextResponse.json({
       key,
-      url: `${publicBaseUrl.replace(/\/+$/, "")}/${key}`,
+      uploadUrl,
+      publicUrl: `${publicBaseUrl.replace(/\/+$/, "")}/${key}`,
     });
   } catch (error: unknown) {
-    if (error instanceof Error) {
-      console.error("r2 upload error message:", error.message);
-      console.error("r2 upload error stack:", error.stack);
-    } else {
-      console.error("r2 upload error:", error);
-    }
+    console.error("r2 upload error:", error);
     const message = error instanceof Error ? error.message : "Upload failed.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
