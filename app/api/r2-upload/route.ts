@@ -1,7 +1,9 @@
 import { randomUUID } from "crypto";
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { S3RequestPresigner } from "@aws-sdk/s3-request-presigner";
+import { formatUrl } from "@aws-sdk/util-format-url";
 import { createClient } from "@supabase/supabase-js";
+import { Hash } from "@smithy/hash-node";
+import { HttpRequest } from "@smithy/protocol-http";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -77,18 +79,53 @@ function getUploadPrefix(params: {
   throw new Error("Invalid upload kind.");
 }
 
-function createR2Client() {
+function getR2Config() {
   const accountId = readRequiredEnv("R2_ACCOUNT_ID");
   const accessKeyId = readRequiredEnv("R2_ACCESS_KEY_ID");
   const secretAccessKey = readRequiredEnv("R2_SECRET_ACCESS_KEY");
 
-  return new S3Client({
-    region: "auto",
+  return {
+    accountId,
     endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+    region: "auto",
     credentials: {
       accessKeyId,
       secretAccessKey,
     },
+  };
+}
+
+function buildSignedPutUrl(params: {
+  bucket: string;
+  key: string;
+  contentType: string;
+}) {
+  const { bucket, key, contentType } = params;
+  const r2 = getR2Config();
+  const endpointUrl = new URL(r2.endpoint);
+  const encodedPath = `/${bucket}/${key
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/")}`;
+  const request = new HttpRequest({
+    protocol: endpointUrl.protocol,
+    hostname: endpointUrl.hostname,
+    method: "PUT",
+    path: encodedPath,
+    headers: {
+      "content-type": contentType,
+    },
+  });
+  const presigner = new S3RequestPresigner({
+    credentials: r2.credentials,
+    region: r2.region,
+    sha256: Hash.bind(null, "sha256"),
+  });
+
+  return presigner.presign(request, {
+    expiresIn: 60 * 15,
+    signingRegion: r2.region,
+    signingService: "s3",
   });
 }
 
@@ -151,16 +188,12 @@ export async function POST(request: NextRequest) {
       albumIdRaw,
     });
     const key = buildObjectKey(prefix, fileName);
-    const client = createR2Client();
-    const command = new PutObjectCommand({
-      Bucket: bucket,
-      Key: key,
-      ContentType: contentType,
-      CacheControl: "public, max-age=31536000, immutable",
+    const signedRequest = await buildSignedPutUrl({
+      bucket,
+      key,
+      contentType,
     });
-    const uploadUrl = await getSignedUrl(client, command, {
-      expiresIn: 60 * 15,
-    });
+    const uploadUrl = formatUrl(signedRequest);
 
     return NextResponse.json({
       key,
