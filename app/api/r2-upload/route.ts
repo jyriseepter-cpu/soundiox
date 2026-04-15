@@ -1,9 +1,6 @@
 import { randomUUID } from "crypto";
-import { S3RequestPresigner } from "@aws-sdk/s3-request-presigner";
-import { formatUrl } from "@aws-sdk/util-format-url";
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { createClient } from "@supabase/supabase-js";
-import { Hash } from "@smithy/hash-node";
-import { HttpRequest } from "@smithy/protocol-http";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -95,37 +92,12 @@ function getR2Config() {
   };
 }
 
-function buildSignedPutUrl(params: {
-  bucket: string;
-  key: string;
-  contentType: string;
-}) {
-  const { bucket, key, contentType } = params;
+function createR2Client() {
   const r2 = getR2Config();
-  const request = new HttpRequest({
-    protocol: "https:",
-    hostname: `${bucket}.${r2.accountId}.r2.cloudflarestorage.com`,
-    method: "PUT",
-    path: `/${key
-      .split("/")
-      .map((segment) => encodeURIComponent(segment))
-      .join("/")}`,
-    headers: {
-      host: `${bucket}.${r2.accountId}.r2.cloudflarestorage.com`,
-      "content-type": contentType,
-    },
-  });
-  const presigner = new S3RequestPresigner({
-    credentials: r2.credentials,
+  return new S3Client({
     region: r2.region,
-    sha256: Hash.bind(null, "sha256"),
-  });
-
-  return presigner.presign(request, {
-    expiresIn: 60 * 15,
-    signingRegion: r2.region,
-    signingService: "s3",
-    unsignableHeaders: new Set(["content-length"]),
+    endpoint: r2.endpoint,
+    credentials: r2.credentials,
   });
 }
 
@@ -154,25 +126,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = (await request.json().catch(() => null)) as
-      | {
-          kind?: unknown;
-          albumId?: unknown;
-          fileName?: unknown;
-          contentType?: unknown;
-        }
-      | null;
-    const kind = String(body?.kind || "").trim().toLowerCase();
-    const albumIdRaw =
-      typeof body?.albumId === "string" ? body.albumId : null;
-    const fileName =
-      typeof body?.fileName === "string" && body.fileName.trim()
-        ? body.fileName.trim()
-        : "upload.bin";
-    const contentType =
-      typeof body?.contentType === "string" && body.contentType.trim()
-        ? body.contentType.trim()
-        : "application/octet-stream";
+    const formData = await request.formData();
+    const file = formData.get("file");
+    const kind = String(formData.get("kind") || "").trim().toLowerCase();
+    const albumIdRaw = formData.get("albumId");
+
+    if (!(file instanceof File)) {
+      return NextResponse.json({ error: "Missing file." }, { status: 400 });
+    }
 
     if (!kind) {
       return NextResponse.json({ error: "Missing upload kind." }, { status: 400 });
@@ -187,18 +148,22 @@ export async function POST(request: NextRequest) {
       userId: user.id,
       albumIdRaw,
     });
-    const key = buildObjectKey(prefix, fileName);
-    const signedRequest = await buildSignedPutUrl({
-      bucket,
-      key,
-      contentType,
-    });
-    const uploadUrl = formatUrl(signedRequest);
+    const key = buildObjectKey(prefix, file.name || "upload.bin");
+    const client = createR2Client();
+    const body = Buffer.from(await file.arrayBuffer());
+
+    await client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: body,
+        ContentType: file.type || "application/octet-stream",
+      })
+    );
 
     return NextResponse.json({
       key,
-      uploadUrl,
-      publicUrl: `${publicBaseUrl.replace(/\/+$/, "")}/${key}`,
+      url: `${publicBaseUrl.replace(/\/+$/, "")}/${key}`,
     });
   } catch (error: unknown) {
     console.error("r2 upload error:", error);
