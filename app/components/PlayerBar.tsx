@@ -284,12 +284,19 @@ export default function PlayerBar() {
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/10 bg-[rgba(7,10,20,0.9)] shadow-[0_-8px_30px_rgba(0,0,0,0.6)] backdrop-blur-xl lg:bottom-[5mm]">
+    <>
+      {feedback ? (
+        <div className="pointer-events-none fixed bottom-[calc(env(safe-area-inset-bottom)+5.6rem)] left-1/2 z-[80] w-[min(calc(100vw-1.5rem),24rem)] -translate-x-1/2 rounded-2xl border border-cyan-300/25 bg-[linear-gradient(135deg,rgba(34,211,238,0.18),rgba(168,85,247,0.2))] px-4 py-3 text-center text-sm font-semibold text-white shadow-[0_18px_55px_rgba(0,0,0,0.45)] backdrop-blur-xl lg:bottom-[calc(5mm+6.25rem)]">
+          {feedback}
+        </div>
+      ) : null}
+
+      <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/10 bg-[rgba(7,10,20,0.9)] shadow-[0_-8px_30px_rgba(0,0,0,0.6)] backdrop-blur-xl lg:bottom-[5mm]">
       <div
-        className="mx-auto max-w-6xl px-3 py-1.5 lg:px-4 lg:py-3"
-        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.12rem)" }}
+        className="mx-auto max-w-6xl px-3 py-2 lg:px-4 lg:py-3"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.35rem)" }}
       >
-        <div className="flex flex-col gap-1.5 lg:flex-row lg:items-center lg:gap-4">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-4">
           <div className="min-w-0 lg:w-[220px]">
             <div className="truncate text-[10px] font-semibold leading-tight text-white lg:text-sm">
               {title}
@@ -297,149 +304,145 @@ export default function PlayerBar() {
             <div className="truncate text-[8px] leading-tight text-white/70 lg:text-xs">
               {artist}
             </div>
-            {feedback ? (
-              <div className="mt-0.5 truncate text-[8px] text-cyan-200 lg:text-[11px]">
-                {feedback}
-              </div>
-            ) : null}
           </div>
 
-          <div className="flex items-center justify-between gap-1 sm:justify-start lg:gap-2">
-            <button
-              onClick={prev}
-              disabled={transportDisabled}
-              className="cursor-pointer rounded-md bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50 lg:rounded-xl lg:px-3 lg:py-2 lg:text-sm"
-              aria-label="Previous"
-              type="button"
-            >
-              ◀
-            </button>
-
-            <button
-              onClick={toggle}
-              disabled={transportDisabled}
-              className="cursor-pointer min-w-[46px] rounded-md bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50 lg:min-w-[84px] lg:rounded-xl lg:px-4 lg:py-2 lg:text-sm"
-              aria-label={isPlaying ? "Pause" : "Play"}
-              type="button"
-            >
-              {isPlaying ? "Pause" : "Play"}
-            </button>
-
-            <button
-              onClick={next}
-              disabled={transportDisabled}
-              className="cursor-pointer rounded-md bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50 lg:rounded-xl lg:px-3 lg:py-2 lg:text-sm"
-              aria-label="Next"
-              type="button"
-            >
-              ▶
-            </button>
-          </div>
-
-          <div className="flex items-center gap-1 lg:gap-3">
-            <div className="w-7 text-right text-[7px] leading-none text-white/70 lg:w-12 lg:text-xs">
-              {formatTime(currentTime ?? 0)}
-            </div>
-
-            <div
-              className="relative h-1 flex-1 cursor-pointer rounded-full bg-white/10 lg:h-2 lg:w-64 lg:flex-none"
-              onClick={onSeekBarClick}
-              role="slider"
-              aria-label="Seek"
-            >
-              <div
-                className="absolute left-0 top-0 h-1 rounded-full bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500 lg:h-2"
-                style={{ width: `${progress}%` }}
-              />
-              <div
-                className="absolute top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-white lg:h-3 lg:w-3"
-                style={{ left: `calc(${progress}% - 4px)` }}
-              />
-            </div>
-
-            <div className="w-7 text-[7px] leading-none text-white/70 lg:w-12 lg:text-xs">
-              {formatTime(duration ?? 0)}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 lg:ml-auto lg:flex-nowrap lg:gap-3" ref={menuRef}>
-            <button
-              type="button"
-              onClick={() => void handleToggleLike()}
-              disabled={!currentTrackId || likeLoading}
-              className={`cursor-pointer rounded-xl px-2.5 py-1 text-[10px] font-semibold text-white ring-1 transition lg:px-4 lg:py-2 lg:text-sm ${
-                isLiked
-                  ? "bg-gradient-to-r from-rose-500 to-red-500 ring-rose-200/35 hover:opacity-95"
-                  : "bg-gradient-to-r from-cyan-400 to-sky-400 ring-cyan-200/30 hover:opacity-95"
-              } disabled:cursor-not-allowed disabled:opacity-50`}
-            >
-              {likeLoading ? "..." : "Like"}
-            </button>
-
-            <div className="relative">
+          <div className="flex flex-col gap-2 lg:ml-auto lg:min-w-0 lg:flex-1" ref={menuRef}>
+            <div className="grid grid-cols-6 items-center gap-1.5 lg:flex lg:items-center lg:justify-end lg:gap-2">
               <button
+                onClick={prev}
+                disabled={transportDisabled}
+                className="flex h-10 min-w-0 cursor-pointer items-center justify-center rounded-2xl bg-white/10 px-0 text-sm font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50 lg:h-11 lg:w-11 lg:flex-none"
+                aria-label="Previous"
                 type="button"
-                onClick={() => {
-                  if (!currentTrackId) return;
-                  setPlaylistMenuOpen((prev) => !prev);
-                }}
-                disabled={!currentTrackId}
-                className="cursor-pointer rounded-xl bg-gradient-to-r from-cyan-400 to-sky-400 px-2.5 py-1 text-[10px] font-semibold text-white ring-1 ring-cyan-200/30 transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50 lg:px-4 lg:py-2 lg:text-sm"
               >
-                Add
+                ◀
               </button>
 
-              {playlistMenuOpen ? (
-                <div className="absolute bottom-11 right-0 z-50 w-64 rounded-2xl border border-white/10 bg-[rgba(7,10,20,0.96)] p-3 shadow-2xl backdrop-blur-xl lg:bottom-14">
-                  {!viewerLoggedIn ? (
-                    <div className="text-sm text-white/75">Log in to use playlists.</div>
-                  ) : playlists.length === 0 ? (
-                    <div className="text-sm text-white/75">
-                      No playlists yet. Create one on Discover first.
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">
-                        Add To Playlist
-                      </div>
+              <button
+                onClick={toggle}
+                disabled={transportDisabled}
+                className="flex h-10 min-w-0 cursor-pointer items-center justify-center rounded-2xl bg-gradient-to-r from-cyan-400 via-sky-400 to-fuchsia-500 px-0 text-[11px] font-semibold text-white ring-1 ring-cyan-200/35 shadow-[0_0_22px_rgba(56,189,248,0.28)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50 lg:h-11 lg:min-w-[88px] lg:px-4 lg:text-sm"
+                aria-label={isPlaying ? "Pause" : "Play"}
+                type="button"
+              >
+                {isPlaying ? "Pause" : "Play"}
+              </button>
 
-                      {playlists.map((playlist) => (
-                        <button
-                          key={playlist.id}
-                          type="button"
-                          onClick={() => void handleAddToPlaylist(playlist.id)}
-                          disabled={addingPlaylistId !== null}
-                          className="flex w-full cursor-pointer items-center justify-between rounded-xl bg-white/8 px-3 py-2 text-left text-sm font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/12 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          <span className="truncate">{playlist.name}</span>
-                          {addingPlaylistId === playlist.id ? (
-                            <span className="text-xs text-white/55">...</span>
-                          ) : (
-                            <span className="text-xs text-cyan-200">Add</span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ) : null}
+              <button
+                type="button"
+                onClick={() => void handleToggleLike()}
+                disabled={!currentTrackId || likeLoading}
+                className={`flex h-10 min-w-0 cursor-pointer items-center justify-center rounded-2xl px-0 text-[11px] font-semibold text-white ring-1 transition lg:h-11 lg:min-w-[76px] lg:px-4 lg:text-sm ${
+                  isLiked
+                    ? "bg-gradient-to-r from-rose-500 to-red-500 ring-rose-200/35 shadow-[0_0_20px_rgba(244,63,94,0.22)] hover:opacity-95"
+                    : "bg-gradient-to-r from-cyan-400 to-sky-400 ring-cyan-200/30 shadow-[0_0_20px_rgba(34,211,238,0.2)] hover:opacity-95"
+                } disabled:cursor-not-allowed disabled:opacity-50`}
+              >
+                {likeLoading ? "..." : "Like"}
+              </button>
+
+              <div className="relative min-w-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!currentTrackId) return;
+                    setPlaylistMenuOpen((prev) => !prev);
+                  }}
+                  disabled={!currentTrackId}
+                  className="flex h-10 w-full min-w-0 cursor-pointer items-center justify-center rounded-2xl bg-gradient-to-r from-cyan-400 to-sky-400 px-0 text-[11px] font-semibold text-white ring-1 ring-cyan-200/30 shadow-[0_0_20px_rgba(34,211,238,0.2)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50 lg:h-11 lg:min-w-[76px] lg:px-4 lg:text-sm"
+                >
+                  Add
+                </button>
+
+                {playlistMenuOpen ? (
+                  <div className="absolute bottom-12 right-0 z-[70] w-64 rounded-2xl border border-white/10 bg-[rgba(7,10,20,0.96)] p-3 shadow-2xl backdrop-blur-xl lg:bottom-14">
+                    {!viewerLoggedIn ? (
+                      <div className="text-sm text-white/75">Log in to use playlists.</div>
+                    ) : playlists.length === 0 ? (
+                      <div className="text-sm text-white/75">
+                        No playlists yet. Create one on Discover first.
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">
+                          Add To Playlist
+                        </div>
+
+                        {playlists.map((playlist) => (
+                          <button
+                            key={playlist.id}
+                            type="button"
+                            onClick={() => void handleAddToPlaylist(playlist.id)}
+                            disabled={addingPlaylistId !== null}
+                            className="flex w-full cursor-pointer items-center justify-between rounded-xl bg-white/8 px-3 py-2 text-left text-sm font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/12 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <span className="truncate">{playlist.name}</span>
+                            {addingPlaylistId === playlist.id ? (
+                              <span className="text-xs text-white/55">...</span>
+                            ) : (
+                              <span className="text-xs text-cyan-200">Add</span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+
+              <button
+                type="button"
+                onClick={shuffleQueue}
+                disabled={!currentTrack}
+                className={`flex h-10 min-w-0 cursor-pointer items-center justify-center rounded-2xl px-0 text-[11px] font-semibold text-white ring-1 transition lg:h-11 lg:min-w-[88px] lg:px-4 lg:text-sm ${
+                  isShuffleEnabled
+                    ? "bg-gradient-to-r from-emerald-500 to-green-500 ring-emerald-200/40 shadow-[0_0_18px_rgba(74,222,128,0.35)]"
+                    : "bg-gradient-to-r from-emerald-500/85 to-teal-500/85 ring-emerald-200/25 shadow-[0_0_18px_rgba(16,185,129,0.18)] hover:opacity-95"
+                } disabled:cursor-not-allowed disabled:opacity-50`}
+              >
+                Shuffle
+              </button>
+
+              <button
+                onClick={next}
+                disabled={transportDisabled}
+                className="flex h-10 min-w-0 cursor-pointer items-center justify-center rounded-2xl bg-white/10 px-0 text-sm font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50 lg:h-11 lg:w-11 lg:flex-none"
+                aria-label="Next"
+                type="button"
+              >
+                ▶
+              </button>
             </div>
 
-            <button
-              type="button"
-              onClick={shuffleQueue}
-              disabled={!currentTrack}
-              className={`px-2.5 py-1 text-[10px] font-semibold ring-1 transition lg:px-4 lg:py-2 lg:text-sm ${
-                isShuffleEnabled
-                  ? "cursor-pointer rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 text-white ring-emerald-200/40 shadow-[0_0_18px_rgba(74,222,128,0.35)]"
-                  : "cursor-pointer rounded-xl bg-white/10 text-white ring-white/10 hover:bg-white/15"
-              } disabled:cursor-not-allowed disabled:opacity-50`}
-            >
-              Shuffle
-            </button>
+            <div className="flex items-center gap-2 lg:justify-end lg:gap-3">
+              <div className="w-8 text-right text-[9px] leading-none text-white/70 lg:w-12 lg:text-xs">
+                {formatTime(currentTime ?? 0)}
+              </div>
+
+              <div
+                className="relative h-1.5 flex-1 cursor-pointer rounded-full bg-white/10 lg:h-2 lg:max-w-[320px] lg:flex-none lg:w-full"
+                onClick={onSeekBarClick}
+                role="slider"
+                aria-label="Seek"
+              >
+                <div
+                  className="absolute left-0 top-0 h-1.5 rounded-full bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500 lg:h-2"
+                  style={{ width: `${progress}%` }}
+                />
+                <div
+                  className="absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-white lg:h-3 lg:w-3"
+                  style={{ left: `calc(${progress}% - 5px)` }}
+                />
+              </div>
+
+              <div className="w-8 text-[9px] leading-none text-white/70 lg:w-12 lg:text-xs">
+                {formatTime(duration ?? 0)}
+              </div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
