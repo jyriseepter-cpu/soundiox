@@ -1302,7 +1302,7 @@ export default function DiscoverPage() {
                     className={`flex w-full cursor-pointer items-center justify-between rounded-2xl px-3 py-3 text-left text-sm font-semibold transition ${
                       selectedPlaylistId
                         ? "bg-white/6 text-white/80 ring-1 ring-white/10 hover:bg-white/10"
-                        : "bg-gradient-to-r from-cyan-400/20 to-sky-400/20 text-white ring-1 ring-cyan-300/35 shadow-[0_0_20px_rgba(34,211,238,0.12)]"
+                        : "bg-gradient-to-r from-cyan-300/35 via-sky-300/32 to-cyan-400/28 text-cyan-50 ring-1 ring-cyan-200/55 shadow-[0_0_24px_rgba(103,232,249,0.22)]"
                     }`}
                   >
                     <span>All tracks</span>
@@ -1326,7 +1326,7 @@ export default function DiscoverPage() {
                           onClick={() => setSelectedPlaylistId(playlist.id)}
                           className={`flex w-full cursor-pointer items-center justify-between rounded-2xl px-3 py-3 text-left transition ${
                             isActive
-                              ? "bg-gradient-to-r from-cyan-400/20 to-sky-400/20 text-white ring-1 ring-cyan-300/35 shadow-[0_0_20px_rgba(34,211,238,0.12)]"
+                              ? "bg-gradient-to-r from-cyan-300/35 via-sky-300/32 to-cyan-400/28 text-cyan-50 ring-1 ring-cyan-200/55 shadow-[0_0_24px_rgba(103,232,249,0.22)]"
                               : "bg-white/6 text-white/85 ring-1 ring-white/10 hover:bg-white/10"
                           }`}
                         >
