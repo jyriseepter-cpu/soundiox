@@ -396,7 +396,7 @@ export default function PlayerBar() {
                 className={`flex h-10 min-w-0 cursor-pointer items-center justify-center rounded-2xl px-0 text-[11px] font-semibold text-white ring-1 transition ${
                   isShuffleEnabled
                     ? "bg-gradient-to-r from-emerald-500 to-green-500 ring-emerald-200/40 shadow-[0_0_18px_rgba(74,222,128,0.35)]"
-                    : "bg-gradient-to-r from-emerald-500/85 to-teal-500/85 ring-emerald-200/25 shadow-[0_0_18px_rgba(16,185,129,0.18)] hover:opacity-95"
+                    : "bg-gradient-to-r from-cyan-400 to-sky-400 ring-cyan-200/30 shadow-[0_0_20px_rgba(34,211,238,0.2)] hover:opacity-95"
                 } disabled:cursor-not-allowed disabled:opacity-50`}
               >
                 Shuffle
@@ -578,7 +578,7 @@ export default function PlayerBar() {
                 className={`cursor-pointer rounded-xl px-4 py-2 text-sm font-semibold text-white ring-1 transition ${
                   isShuffleEnabled
                     ? "bg-gradient-to-r from-emerald-500 to-green-500 ring-emerald-200/40 shadow-[0_0_18px_rgba(74,222,128,0.35)]"
-                    : "bg-gradient-to-r from-emerald-500/85 to-teal-500/85 ring-emerald-200/25 shadow-[0_0_18px_rgba(16,185,129,0.18)] hover:opacity-95"
+                    : "bg-gradient-to-r from-cyan-400 to-sky-400 ring-cyan-200/30 shadow-[0_0_20px_rgba(34,211,238,0.2)] hover:opacity-95"
                 } disabled:cursor-not-allowed disabled:opacity-50`}
               >
                 Shuffle

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import { usePlayer } from "@/app/components/PlayerContext";
 import {
   createArtistIdentityMap,
   enrichTracksWithArtistIdentity,
@@ -18,9 +19,29 @@ type TrackRow = {
   artwork_url: string | null;
   is_promo: boolean | null;
   user_id: string | null;
+  audio_url: string | null;
 };
 
 type HomeTrack = TrackWithResolvedArtist<TrackRow>;
+
+type TrackLikeMonthlyRow = {
+  track_id: string;
+  likes: number | null;
+};
+
+type TrackLikeAllTimeRow = {
+  track_id: string;
+  likes: number | null;
+};
+
+function monthStartISO(d = new Date()) {
+  const x = new Date(d);
+  x.setDate(1);
+  x.setHours(0, 0, 0, 0);
+  const yyyy = x.getFullYear();
+  const mm = String(x.getMonth() + 1).padStart(2, "0");
+  return `${yyyy}-${mm}-01`;
+}
 
 function getArtworkSrc(t: HomeTrack) {
   if (!t.artwork_url) return "/logo-new.png";
@@ -36,25 +57,78 @@ function pickArtist(t: HomeTrack) {
 }
 
 export default function HomeClient() {
+  const { playTrack, currentTrack, isPlaying } = usePlayer();
   const [tracks, setTracks] = useState<HomeTrack[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const currentTrackId = currentTrack?.id ?? null;
+
   useEffect(() => {
     async function loadTracks() {
-      const { data, error } = await supabase
-        .from("tracks")
-        .select("id,title,artist,artwork_url,is_promo,user_id")
-        .eq("is_published", true)
-        .order("created_at", { ascending: false })
-        .limit(5);
+      try {
+        const monthStart = monthStartISO(new Date());
 
-      if (error) {
-        setError(error.message);
-      } else {
+        const { data: monthLikes, error: monthError } = await supabase
+          .from("track_likes_monthly")
+          .select("track_id,likes")
+          .eq("month", monthStart)
+          .order("likes", { ascending: false })
+          .limit(5);
+
+        if (monthError) throw monthError;
+
+        const monthlyRows = ((monthLikes ?? []) as TrackLikeMonthlyRow[]).filter(
+          (row) => (row.likes ?? 0) > 0 && typeof row.track_id === "string" && row.track_id.length > 0
+        );
+
+        let rankedTrackIds = monthlyRows.map((row) => row.track_id);
+        let rankingLabel = "Most liked this month";
+
+        if (!rankedTrackIds.length) {
+          const { data: allTimeLikes, error: allTimeError } = await supabase
+            .from("track_likes_all_time")
+            .select("track_id,likes")
+            .order("likes", { ascending: false })
+            .limit(5);
+
+          if (allTimeError) throw allTimeError;
+
+          rankedTrackIds = ((allTimeLikes ?? []) as TrackLikeAllTimeRow[])
+            .filter(
+              (row) =>
+                (row.likes ?? 0) > 0 &&
+                typeof row.track_id === "string" &&
+                row.track_id.length > 0
+            )
+            .map((row) => row.track_id);
+          rankingLabel = "Most liked of all time";
+        }
+
+        if (!rankedTrackIds.length) {
+          setTracks([]);
+          setError(null);
+          setLoading(false);
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from("tracks")
+          .select("id,title,artist,artwork_url,is_promo,user_id,audio_url")
+          .eq("is_published", true)
+          .in("id", rankedTrackIds);
+
+        if (error) throw error;
+
         const rawTracks = (data ?? []) as TrackRow[];
+        const rankedTrackMap = new Map(rawTracks.map((track) => [track.id, track]));
+        const rankedTracks = rankedTrackIds
+          .map((trackId) => rankedTrackMap.get(trackId))
+          .filter((track): track is TrackRow => Boolean(track));
+
         const profileIds = Array.from(
           new Set(
-            rawTracks
+            rankedTracks
               .map((track) => track.user_id)
               .filter((id): id is string => typeof id === "string" && id.length > 0)
           )
@@ -68,23 +142,34 @@ export default function HomeClient() {
             .select("id, display_name, slug, avatar_url, is_founding")
             .in("id", profileIds);
 
-          if (profileError) {
-            setError(profileError.message);
-          } else {
-            profileMap = createArtistIdentityMap(
-              (profiles ?? []) as ArtistIdentityProfile[]
-            );
-          }
+          if (profileError) throw profileError;
+
+          profileMap = createArtistIdentityMap((profiles ?? []) as ArtistIdentityProfile[]);
         }
 
-        setTracks(enrichTracksWithArtistIdentity(rawTracks, profileMap));
-      }
+        const enrichedTracks = enrichTracksWithArtistIdentity(rankedTracks, profileMap).map(
+          (track) => ({
+            ...track,
+            rankingLabel,
+          })
+        );
 
-      setLoading(false);
+        setTracks(enrichedTracks);
+        setError(null);
+      } catch (error: any) {
+        setError(error?.message || "Could not load top tracks");
+      } finally {
+        setLoading(false);
+      }
     }
 
     void loadTracks();
   }, []);
+
+  const rankingCopy = useMemo(() => {
+    return (tracks[0] as (HomeTrack & { rankingLabel?: string }) | undefined)?.rankingLabel
+      ?? "Most liked right now";
+  }, [tracks]);
 
   return (
     <main className="px-6 pb-10">
@@ -161,9 +246,7 @@ export default function HomeClient() {
             <div className="rounded-3xl bg-white/10 p-5 ring-1 ring-white/10 backdrop-blur">
               <div className="text-white">
                 <div className="text-lg font-bold">Top Tracks</div>
-                <div className="text-sm font-medium text-white/70">
-                  Trending right now
-                </div>
+                <div className="text-sm font-medium text-white/70">{rankingCopy}</div>
               </div>
 
               <div className="mt-4 space-y-3">
@@ -199,12 +282,13 @@ export default function HomeClient() {
                         </div>
                       </div>
 
-                      <Link
-                        href="/discover"
-                        className="rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-bold text-white ring-1 ring-white/10 hover:opacity-95"
+                      <button
+                        type="button"
+                        onClick={() => void playTrack(t as any, tracks as any)}
+                        className="cursor-pointer rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-bold text-white ring-1 ring-white/10 transition hover:opacity-95"
                       >
-                        Play
-                      </Link>
+                        {currentTrackId === t.id && isPlaying ? "Playing" : "Play"}
+                      </button>
                     </div>
                   ))
                 )}

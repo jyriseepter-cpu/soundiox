@@ -66,6 +66,13 @@ type FollowRow = {
   created_at?: string | null;
 };
 
+type ArtistTrackPlayDiagnostics = {
+  trackId: string;
+  title: string;
+  playsThisMonth: number;
+  playsAllTime: number;
+};
+
 function formatDateShort(dateStr?: string | null) {
   if (!dateStr) return "—";
   const d = new Date(dateStr);
@@ -100,6 +107,15 @@ function formatReleaseDate(dateStr?: string | null) {
   });
 }
 
+function canUseBrowserBack() {
+  if (typeof window === "undefined") return false;
+
+  const historyState = window.history.state as { idx?: number } | null;
+  const historyIndex = typeof historyState?.idx === "number" ? historyState.idx : 0;
+
+  return historyIndex > 0 || window.history.length > 1;
+}
+
 export default function ArtistPage() {
   const router = useRouter();
   const params = useParams();
@@ -122,12 +138,12 @@ export default function ArtistPage() {
   const [copiedIsrcTrackId, setCopiedIsrcTrackId] = useState<string | null>(null);
 
   const playsMonth = useMemo(
-    () => tracks.reduce((sum, t) => sum + (t.plays_this_month || 0), 0),
+    () => tracks.reduce((sum, t) => sum + Number(t.plays_this_month ?? 0), 0),
     [tracks]
   );
 
   const playsAllTime = useMemo(
-    () => tracks.reduce((sum, t) => sum + (t.plays_all_time || 0), 0),
+    () => tracks.reduce((sum, t) => sum + Number(t.plays_all_time ?? 0), 0),
     [tracks]
   );
 
@@ -314,6 +330,15 @@ export default function ArtistPage() {
     }
   }
 
+  function handleBackNavigation() {
+    if (canUseBrowserBack()) {
+      router.back();
+      return;
+    }
+
+    router.push("/artists");
+  }
+
   useEffect(() => {
     let cancelled = false;
 
@@ -375,8 +400,44 @@ export default function ArtistPage() {
       }
       if (cancelled) return;
 
-      const t = ((trackData as TrackRow[]) || []).filter(Boolean);
+      const rawTracks = (((trackData as TrackRow[]) || []).filter(Boolean) as TrackRow[]);
+      const t = rawTracks.map((track) => ({
+        ...track,
+        plays_this_month: Number(track.plays_this_month ?? 0),
+        plays_all_time: Number(track.plays_all_time ?? 0),
+      }));
       setTracks(t);
+
+      const playDiagnostics: ArtistTrackPlayDiagnostics[] = t.map((track) => ({
+        trackId: String(track.id),
+        title: track.title || "Untitled",
+        playsThisMonth: Number(track.plays_this_month ?? 0),
+        playsAllTime: Number(track.plays_all_time ?? 0),
+      }));
+
+      const hasDistinctPlayWindows = playDiagnostics.some(
+        (track) => track.playsThisMonth !== track.playsAllTime
+      );
+      const hasAnyRecordedPlays = playDiagnostics.some(
+        (track) => track.playsThisMonth > 0 || track.playsAllTime > 0
+      );
+
+      console.info("artist page play field sample:", {
+        artistId: a.id,
+        artistSlug: slug,
+        trackCount: playDiagnostics.length,
+        sample: playDiagnostics.slice(0, 5),
+      });
+
+      if (hasAnyRecordedPlays && !hasDistinctPlayWindows) {
+        console.warn("artist page play windows are identical in track data:", {
+          artistId: a.id,
+          artistSlug: slug,
+          sample: playDiagnostics.slice(0, 5),
+          message:
+            "tracks.plays_this_month and tracks.plays_all_time currently contain the same values for this artist",
+        });
+      }
 
       const { data: albumData, error: albumErr } = await supabase
         .from("albums")
@@ -462,8 +523,8 @@ export default function ArtistPage() {
             This profile could not be loaded from the current artist slug.
           </div>
           <button
-            onClick={() => router.push("/artists")}
-            className="mt-5 h-10 rounded-xl bg-white/10 px-4 text-sm font-medium text-white hover:bg-white/15"
+            onClick={handleBackNavigation}
+            className="mt-5 h-10 cursor-pointer rounded-xl bg-white/10 px-4 text-sm font-medium text-white hover:bg-white/15"
           >
             Back to Artists
           </button>
@@ -572,7 +633,7 @@ export default function ArtistPage() {
                 <button
                   onClick={handleToggleFollow}
                   disabled={followLoading || !artist?.id}
-                  className={`h-10 rounded-xl px-4 text-sm font-semibold transition ${
+                  className={`h-10 cursor-pointer rounded-xl px-4 text-sm font-semibold transition ${
                     isFollowing
                       ? "bg-white/10 text-white hover:bg-white/15"
                       : "bg-gradient-to-r from-cyan-400 to-fuchsia-500 text-black hover:opacity-95"
@@ -586,7 +647,7 @@ export default function ArtistPage() {
                 <div className="relative">
                   <button
                     onClick={() => setShowDonateMenu((prev) => !prev)}
-                    className="h-10 rounded-xl bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-4 text-sm font-semibold text-black hover:opacity-95"
+                    className="h-10 cursor-pointer rounded-xl bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-4 text-sm font-semibold text-black hover:opacity-95"
                   >
                     Support artist
                   </button>
@@ -596,7 +657,7 @@ export default function ArtistPage() {
                       <button
                         onClick={() => handleDonate(slug, 300)}
                         disabled={donateLoading !== null}
-                        className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-white hover:bg-white/10 disabled:opacity-60"
+                        className="flex w-full cursor-pointer items-center justify-between rounded-xl px-3 py-2 text-sm text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <span>Support with EUR3</span>
                         <span>{donateLoading === 300 ? "…" : ""}</span>
@@ -605,7 +666,7 @@ export default function ArtistPage() {
                       <button
                         onClick={() => handleDonate(slug, 500)}
                         disabled={donateLoading !== null}
-                        className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-white hover:bg-white/10 disabled:opacity-60"
+                        className="flex w-full cursor-pointer items-center justify-between rounded-xl px-3 py-2 text-sm text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <span>Support with EUR5</span>
                         <span>{donateLoading === 500 ? "…" : ""}</span>
@@ -614,7 +675,7 @@ export default function ArtistPage() {
                       <button
                         onClick={() => handleDonate(slug, 1000)}
                         disabled={donateLoading !== null}
-                        className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-white hover:bg-white/10 disabled:opacity-60"
+                        className="flex w-full cursor-pointer items-center justify-between rounded-xl px-3 py-2 text-sm text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <span>Support with EUR10</span>
                         <span>{donateLoading === 1000 ? "…" : ""}</span>
@@ -623,7 +684,7 @@ export default function ArtistPage() {
                       <button
                         onClick={() => handleDonate(slug, 2000)}
                         disabled={donateLoading !== null}
-                        className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-white hover:bg-white/10 disabled:opacity-60"
+                        className="flex w-full cursor-pointer items-center justify-between rounded-xl px-3 py-2 text-sm text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <span>Support with EUR20</span>
                         <span>{donateLoading === 2000 ? "…" : ""}</span>
@@ -634,8 +695,8 @@ export default function ArtistPage() {
               ) : null}
 
               <button
-                onClick={() => router.push("/artists")}
-                className="h-10 rounded-xl bg-white/10 px-4 text-sm font-medium text-white hover:bg-white/15"
+                onClick={handleBackNavigation}
+                className="h-10 cursor-pointer rounded-xl bg-white/10 px-4 text-sm font-medium text-white hover:bg-white/15"
               >
                 Back
               </button>
@@ -666,7 +727,7 @@ export default function ArtistPage() {
               <Link
                 key={album.id}
                 href={`/albums/${album.id}`}
-                className="group rounded-[28px] border border-white/10 bg-black/20 p-4 transition hover:border-cyan-300/25 hover:bg-white/10"
+                className="group cursor-pointer rounded-[28px] border border-white/10 bg-black/20 p-4 transition hover:border-cyan-300/25 hover:bg-white/10"
               >
                 <div className="relative aspect-square overflow-hidden rounded-[24px] border border-white/10 bg-white/5">
                   {album.artwork_url ? (
@@ -759,7 +820,7 @@ export default function ArtistPage() {
                             if (!t.isrc) return;
                             void handleCopyIsrc(t.id, t.isrc);
                           }}
-                          className="rounded-lg bg-white/10 px-2 py-1 text-[11px] font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15"
+                          className="cursor-pointer rounded-lg bg-white/10 px-2 py-1 text-[11px] font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15"
                         >
                           {copiedIsrcTrackId === t.id ? "Copied" : "Copy ISRC"}
                         </button>
@@ -776,7 +837,7 @@ export default function ArtistPage() {
 
                   <button
                     onClick={() => playTrack(t as any, tracks as any)}
-                    className="h-9 rounded-xl bg-white/10 px-4 text-sm font-medium text-white hover:bg-white/15"
+                    className="h-9 cursor-pointer rounded-xl bg-white/10 px-4 text-sm font-medium text-white hover:bg-white/15"
                   >
                     Play
                   </button>

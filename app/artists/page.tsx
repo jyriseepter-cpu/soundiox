@@ -22,11 +22,8 @@ type TrackRow = {
   plays_this_month: number | null;
 };
 
-type TrackLikeMonthlyRow = {
-  track_id: string;
-  month: string;
-  likes: number;
-};
+type SortKey = "tracks" | "plays" | "likes";
+type SortDirection = "desc" | "asc";
 
 function monthStartISO(d = new Date()) {
   const x = new Date(d);
@@ -47,6 +44,8 @@ export default function ArtistsPage() {
   const [tracksCountByArtistId, setTracksCountByArtistId] = useState<Record<string, number>>({});
   const [playsMonthByArtistId, setPlaysMonthByArtistId] = useState<Record<string, number>>({});
   const [likesMonthByArtistId, setLikesMonthByArtistId] = useState<Record<string, number>>({});
+  const [sortKey, setSortKey] = useState<SortKey>("plays");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
   useEffect(() => {
     let cancelled = false;
@@ -136,16 +135,22 @@ export default function ArtistsPage() {
           return;
         }
 
-        const monthStart = monthStartISO(new Date());
+        const response = await fetch("/api/pulse-like-counts", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ trackIds }),
+        });
 
-        const { data: likeRows, error: likeErr } = await supabase
-          .from("track_likes_monthly")
-          .select("track_id,month,likes")
-          .eq("month", monthStart)
-          .in("track_id", trackIds);
+        const payload = await response.json().catch(() => null);
 
-        if (likeErr) {
-          console.error("artists page likes error:", likeErr);
+        if (!response.ok) {
+          console.error("artists page likes error:", {
+            status: response.status,
+            statusText: response.statusText,
+            payload,
+          });
           if (!cancelled) {
             setLikesMonthByArtistId({});
             setLoading(false);
@@ -156,17 +161,21 @@ export default function ArtistsPage() {
         if (cancelled) return;
 
         const likesByArtistId: Record<string, number> = {};
+        const monthlyLikeCounts = payload?.counts as Record<string, number> | undefined;
 
-        for (const row of ((likeRows as TrackLikeMonthlyRow[]) || [])) {
-          const artistId = trackIdToArtistId[row.track_id];
+        for (const [trackId, likes] of Object.entries(monthlyLikeCounts ?? {})) {
+          const artistId = trackIdToArtistId[trackId];
           if (!artistId) continue;
-          likesByArtistId[artistId] = (likesByArtistId[artistId] || 0) + (row.likes || 0);
+          likesByArtistId[artistId] = (likesByArtistId[artistId] || 0) + Number(likes ?? 0);
         }
 
         setLikesMonthByArtistId(likesByArtistId);
         setLoading(false);
       } catch (e) {
-        console.error("artists page unexpected error:", e);
+        console.error("artists page unexpected error:", {
+          message: e instanceof Error ? e.message : String(e),
+          error: e,
+        });
         if (!cancelled) {
           setArtists([]);
           setTracksCountByArtistId({});
@@ -194,6 +203,54 @@ export default function ArtistsPage() {
     });
   }, [artists, search]);
 
+  const sortedArtists = useMemo(() => {
+    const direction = sortDirection === "desc" ? -1 : 1;
+
+    return [...filtered].sort((a, b) => {
+      const aTracks = tracksCountByArtistId[a.id] || 0;
+      const bTracks = tracksCountByArtistId[b.id] || 0;
+      const aPlays = playsMonthByArtistId[a.id] || 0;
+      const bPlays = playsMonthByArtistId[b.id] || 0;
+      const aLikes = likesMonthByArtistId[a.id] || 0;
+      const bLikes = likesMonthByArtistId[b.id] || 0;
+
+      const numericDelta =
+        sortKey === "tracks"
+          ? aTracks - bTracks
+          : sortKey === "plays"
+            ? aPlays - bPlays
+            : aLikes - bLikes;
+
+      if (numericDelta !== 0) {
+        return numericDelta * direction;
+      }
+
+      return (a.display_name || "").localeCompare(b.display_name || "") * direction;
+    });
+  }, [
+    filtered,
+    likesMonthByArtistId,
+    playsMonthByArtistId,
+    sortDirection,
+    sortKey,
+    tracksCountByArtistId,
+  ]);
+
+  function handleSort(nextKey: SortKey) {
+    if (sortKey === nextKey) {
+      setSortDirection((prev) => (prev === "desc" ? "asc" : "desc"));
+      return;
+    }
+
+    setSortKey(nextKey);
+    setSortDirection("desc");
+  }
+
+  function getSortLabel(column: SortKey) {
+    if (sortKey !== column) return "";
+    return sortDirection === "desc" ? "↓" : "↑";
+  }
+
   return (
     <div className="mx-auto w-full max-w-6xl px-4 pb-28 pt-8">
       <h1 className="text-3xl font-semibold text-white">Artists</h1>
@@ -210,17 +267,41 @@ export default function ArtistsPage() {
         <div className="mt-4 overflow-hidden rounded-2xl border border-white/10">
           <div className="grid grid-cols-[1fr_120px_140px_140px] gap-2 bg-black/30 px-4 py-3 text-xs font-semibold text-white/60">
             <div>ARTIST</div>
-            <div className="text-right">TRACKS</div>
-            <div className="text-right">PLAYS (MONTH)</div>
-            <div className="text-right">LIKES (MONTH)</div>
+            <button
+              type="button"
+              onClick={() => handleSort("tracks")}
+              className={`cursor-pointer text-right transition ${
+                sortKey === "tracks" ? "text-cyan-200" : "text-white/60 hover:text-white/85"
+              }`}
+            >
+              TRACKS {getSortLabel("tracks")}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSort("plays")}
+              className={`cursor-pointer text-right transition ${
+                sortKey === "plays" ? "text-cyan-200" : "text-white/60 hover:text-white/85"
+              }`}
+            >
+              PLAYS (MONTH) {getSortLabel("plays")}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSort("likes")}
+              className={`cursor-pointer text-right transition ${
+                sortKey === "likes" ? "text-cyan-200" : "text-white/60 hover:text-white/85"
+              }`}
+            >
+              LIKES (MONTH) {getSortLabel("likes")}
+            </button>
           </div>
 
           {loading ? (
             <div className="bg-black/20 px-4 py-8 text-sm text-white/70">Loading...</div>
-          ) : filtered.length === 0 ? (
+          ) : sortedArtists.length === 0 ? (
             <div className="bg-black/20 px-4 py-8 text-sm text-white/70">No artists found.</div>
           ) : (
-            filtered.map((a) => {
+            sortedArtists.map((a) => {
               const tracksCount = tracksCountByArtistId[a.id] || 0;
               const playsMonth = playsMonthByArtistId[a.id] || 0;
               const likesMonth = likesMonthByArtistId[a.id] || 0;
@@ -232,7 +313,7 @@ export default function ArtistsPage() {
                   onClick={() => {
                     if (a.slug) router.push(`/artists/${a.slug}`);
                   }}
-                  className="grid w-full grid-cols-[1fr_120px_140px_140px] items-center gap-2 bg-black/20 px-4 py-4 text-left hover:bg-black/30"
+                  className="grid w-full cursor-pointer grid-cols-[1fr_120px_140px_140px] items-center gap-2 bg-black/20 px-4 py-4 text-left transition hover:bg-black/30"
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     {isFounding ? (
