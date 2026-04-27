@@ -18,7 +18,7 @@ type SupabaseErrorLike = {
 };
 
 function normalizeIsrc(value: string) {
-  return value.trim().toUpperCase().replace(/\s+/g, "");
+  return value.trim().toUpperCase().replace(/[\s-]+/g, "");
 }
 
 function isValidIsrc(value: string) {
@@ -27,19 +27,11 @@ function isValidIsrc(value: string) {
 
 function generateFallbackIsrc() {
   const year = String(new Date().getFullYear()).slice(-2);
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let middle = "";
-  let tail = "";
+  const sequence = Math.floor(Math.random() * 100000)
+    .toString()
+    .padStart(5, "0");
 
-  for (let i = 0; i < 3; i += 1) {
-    middle += chars[Math.floor(Math.random() * chars.length)];
-  }
-
-  for (let i = 0; i < 7; i += 1) {
-    tail += String(Math.floor(Math.random() * 10));
-  }
-
-  return `SX${year}${middle}${tail}`;
+  return `EESDX${year}${sequence}`;
 }
 
 function formatFileSize(bytes: number) {
