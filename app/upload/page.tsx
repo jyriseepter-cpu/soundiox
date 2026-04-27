@@ -64,6 +64,10 @@ export default function UploadPage() {
   const [title, setTitle] = useState("");
   const [isrc, setIsrc] = useState("");
   const [isrcError, setIsrcError] = useState("");
+  const [generatedIsrcPreview, setGeneratedIsrcPreview] = useState(() =>
+    generateFallbackIsrc()
+  );
+  const [copyFeedback, setCopyFeedback] = useState("");
   const [genre, setGenre] = useState("");
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [artFile, setArtFile] = useState<File | null>(null);
@@ -76,7 +80,7 @@ export default function UploadPage() {
 
   async function handleUpload() {
     const normalizedIsrc = normalizeIsrc(isrc);
-    const finalIsrc = normalizedIsrc || generateFallbackIsrc();
+    const finalIsrc = normalizedIsrc || generatedIsrcPreview;
 
     if (normalizedIsrc && !isValidIsrc(normalizedIsrc)) {
       setIsrcError("Please enter a valid ISRC, for example USRC17607839.");
@@ -264,6 +268,19 @@ export default function UploadPage() {
     : uploading
       ? "Uploading..."
       : "Upload track";
+  const currentIsrcCode = normalizeIsrc(isrc) || generatedIsrcPreview;
+
+  async function handleCopyIsrc() {
+    try {
+      await navigator.clipboard.writeText(currentIsrcCode);
+      setCopyFeedback("Copied!");
+      window.setTimeout(() => setCopyFeedback(""), 1600);
+    } catch (error) {
+      console.error("isrc copy failed:", error);
+      setCopyFeedback("Copy failed");
+      window.setTimeout(() => setCopyFeedback(""), 1600);
+    }
+  }
 
   return (
     <main className="min-h-screen bg-[#07090f] px-4 py-10 text-white sm:px-6">
@@ -316,8 +333,27 @@ export default function UploadPage() {
                     }}
                   />
                   <p className="mt-2 text-xs leading-6 text-white/45">
-                    Leave blank to auto-create an internal release code.
+                    Use your official ISRC if you have one. If left empty, SoundioX
+                    will generate a platform release code. Note: This is not an
+                    official registered ISRC.
                   </p>
+                  <div className="mt-3 flex flex-col gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-white/45">
+                        Current code
+                      </div>
+                      <div className="mt-1 truncate text-sm font-semibold text-white/85">
+                        {currentIsrcCode}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleCopyIsrc()}
+                      className="inline-flex cursor-pointer items-center justify-center rounded-full border border-white/12 bg-white/8 px-4 py-2 text-sm font-medium text-white/85 transition hover:bg-white/12"
+                    >
+                      {copyFeedback || "Copy"}
+                    </button>
+                  </div>
                   {isrcError ? (
                     <p className="mt-1 text-sm text-rose-300">{isrcError}</p>
                   ) : null}
