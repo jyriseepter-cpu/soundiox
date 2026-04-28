@@ -1,0 +1,1237 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+
+type VocalMode = "instrumental" | "auto-lyrics" | "write-lyrics" | "male" | "female" | "duet";
+type VoiceStyle = "cinematic" | "warm" | "broadcast" | "trailer" | "intimate";
+type VoiceDelivery = "steady" | "dramatic" | "soft" | "urgent" | "measured";
+type StepKey = "track" | "vocals" | "artwork";
+type DirectionKey = "music" | "lyrics" | "artwork";
+type FaderKey =
+  | "drums"
+  | "bass"
+  | "music"
+  | "vocal"
+  | "voiceover"
+  | "fx"
+  | "master";
+
+type MixerState = Record<FaderKey, number>;
+type MuteState = Record<FaderKey, boolean>;
+type SoloState = Record<FaderKey, boolean>;
+type DynamicsKey = "fadeIn" | "fadeOut" | "compression" | "saturation" | "width";
+type DynamicsState = Record<DynamicsKey, number>;
+type ChatMessage = {
+  id: string;
+  role: "ai" | "user";
+  text: string;
+  canApply?: boolean;
+};
+
+type VersionRecord = {
+  id: string;
+  label: string;
+  title: string;
+  note: string;
+  source: "generated" | "imported";
+  mixer: MixerState;
+  dynamics: DynamicsState;
+};
+
+const sectionClass =
+  "rounded-[28px] border border-sky-300/40 bg-sky-400/15 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl";
+const inputClass =
+  "w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-sky-300/40 focus:bg-black/30";
+const primaryButtonClass =
+  "inline-flex cursor-pointer items-center justify-center rounded-full bg-sky-400 px-5 py-3 text-sm font-semibold text-white ring-1 ring-sky-200/60 shadow-[0_0_18px_rgba(56,189,248,0.25)] transition hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-55";
+const secondaryButtonClass =
+  "inline-flex cursor-pointer items-center justify-center rounded-full border border-white/12 bg-white/7 px-4 py-2.5 text-sm font-medium text-white/82 transition hover:bg-white/12";
+const toolButtonClass =
+  "inline-flex cursor-pointer items-center justify-center rounded-2xl border border-white/12 bg-white/7 px-4 py-3 text-sm font-medium text-white/86 transition hover:bg-white/12";
+
+const initialMixer: MixerState = {
+  drums: 72,
+  bass: 61,
+  music: 68,
+  vocal: 55,
+  voiceover: 24,
+  fx: 46,
+  master: 70,
+};
+
+const initialDynamics: DynamicsState = {
+  fadeIn: 18,
+  fadeOut: 24,
+  compression: 52,
+  saturation: 38,
+  width: 64,
+};
+
+const initialVersions: VersionRecord[] = [
+  {
+    id: "original",
+    label: "Original",
+    title: "Night Drive Signal",
+    note: "Base generated version with the original arrangement intact.",
+    source: "generated",
+    mixer: initialMixer,
+    dynamics: initialDynamics,
+  },
+  {
+    id: "version-2",
+    label: "Version 2",
+    title: "Night Drive Signal V2",
+    note: "Hook tightened and intro shortened while keeping the original version intact.",
+    source: "generated",
+    mixer: {
+      ...initialMixer,
+      drums: 76,
+      bass: 64,
+      vocal: 58,
+    },
+    dynamics: {
+      ...initialDynamics,
+      compression: 56,
+      width: 68,
+    },
+  },
+  {
+    id: "version-3",
+    label: "Version 3",
+    title: "Night Drive Signal V3",
+    note: "Cleaner mix branch with lower vocal weight and brighter master balance.",
+    source: "generated",
+    mixer: {
+      ...initialMixer,
+      vocal: 42,
+      voiceover: 18,
+      master: 76,
+      fx: 50,
+    },
+    dynamics: {
+      ...initialDynamics,
+      saturation: 44,
+      fadeOut: 32,
+    },
+  },
+];
+
+function clampValue(value: number) {
+  return Math.max(0, Math.min(100, value));
+}
+
+function summarizeMixer(mixer: MixerState, dynamics: DynamicsState, vocalMode: VocalMode) {
+  const lines: string[] = [];
+
+  if (mixer.bass >= 70) lines.push("heavy low end");
+  else if (mixer.bass <= 35) lines.push("leaner bass");
+  else lines.push("balanced bass");
+
+  if (mixer.drums >= 72) lines.push("forward drums");
+  else if (mixer.drums <= 35) lines.push("softer drums");
+  else lines.push("steady drums");
+
+  if (mixer.music >= 72) lines.push("full music bed");
+  else if (mixer.music <= 35) lines.push("stripped arrangement");
+  else lines.push("controlled arrangement");
+
+  if (vocalMode === "instrumental") {
+    lines.push("instrumental focus");
+  } else if (mixer.voiceover >= 55) {
+    lines.push("voiceover-forward narration");
+  } else if (mixer.vocal >= 65) {
+    lines.push("lead vocal up front");
+  } else if (mixer.vocal <= 35) {
+    lines.push("vocals tucked back");
+  } else {
+    lines.push("balanced vocal placement");
+  }
+
+  if (mixer.fx >= 65) lines.push("wider ambience");
+  else if (mixer.fx <= 30) lines.push("dry ambience");
+  else lines.push("moderate ambience");
+
+  if (mixer.master >= 75) lines.push("louder master edge");
+  else if (mixer.master <= 35) lines.push("softer master finish");
+  else lines.push("controlled master");
+
+  if (dynamics.width >= 70) lines.push("wide stereo spread");
+  else if (dynamics.width <= 30) lines.push("narrower image");
+
+  if (dynamics.compression >= 68) lines.push("tighter compression");
+  else if (dynamics.compression <= 30) lines.push("more open dynamics");
+
+  if (dynamics.fadeIn >= 60) lines.push("long fade-in");
+  if (dynamics.fadeOut >= 60) lines.push("long fade-out");
+  if (dynamics.saturation >= 60) lines.push("more harmonic grit");
+
+  return lines.join(" • ");
+}
+
+function buildVersionNote(
+  action: string,
+  mixer: MixerState,
+  dynamics: DynamicsState,
+  vocalMode: VocalMode
+) {
+  return `${action} created as a new branch. ${summarizeMixer(mixer, dynamics, vocalMode)}. Original remains intact.`;
+}
+
+function Fader({
+  label,
+  value,
+  muted,
+  soloed,
+  showMuteSolo = true,
+  onChange,
+  onMute,
+  onSolo,
+}: {
+  label: string;
+  value: number;
+  muted: boolean;
+  soloed: boolean;
+  showMuteSolo?: boolean;
+  onChange: (value: number) => void;
+  onMute: () => void;
+  onSolo: () => void;
+}) {
+  return (
+    <div className="flex min-w-[80px] flex-col items-center rounded-[22px] border border-sky-200/15 bg-[linear-gradient(180deg,rgba(125,211,252,0.08),rgba(2,6,23,0.38))] px-2.5 py-4">
+      <div className="mb-2 text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-white/55">
+        {label}
+      </div>
+
+      <div className="mb-3 text-xs font-semibold text-white/75">{value}%</div>
+
+      <div className="relative flex h-48 items-center justify-center">
+        <div className="absolute h-36 w-[10px] rounded-full bg-white/6 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]" />
+        <div className="absolute h-36 w-1 rounded-full bg-sky-300/25" />
+        <div className="pointer-events-none absolute inset-y-6 left-1/2 flex h-32 -translate-x-1/2 flex-col justify-between">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <span key={index} className="h-px w-5 bg-white/12" />
+          ))}
+        </div>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          value={value}
+          onChange={(event) => onChange(Number(event.target.value))}
+          style={{ accentColor: "rgb(125,211,252)" }}
+          className="h-36 w-48 -rotate-90 cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-[10px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-[-3px] [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-sm [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-sky-100/40 [&::-webkit-slider-thumb]:bg-sky-300 [&::-webkit-slider-thumb]:shadow-md [&::-moz-range-track]:h-[10px] [&::-moz-range-track]:rounded-full [&::-moz-range-track]:border-0 [&::-moz-range-track]:bg-transparent [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:rounded-sm [&::-moz-range-thumb]:border [&::-moz-range-thumb]:border-sky-100/40 [&::-moz-range-thumb]:bg-sky-300 [&::-moz-range-thumb]:shadow-md"
+        />
+      </div>
+
+      {showMuteSolo ? (
+        <div className="mt-3 flex gap-2">
+          <button
+            type="button"
+            onClick={onMute}
+            className={`rounded-full px-3 py-1 text-[11px] font-semibold transition ${
+              muted
+                ? "bg-rose-500 text-white"
+                : "border border-white/12 bg-white/7 text-white/75 hover:bg-white/12"
+            }`}
+          >
+            M
+          </button>
+          <button
+            type="button"
+            onClick={onSolo}
+            className={`rounded-full px-3 py-1 text-[11px] font-semibold transition ${
+              soloed
+                ? "bg-sky-400 text-white"
+                : "border border-white/12 bg-white/7 text-white/75 hover:bg-white/12"
+            }`}
+          >
+            S
+          </button>
+        </div>
+      ) : (
+        <div className="mt-3 h-7 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/28">
+          DSP
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function CreatePage() {
+  const [idea, setIdea] = useState(
+    "Late-night skyline anthem with glossy synths, emotional lift, and a chorus that opens up fast."
+  );
+  const [title, setTitle] = useState("Night Drive Signal");
+  const [references, setReferences] = useState(
+    "Reference: widescreen synth-pop, dramatic pre-chorus tension, premium streaming-ready finish"
+  );
+
+  const [musicDirection, setMusicDirection] = useState(
+    "Build a polished SoundioX release with a fast emotional payoff, a memorable hook, and a chorus lift that feels ready for repeat listens."
+  );
+  const [lyricsDirection, setLyricsDirection] = useState(
+    "Write lyrics that feel intimate in the verse and emotionally direct in the chorus, with a short repeatable hook."
+  );
+  const [artworkDirection, setArtworkDirection] = useState(
+    "Create glassy skyline cover art with cool light bloom, reflective surfaces, and a premium midnight blue palette."
+  );
+  const [directionLoading, setDirectionLoading] = useState<Record<DirectionKey, boolean>>({
+    music: false,
+    lyrics: false,
+    artwork: false,
+  });
+
+  const [lyricsPrompt, setLyricsPrompt] = useState(
+    "Emotional synth-pop lyric with a strong first chorus payoff and a compact memorable hook."
+  );
+  const [lyricsPreview, setLyricsPreview] = useState(
+    "City lights on the glass again\nYour name in the static air\nHold the night before it ends\nMeet me where the skyline stares"
+  );
+
+  const [voiceoverScript, setVoiceoverScript] = useState(
+    "When the skyline wakes, let the first note arrive like a signal through the dark."
+  );
+  const [voiceStyle, setVoiceStyle] = useState<VoiceStyle>("cinematic");
+  const [voiceDelivery, setVoiceDelivery] = useState<VoiceDelivery>("dramatic");
+
+  const [vocalMode, setVocalMode] = useState<VocalMode>("auto-lyrics");
+
+  const [uploadedTrackName, setUploadedTrackName] = useState("Imported Suno track - Neon Afterglow");
+  const [uploadedTrackNotes, setUploadedTrackNotes] = useState(
+    "Use this imported track as a starting point and push the chorus harder without losing the core feel."
+  );
+
+  const [studioPhase, setStudioPhase] = useState<"idle" | "loading" | "complete">("idle");
+  const [stepState, setStepState] = useState<Record<StepKey, boolean>>({
+    track: false,
+    vocals: false,
+    artwork: false,
+  });
+
+  const [versions, setVersions] = useState<VersionRecord[]>(initialVersions);
+  const [activeVersionId, setActiveVersionId] = useState("original");
+
+  const [mixer, setMixer] = useState<MixerState>(initialMixer);
+  const [dynamics, setDynamics] = useState<DynamicsState>(initialDynamics);
+  const [muted, setMuted] = useState<MuteState>({
+    drums: false,
+    bass: false,
+    music: false,
+    vocal: false,
+    voiceover: false,
+    fx: false,
+    master: false,
+  });
+  const [soloed, setSoloed] = useState<SoloState>({
+    drums: false,
+    bass: false,
+    music: false,
+    vocal: false,
+    voiceover: false,
+    fx: false,
+    master: false,
+  });
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+    {
+      id: "ai-1",
+      role: "ai",
+      text: "I’d tighten the intro, push the chorus payoff earlier, and keep the skyline mood premium rather than too busy.",
+      canApply: true,
+    },
+    {
+      id: "user-1",
+      role: "user",
+      text: "Keep the emotional lift, but make the first chorus arrive faster and cleaner.",
+    },
+    {
+      id: "ai-2",
+      role: "ai",
+      text: "For imported tracks, we can branch a remix or instrumental without ever touching the source version.",
+    },
+  ]);
+  const [chatInput, setChatInput] = useState("");
+  const [workspaceStatus, setWorkspaceStatus] = useState("No export or submission action triggered yet.");
+
+  const timersRef = useRef<number[]>([]);
+
+  useEffect(() => {
+    return () => {
+      timersRef.current.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, []);
+
+  const activeVersion = useMemo(
+    () => versions.find((version) => version.id === activeVersionId) ?? versions[0],
+    [activeVersionId, versions]
+  );
+
+  const mixerSummary = useMemo(
+    () => summarizeMixer(mixer, dynamics, vocalMode),
+    [dynamics, mixer, vocalMode]
+  );
+
+  useEffect(() => {
+    setMixer(activeVersion.mixer);
+    setDynamics(activeVersion.dynamics);
+  }, [activeVersion]);
+
+  function queue(delayMs: number, callback: () => void) {
+    const timer = window.setTimeout(callback, delayMs);
+    timersRef.current.push(timer);
+  }
+
+  function setDirectionState(key: DirectionKey, next: boolean) {
+    setDirectionLoading((current) => ({ ...current, [key]: next }));
+  }
+
+  function generateDirection(key: DirectionKey) {
+    setDirectionState(key, true);
+
+    queue(800, () => {
+      if (key === "music") {
+        setMusicDirection(
+          `Shape the production around this idea: ${idea.trim()} ${
+            references.trim() ? `Reference cues: ${references.trim()}.` : ""
+          } Push the arrangement toward a stronger first payoff and clearer lift into the main hook.`
+        );
+      }
+
+      if (key === "lyrics") {
+        setLyricsDirection(
+          `Focus the lyric around longing, city light imagery, and a chorus that resolves quickly into a repeatable hook tied to: ${idea.trim()}`
+        );
+      }
+
+      if (key === "artwork") {
+        setArtworkDirection(
+          `Use the music direction to create premium cover art for "${title}" with reflective skyline surfaces, cinematic blue lighting, and a sleek streaming-era finish.`
+        );
+      }
+
+      setDirectionState(key, false);
+    });
+  }
+
+  function improveDirection(key: DirectionKey, addition: string) {
+    if (key === "music") setMusicDirection((current) => `${current} ${addition}`);
+    if (key === "lyrics") setLyricsDirection((current) => `${current} ${addition}`);
+    if (key === "artwork") setArtworkDirection((current) => `${current} ${addition}`);
+  }
+
+  function handleLyricsAction(action: "generate" | "hook" | "emotional" | "chorus") {
+    if (action === "generate") {
+      setLyricsPreview(
+        "Skyline flickers in the rear-view light\nWe run the dark until the colors rise\nSay my name when the signal turns bright\nHold the chorus open through the night"
+      );
+      return;
+    }
+
+    if (action === "hook") {
+      setLyricsPreview((current) => `${current}\n\nHook: Stay in the glow, stay in the glow tonight`);
+      return;
+    }
+
+    if (action === "emotional") {
+      setLyricsPreview((current) => `${current}\n\nI still hear your heartbeat under the neon rain`);
+      return;
+    }
+
+    setLyricsPreview((current) => `${current}\n\nRewritten chorus: We don't fade when the skyline calls`);
+  }
+
+  function handleVoiceoverAction(action: "generate" | "warmer" | "dramatic" | "shorter") {
+    if (action === "generate") {
+      setVoiceoverScript(
+        "When the skyline wakes, let the first note rise like a signal through the dark. Follow it until the whole city answers back."
+      );
+      return;
+    }
+
+    if (action === "warmer") {
+      setVoiceoverScript((current) => `${current} Keep the tone warmer, closer, and more human.`);
+      return;
+    }
+
+    if (action === "dramatic") {
+      setVoiceoverScript((current) => `${current} Add more dramatic pauses and tension before the final line.`);
+      return;
+    }
+
+    setVoiceoverScript("When the skyline wakes, let the first note arrive like a signal.");
+  }
+
+  function handleGenerate() {
+    timersRef.current.forEach((timer) => window.clearTimeout(timer));
+    timersRef.current = [];
+
+    setStudioPhase("loading");
+    setActiveVersionId("original");
+    setStepState({
+      track: true,
+      vocals: false,
+      artwork: false,
+    });
+
+    queue(900, () => {
+      setStepState({
+        track: true,
+        vocals: vocalMode !== "instrumental",
+        artwork: false,
+      });
+    });
+
+    queue(1800, () => {
+      setStepState({
+        track: true,
+        vocals: vocalMode !== "instrumental",
+        artwork: true,
+      });
+    });
+
+    queue(3200, () => {
+      setStepState({
+        track: false,
+        vocals: false,
+        artwork: false,
+      });
+      setStudioPhase("complete");
+    });
+  }
+
+  function updateFader(key: FaderKey, value: number) {
+    setMixer((current) => ({
+      ...current,
+      [key]: clampValue(value),
+    }));
+  }
+
+  function updateDynamics(key: DynamicsKey, value: number) {
+    setDynamics((current) => ({
+      ...current,
+      [key]: clampValue(value),
+    }));
+  }
+
+  function toggleMute(key: FaderKey) {
+    setMuted((current) => ({ ...current, [key]: !current[key] }));
+  }
+
+  function toggleSolo(key: FaderKey) {
+    setSoloed((current) => ({ ...current, [key]: !current[key] }));
+  }
+
+  function createVersion(action: string, source: "generated" | "imported") {
+    const nextNumber = versions.length + 1;
+    const nextId = `version-${nextNumber}`;
+    const nextLabel = `Version ${nextNumber}`;
+    const nextMixer = { ...mixer };
+    const nextDynamics = { ...dynamics };
+
+    if (action === "Instrumental version") {
+      nextMixer.vocal = 0;
+      nextMixer.voiceover = 0;
+    }
+
+    if (action === "Create remix") {
+      nextMixer.drums = clampValue(nextMixer.drums + 10);
+      nextMixer.bass = clampValue(nextMixer.bass + 8);
+      nextMixer.fx = clampValue(nextMixer.fx + 12);
+      nextMixer.master = clampValue(nextMixer.master + 6);
+    }
+
+    if (action === "Create new version") {
+      nextMixer.master = clampValue(nextMixer.master + 4);
+    }
+
+    if (action === "Apply & Create Version") {
+      nextMixer.music = clampValue(nextMixer.music + 6);
+      nextMixer.fx = clampValue(nextMixer.fx + 8);
+      nextDynamics.width = clampValue(nextDynamics.width + 8);
+      nextDynamics.compression = clampValue(nextDynamics.compression + 6);
+    }
+
+    if (action === "Submit to SoundioX YouTube") {
+      nextDynamics.compression = clampValue(nextDynamics.compression + 3);
+    }
+
+    if (action === "Export for Spotify") {
+      nextMixer.master = clampValue(nextMixer.master + 2);
+      nextDynamics.width = clampValue(nextDynamics.width + 4);
+    }
+
+    if (action === "Export release package") {
+      nextDynamics.fadeOut = clampValue(nextDynamics.fadeOut + 4);
+    }
+
+    const nextVersion: VersionRecord = {
+      id: nextId,
+      label: nextLabel,
+      title: `${title} ${action}`,
+      note: buildVersionNote(action, nextMixer, nextDynamics, vocalMode),
+      source,
+      mixer: nextMixer,
+      dynamics: nextDynamics,
+    };
+
+    setVersions((current) => [...current, nextVersion]);
+    setActiveVersionId(nextId);
+  }
+
+  function handleWorkspaceAction(action: string) {
+    setWorkspaceStatus(`${action} prepared as a mock studio step. A new branch can be created without overwriting the original.`);
+    createVersion(action, "generated");
+  }
+
+  function handleChatSend() {
+    const trimmed = chatInput.trim();
+    if (!trimmed) return;
+
+    const nextAiResponse =
+      trimmed.toLowerCase().includes("intro")
+        ? "I’d shorten the opening bars, raise drop impact slightly, and widen the master image for a cleaner first impression."
+        : trimmed.toLowerCase().includes("vocal")
+          ? "I’d keep the lead vocal centered, lower voiceover weight, and add a more emotional chorus delivery on the next branch."
+          : "I’d turn that into a new branch with a tighter structure, slightly stronger bass, and a more premium artwork direction.";
+
+    setChatMessages((current) => [
+      ...current,
+      {
+        id: `user-${Date.now()}`,
+        role: "user",
+        text: trimmed,
+      },
+      {
+        id: `ai-${Date.now() + 1}`,
+        role: "ai",
+        text: nextAiResponse,
+        canApply: true,
+      },
+    ]);
+    setChatInput("");
+  }
+
+  return (
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.16),transparent_30%),radial-gradient(circle_at_right,rgba(14,165,233,0.12),transparent_25%),linear-gradient(180deg,#050912_0%,#0b1120_100%)] px-4 pb-24 pt-8 text-white">
+      <div className="mx-auto max-w-6xl">
+        <div className="mb-6 max-w-3xl">
+          <h1 className="text-3xl font-semibold tracking-tight text-white md:text-4xl">Create</h1>
+          <p className="mt-2 text-sm text-white/66">
+            Start with your idea, shape it with the co-producer, direct lyrics and voiceover
+            separately, mix the layers, and branch new versions without overwriting the original.
+          </p>
+        </div>
+
+        <div className="space-y-6">
+          <section className="grid gap-6 xl:grid-cols-3">
+            <div className={sectionClass}>
+              <div className="mb-4">
+                <div className="text-xs font-semibold tracking-[0.2em] text-sky-100/70">
+                  UPLOADED / EXISTING TRACK EDIT
+                </div>
+                <div className="mt-1 text-lg font-semibold text-white">
+                  Edit imported or uploaded source tracks
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <input
+                  value={uploadedTrackName}
+                  onChange={(event) => setUploadedTrackName(event.target.value)}
+                  className={inputClass}
+                  placeholder="Uploaded or imported track name"
+                />
+
+                <textarea
+                  value={uploadedTrackNotes}
+                  onChange={(event) => setUploadedTrackNotes(event.target.value)}
+                  rows={5}
+                  className={`${inputClass} resize-none`}
+                  placeholder="Describe the changes you want for this uploaded / imported track..."
+                />
+
+                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/72">
+                  The original source track is never overwritten. Every edit saves into a new mock
+                  version branch.
+                </div>
+
+                <div className="grid gap-3">
+                  {["Instrumental version", "Create remix", "Create new version"].map((label) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => createVersion(label, "imported")}
+                      className={toolButtonClass}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className={sectionClass}>
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-xs font-semibold tracking-[0.2em] text-sky-100/70">
+                    CO-PRODUCER AI
+                  </div>
+                  <div className="mt-1 text-lg font-semibold text-white">
+                    Real-time creator guidance
+                  </div>
+                </div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-200">
+                  <span className="h-2 w-2 rounded-full bg-emerald-300" />
+                  AI Online
+                </div>
+              </div>
+
+              <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
+                <div className="max-h-[300px] space-y-3 overflow-y-auto pr-1">
+                  {chatMessages.map((message) => (
+                    <div
+                      key={message.id}
+                      className={`max-w-[92%] rounded-2xl px-4 py-3 text-sm ${
+                        message.role === "ai"
+                          ? "border border-sky-300/20 bg-sky-400/10 text-white/88"
+                          : "ml-auto border border-white/10 bg-white/8 text-white"
+                      }`}
+                    >
+                      <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">
+                        {message.role === "ai" ? "Co-producer" : "You"}
+                      </div>
+                      <div>{message.text}</div>
+                      {message.canApply ? (
+                        <button
+                          type="button"
+                          onClick={() => createVersion("Apply & Create Version", "generated")}
+                          className="mt-3 inline-flex cursor-pointer items-center justify-center rounded-full bg-sky-400 px-4 py-2 text-xs font-semibold text-white ring-1 ring-sky-200/60 shadow-[0_0_18px_rgba(56,189,248,0.22)] transition hover:bg-sky-300"
+                        >
+                          Apply & Create Version
+                        </button>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 flex gap-3">
+                  <input
+                    value={chatInput}
+                    onChange={(event) => setChatInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter") return;
+                      event.preventDefault();
+                      handleChatSend();
+                    }}
+                    className={inputClass}
+                    placeholder="Ask co-producer anything..."
+                  />
+                  <button type="button" onClick={handleChatSend} className={primaryButtonClass}>
+                    Send
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className={sectionClass}>
+              <div className="mb-4">
+                <div className="text-xs font-semibold tracking-[0.2em] text-sky-100/70">
+                  RESULT / EDIT AREA
+                </div>
+                <div className="mt-1 text-lg font-semibold text-white">
+                  Current version and release prep
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="rounded-[24px] border border-white/10 bg-[linear-gradient(135deg,rgba(56,189,248,0.14),rgba(255,255,255,0.05))] p-4">
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-sky-400 text-lg font-semibold text-white ring-1 ring-sky-200/60 shadow-[0_0_18px_rgba(56,189,248,0.25)]">
+                      ▶
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="truncate text-lg font-semibold text-white">
+                          {activeVersion.title}
+                        </div>
+                        <span className="rounded-full border border-sky-300/20 bg-sky-400/10 px-2.5 py-1 text-[11px] font-semibold text-sky-100">
+                          {activeVersion.label}
+                        </span>
+                      </div>
+
+                      <div className="mt-1 text-sm text-white/70">
+                        {activeVersion.source === "imported" ? "Imported track edit" : "Generated track"} •{" "}
+                        {vocalMode === "instrumental"
+                          ? "Instrumental"
+                          : vocalMode === "auto-lyrics"
+                            ? "Auto lyrics"
+                            : vocalMode === "write-lyrics"
+                              ? "Write lyrics"
+                              : vocalMode === "duet"
+                                ? "Duet vocal"
+                                : `${vocalMode} vocal`}
+                      </div>
+
+                      <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
+                        <div className="text-[11px] font-semibold tracking-[0.18em] text-white/55">
+                          VERSION NOTE
+                        </div>
+                        <div className="mt-2 text-sm text-white/82">{activeVersion.note}</div>
+                      </div>
+
+                      <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
+                        <div className="text-[11px] font-semibold tracking-[0.18em] text-white/55">
+                          MIXER SUMMARY
+                        </div>
+                        <div className="mt-2 text-sm text-white/82">{mixerSummary}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-3">
+                  {["Instrumental version", "Create remix", "Create new version"].map((label) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => createVersion(label, "generated")}
+                      className={`w-full ${toolButtonClass}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="grid gap-3">
+                  {[
+                    "Submit to SoundioX YouTube",
+                    "Export for Spotify",
+                    "Export release package",
+                  ].map((label) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => handleWorkspaceAction(label)}
+                      className={`w-full ${toolButtonClass}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                  <div className="text-[11px] font-semibold tracking-[0.18em] text-white/55">
+                    WORKSPACE STATUS
+                  </div>
+                  <div className="mt-2 text-sm text-white/82">{workspaceStatus}</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className={sectionClass}>
+            <div className="mb-4">
+              <div className="text-xs font-semibold tracking-[0.2em] text-sky-100/70">
+                STUDIO CONTROLS
+              </div>
+              <div className="mt-1 text-lg font-semibold text-white">
+                Mix the layers like a small control desk
+              </div>
+            </div>
+
+            <div className="rounded-[24px] border border-sky-200/18 bg-black/18 p-4">
+              <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9">
+                {([
+                  ["drums", "Drums"],
+                  ["bass", "Bass"],
+                  ["music", "Music"],
+                  ["vocal", "Vocal"],
+                  ["voiceover", "Voiceover"],
+                  ["fx", "FX / Ambience"],
+                  ["master", "Master"],
+                ] as Array<[FaderKey, string]>).map(([key, label]) => (
+                  <Fader
+                    key={key}
+                    label={label}
+                    value={mixer[key]}
+                    muted={muted[key]}
+                    soloed={soloed[key]}
+                    onChange={(value) => updateFader(key, value)}
+                    onMute={() => toggleMute(key)}
+                    onSolo={() => toggleSolo(key)}
+                  />
+                ))}
+                {([
+                  ["fadeIn", "Fade In"],
+                  ["fadeOut", "Fade Out"],
+                ] as Array<[DynamicsKey, string]>).map(([key, label]) => (
+                  <Fader
+                    key={key}
+                    label={label}
+                    value={dynamics[key]}
+                    muted={false}
+                    soloed={false}
+                    showMuteSolo={false}
+                    onChange={(value) => updateDynamics(key, value)}
+                    onMute={() => {}}
+                    onSolo={() => {}}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-sky-300/18 bg-sky-400/8 px-4 py-3 text-sm text-white/82">
+              Current mixer shape: {mixerSummary}
+            </div>
+          </section>
+
+          <section className={sectionClass}>
+            <div className="mb-4">
+              <div className="text-xs font-semibold tracking-[0.2em] text-sky-100/70">
+                DIRECTION & IDEAS
+              </div>
+              <div className="mt-1 text-lg font-semibold text-white">
+                Start from the main idea, then shape music, lyrics, and artwork
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <input
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                className={inputClass}
+                placeholder="Track title"
+              />
+
+              <textarea
+                value={idea}
+                onChange={(event) => setIdea(event.target.value)}
+                rows={5}
+                className={`${inputClass} resize-none`}
+                placeholder="Describe the track idea..."
+              />
+
+              <input
+                value={references}
+                onChange={(event) => setReferences(event.target.value)}
+                className={inputClass}
+                placeholder="Optional references"
+              />
+            </div>
+
+            <div className="mt-5 grid gap-4 xl:grid-cols-3">
+              {([
+                ["music", "Music direction", musicDirection, setMusicDirection],
+                ["lyrics", "Lyrics direction", lyricsDirection, setLyricsDirection],
+                ["artwork", "Artwork direction", artworkDirection, setArtworkDirection],
+              ] as Array<
+                [DirectionKey, string, string, Dispatch<SetStateAction<string>>]
+              >).map(([key, label, value, setter]) => (
+                <div key={key} className="rounded-[24px] border border-white/10 bg-black/20 p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="text-sm font-semibold text-white">{label}</div>
+                    <button
+                      type="button"
+                      onClick={() => generateDirection(key)}
+                      disabled={directionLoading[key]}
+                      className={secondaryButtonClass}
+                    >
+                      {directionLoading[key] ? "Improving..." : "Improve"}
+                    </button>
+                  </div>
+
+                  <textarea
+                    value={value}
+                    onChange={(event) => setter(event.target.value)}
+                    rows={7}
+                    className={`${inputClass} resize-none`}
+                  />
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {(
+                      key === "music"
+                        ? [
+                            ["More cinematic", "Push the arrangement wider with more atmosphere and lift."],
+                            ["Stronger hook", "Move the topline toward a faster first payoff."],
+                            ["Radio-ready", "Tighten the structure for a cleaner release shape."],
+                          ]
+                        : key === "lyrics"
+                          ? [
+                              ["More emotional", "Increase emotional specificity in the verse and hook."],
+                              ["Improve hook", "Make the chorus line shorter and more repeatable."],
+                              ["Rewrite chorus", "Give the chorus a bigger resolution line."],
+                            ]
+                          : [
+                              ["More premium", "Refine the cover into a cleaner premium streaming-era finish."],
+                              ["More neon", "Add stronger neon reflections and darker skyline contrast."],
+                              ["More cinematic", "Make the scene wider and more atmospheric."],
+                            ]
+                    ).map(([chipLabel, addition]) => (
+                      <button
+                        key={chipLabel}
+                        type="button"
+                        onClick={() => improveDirection(key, addition)}
+                        className={secondaryButtonClass}
+                      >
+                        {chipLabel}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-5 grid gap-5 xl:grid-cols-2">
+              <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
+                <div className="mb-4">
+                  <div className="text-xs font-semibold tracking-[0.2em] text-sky-100/70">
+                    LYRICS
+                  </div>
+                  <div className="mt-1 text-base font-semibold text-white">
+                    Work lyrics separately from voiceover
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <textarea
+                    value={lyricsPrompt}
+                    onChange={(event) => setLyricsPrompt(event.target.value)}
+                    rows={4}
+                    className={`${inputClass} resize-none`}
+                    placeholder="Lyrics prompt"
+                  />
+
+                  <textarea
+                    value={lyricsPreview}
+                    onChange={(event) => setLyricsPreview(event.target.value)}
+                    rows={7}
+                    className={`${inputClass} resize-none`}
+                    placeholder="Generated lyrics preview"
+                  />
+
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => handleLyricsAction("generate")} className={primaryButtonClass}>
+                      Generate lyrics
+                    </button>
+                    <button type="button" onClick={() => handleLyricsAction("hook")} className={secondaryButtonClass}>
+                      Improve hook
+                    </button>
+                    <button type="button" onClick={() => handleLyricsAction("emotional")} className={secondaryButtonClass}>
+                      Make more emotional
+                    </button>
+                    <button type="button" onClick={() => handleLyricsAction("chorus")} className={secondaryButtonClass}>
+                      Rewrite chorus
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
+                <div className="mb-4">
+                  <div className="text-xs font-semibold tracking-[0.2em] text-sky-100/70">
+                    VOICEOVER
+                  </div>
+                  <div className="mt-1 text-base font-semibold text-white">
+                    Build spoken narration independently
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <textarea
+                    value={voiceoverScript}
+                    onChange={(event) => setVoiceoverScript(event.target.value)}
+                    rows={5}
+                    className={`${inputClass} resize-none`}
+                    placeholder="Voiceover script"
+                  />
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <label className="block">
+                      <div className="mb-2 text-sm font-medium text-white/75">Voice style</div>
+                      <select
+                        value={voiceStyle}
+                        onChange={(event) => setVoiceStyle(event.target.value as VoiceStyle)}
+                        className={inputClass}
+                      >
+                        <option value="cinematic">Cinematic</option>
+                        <option value="warm">Warm</option>
+                        <option value="broadcast">Broadcast</option>
+                        <option value="trailer">Trailer</option>
+                        <option value="intimate">Intimate</option>
+                      </select>
+                    </label>
+
+                    <label className="block">
+                      <div className="mb-2 text-sm font-medium text-white/75">Delivery</div>
+                      <select
+                        value={voiceDelivery}
+                        onChange={(event) => setVoiceDelivery(event.target.value as VoiceDelivery)}
+                        className={inputClass}
+                      >
+                        <option value="steady">Steady</option>
+                        <option value="dramatic">Dramatic</option>
+                        <option value="soft">Soft</option>
+                        <option value="urgent">Urgent</option>
+                        <option value="measured">Measured</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => handleVoiceoverAction("generate")} className={primaryButtonClass}>
+                      Generate voiceover
+                    </button>
+                    <button type="button" onClick={() => handleVoiceoverAction("warmer")} className={secondaryButtonClass}>
+                      Make warmer
+                    </button>
+                    <button type="button" onClick={() => handleVoiceoverAction("dramatic")} className={secondaryButtonClass}>
+                      Make more dramatic
+                    </button>
+                    <button type="button" onClick={() => handleVoiceoverAction("shorter")} className={secondaryButtonClass}>
+                      Shorter spoken intro
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className={sectionClass}>
+            <div className="mb-4">
+              <div className="text-xs font-semibold tracking-[0.2em] text-sky-100/70">VOICE</div>
+              <div className="mt-1 text-lg font-semibold text-white">
+                Choose the main vocal mode clearly
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {([
+                ["instrumental", "Instrumental"],
+                ["auto-lyrics", "Auto lyrics"],
+                ["write-lyrics", "Write lyrics"],
+                ["male", "Male vocal"],
+                ["female", "Female vocal"],
+                ["duet", "Duet"],
+              ] as Array<[VocalMode, string]>).map(([value, label]) => {
+                const isActive = vocalMode === value;
+
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setVocalMode(value)}
+                    className={`inline-flex cursor-pointer items-center justify-center rounded-full px-4 py-2.5 text-sm font-medium transition ${
+                      isActive
+                        ? "bg-sky-400 text-white ring-1 ring-sky-200/60 shadow-[0_0_18px_rgba(56,189,248,0.25)]"
+                        : "border border-white/12 bg-white/7 text-white/80 hover:bg-white/12"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className={sectionClass}>
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="text-xs font-semibold tracking-[0.2em] text-sky-100/70">
+                  GENERATE
+                </div>
+                <div className="mt-1 text-lg font-semibold text-white">
+                  Run a mock generation from the current direction
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleGenerate}
+                disabled={!idea.trim() || studioPhase === "loading"}
+                className={primaryButtonClass}
+              >
+                {studioPhase === "loading" ? "Generating..." : "Generate"}
+              </button>
+            </div>
+
+            {studioPhase !== "idle" ? (
+              <div className="mt-5 grid gap-3 md:grid-cols-3">
+                {([
+                  ["track", "Generating track"],
+                  ["vocals", "Generating vocals"],
+                  ["artwork", "Generating artwork"],
+                ] as Array<[StepKey, string]>).map(([key, label]) => {
+                  const active = stepState[key];
+                  const done = studioPhase === "complete";
+
+                  return (
+                    <div
+                      key={key}
+                      className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4"
+                    >
+                      <div className="text-sm font-medium text-white">{label}</div>
+                      <div
+                        className={`mt-2 text-xs font-semibold ${
+                          done
+                            ? "text-emerald-300"
+                            : active
+                              ? "text-sky-200"
+                              : "text-white/38"
+                        }`}
+                      >
+                        {done ? "Done" : active ? "Working..." : "Pending"}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+          </section>
+
+          <section className={sectionClass}>
+            <div className="mb-4">
+              <div className="text-xs font-semibold tracking-[0.2em] text-sky-100/70">VERSIONS</div>
+              <div className="mt-1 text-lg font-semibold text-white">
+                Original stays intact while new edits branch forward
+              </div>
+            </div>
+
+            <div className="mb-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/74">
+              Any edit or create action branches a new mock version. Original remains untouched and
+              version notes explain what changed.
+            </div>
+
+            <div className="space-y-2">
+              {versions.map((version) => {
+                const isActive = version.id === activeVersionId;
+
+                return (
+                  <button
+                    key={version.id}
+                    type="button"
+                    onClick={() => setActiveVersionId(version.id)}
+                    className={`flex w-full cursor-pointer items-center justify-between rounded-2xl px-4 py-3 text-left transition ${
+                      isActive
+                        ? "bg-sky-400 text-white ring-1 ring-sky-200/60 shadow-[0_0_18px_rgba(56,189,248,0.25)]"
+                        : "border border-white/10 bg-black/20 text-white/84 hover:bg-black/25"
+                    }`}
+                  >
+                    <div>
+                      <div className="text-sm font-semibold">{version.label}</div>
+                      <div className={`text-xs ${isActive ? "text-white/82" : "text-white/50"}`}>
+                        {version.note}
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-semibold">
+                      {isActive ? "CURRENT" : "Open"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
