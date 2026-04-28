@@ -39,7 +39,7 @@ type VersionRecord = {
 };
 
 const sectionClass =
-  "rounded-[28px] border border-sky-300/40 bg-sky-400/15 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl";
+  "rounded-[28px] border border-sky-200/80 bg-sky-400/40 p-5 shadow-[0_30px_100px_rgba(56,189,248,0.25)] backdrop-blur-xl";
 const inputClass =
   "w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-sky-300/40 focus:bg-black/30";
 const primaryButtonClass =
@@ -196,17 +196,40 @@ function Fader({
   onMute: () => void;
   onSolo: () => void;
 }) {
+  function getFaderTrackColor(value: number) {
+    const clamped = Math.max(0, Math.min(100, value));
+
+    if (clamped <= 50) {
+      const ratio = clamped / 50;
+      const r = Math.round(0 + (255 - 0) * ratio);
+      const g = Math.round(255 + (230 - 255) * ratio);
+      const b = Math.round(90 + (0 - 90) * ratio);
+      return `rgb(${r},${g},${b})`;
+    }
+
+    const ratio = (clamped - 50) / 50;
+    const r = Math.round(255 + (255 - 255) * ratio);
+    const g = Math.round(230 + (40 - 230) * ratio);
+    const b = Math.round(0 + (40 - 0) * ratio);
+    return `rgb(${r},${g},${b})`;
+  }
+
   return (
     <div className="flex min-w-[80px] flex-col items-center rounded-[22px] border border-sky-200/15 bg-[linear-gradient(180deg,rgba(125,211,252,0.08),rgba(2,6,23,0.38))] px-2.5 py-4">
-      <div className="mb-2 text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-white/55">
+      <div className="mb-2 flex min-h-[38px] items-center text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
         {label}
       </div>
 
-      <div className="mb-3 text-xs font-semibold text-white/75">{value}%</div>
+      <div className="mb-3 text-xs font-semibold text-white">{value}%</div>
 
       <div className="relative flex h-48 items-center justify-center">
-        <div className="absolute h-36 w-[10px] rounded-full bg-white/6 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]" />
-        <div className="absolute h-36 w-1 rounded-full bg-sky-300/25" />
+        <div className="absolute h-36 w-5 rounded-full bg-white/6 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]" />
+        <div
+          className="absolute h-36 w-2 rounded-full"
+          style={{
+            background: getFaderTrackColor(value),
+          }}
+        />
         <div className="pointer-events-none absolute inset-y-6 left-1/2 flex h-32 -translate-x-1/2 flex-col justify-between">
           {Array.from({ length: 6 }).map((_, index) => (
             <span key={index} className="h-px w-5 bg-white/12" />
@@ -219,7 +242,7 @@ function Fader({
           value={value}
           onChange={(event) => onChange(Number(event.target.value))}
           style={{ accentColor: "rgb(125,211,252)" }}
-          className="h-36 w-48 -rotate-90 cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-[10px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-[-3px] [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-sm [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-sky-100/40 [&::-webkit-slider-thumb]:bg-sky-300 [&::-webkit-slider-thumb]:shadow-md [&::-moz-range-track]:h-[10px] [&::-moz-range-track]:rounded-full [&::-moz-range-track]:border-0 [&::-moz-range-track]:bg-transparent [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:rounded-sm [&::-moz-range-thumb]:border [&::-moz-range-thumb]:border-sky-100/40 [&::-moz-range-thumb]:bg-sky-300 [&::-moz-range-thumb]:shadow-md"
+          className="h-36 w-48 -rotate-90 cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-[10px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-[-5px] [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-[4px] [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-white/90 [&::-webkit-slider-thumb]:bg-[linear-gradient(to_right,white_0%,white_44%,rgba(0,0,0,0.75)_44%,rgba(0,0,0,0.75)_56%,white_56%,white_100%)] [&::-webkit-slider-thumb]:shadow-[0_2px_6px_rgba(0,0,0,0.35)] [&::-moz-range-track]:h-[10px] [&::-moz-range-track]:rounded-full [&::-moz-range-track]:border-0 [&::-moz-range-track]:bg-transparent [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-[4px] [&::-moz-range-thumb]:border [&::-moz-range-thumb]:border-white/90 [&::-moz-range-thumb]:bg-[linear-gradient(to_right,white_0%,white_44%,rgba(0,0,0,0.75)_44%,rgba(0,0,0,0.75)_56%,white_56%,white_100%)] [&::-moz-range-thumb]:shadow-[0_2px_6px_rgba(0,0,0,0.35)]"
         />
       </div>
 
@@ -249,7 +272,7 @@ function Fader({
           </button>
         </div>
       ) : (
-        <div className="mt-3 h-7 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/28">
+        <div className="mt-3 h-7 text-[11px] font-semibold uppercase tracking-[0.16em] text-white">
           DSP
         </div>
       )}
@@ -615,7 +638,7 @@ export default function CreatePage() {
       <div className="mx-auto max-w-6xl">
         <div className="mb-6 max-w-3xl">
           <h1 className="text-3xl font-semibold tracking-tight text-white md:text-4xl">Create</h1>
-          <p className="mt-2 text-sm text-white/66">
+          <p className="mt-2 text-sm text-white">
             Start with your idea, shape it with the co-producer, direct lyrics and voiceover
             separately, mix the layers, and branch new versions without overwriting the original.
           </p>
@@ -625,7 +648,7 @@ export default function CreatePage() {
           <section className="grid gap-6 xl:grid-cols-3">
             <div className={sectionClass}>
               <div className="mb-4">
-                <div className="text-xs font-semibold tracking-[0.2em] text-sky-100/70">
+                <div className="text-xs font-semibold tracking-[0.2em] text-white">
                   UPLOADED / EXISTING TRACK EDIT
                 </div>
                 <div className="mt-1 text-lg font-semibold text-white">
@@ -649,7 +672,7 @@ export default function CreatePage() {
                   placeholder="Describe the changes you want for this uploaded / imported track..."
                 />
 
-                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/72">
+                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white">
                   The original source track is never overwritten. Every edit saves into a new mock
                   version branch.
                 </div>
@@ -672,7 +695,7 @@ export default function CreatePage() {
             <div className={sectionClass}>
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-xs font-semibold tracking-[0.2em] text-sky-100/70">
+                  <div className="text-xs font-semibold tracking-[0.2em] text-white">
                     CO-PRODUCER AI
                   </div>
                   <div className="mt-1 text-lg font-semibold text-white">
@@ -696,7 +719,7 @@ export default function CreatePage() {
                           : "ml-auto border border-white/10 bg-white/8 text-white"
                       }`}
                     >
-                      <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">
+                      <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
                         {message.role === "ai" ? "Co-producer" : "You"}
                       </div>
                       <div>{message.text}</div>
@@ -734,7 +757,7 @@ export default function CreatePage() {
 
             <div className={sectionClass}>
               <div className="mb-4">
-                <div className="text-xs font-semibold tracking-[0.2em] text-sky-100/70">
+                <div className="text-xs font-semibold tracking-[0.2em] text-white">
                   RESULT / EDIT AREA
                 </div>
                 <div className="mt-1 text-lg font-semibold text-white">
@@ -759,7 +782,7 @@ export default function CreatePage() {
                         </span>
                       </div>
 
-                      <div className="mt-1 text-sm text-white/70">
+                      <div className="mt-1 text-sm text-white">
                         {activeVersion.source === "imported" ? "Imported track edit" : "Generated track"} •{" "}
                         {vocalMode === "instrumental"
                           ? "Instrumental"
@@ -773,17 +796,17 @@ export default function CreatePage() {
                       </div>
 
                       <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
-                        <div className="text-[11px] font-semibold tracking-[0.18em] text-white/55">
+                        <div className="text-[11px] font-semibold tracking-[0.18em] text-white">
                           VERSION NOTE
                         </div>
-                        <div className="mt-2 text-sm text-white/82">{activeVersion.note}</div>
+                        <div className="mt-2 text-sm text-white">{activeVersion.note}</div>
                       </div>
 
                       <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
-                        <div className="text-[11px] font-semibold tracking-[0.18em] text-white/55">
+                        <div className="text-[11px] font-semibold tracking-[0.18em] text-white">
                           MIXER SUMMARY
                         </div>
-                        <div className="mt-2 text-sm text-white/82">{mixerSummary}</div>
+                        <div className="mt-2 text-sm text-white">{mixerSummary}</div>
                       </div>
                     </div>
                   </div>
@@ -820,10 +843,10 @@ export default function CreatePage() {
                 </div>
 
                 <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
-                  <div className="text-[11px] font-semibold tracking-[0.18em] text-white/55">
+                  <div className="text-[11px] font-semibold tracking-[0.18em] text-white">
                     WORKSPACE STATUS
                   </div>
-                  <div className="mt-2 text-sm text-white/82">{workspaceStatus}</div>
+                  <div className="mt-2 text-sm text-white">{workspaceStatus}</div>
                 </div>
               </div>
             </div>
@@ -831,7 +854,7 @@ export default function CreatePage() {
 
           <section className={sectionClass}>
             <div className="mb-4">
-              <div className="text-xs font-semibold tracking-[0.2em] text-sky-100/70">
+              <div className="text-xs font-semibold tracking-[0.2em] text-white">
                 STUDIO CONTROLS
               </div>
               <div className="mt-1 text-lg font-semibold text-white">
@@ -880,14 +903,14 @@ export default function CreatePage() {
               </div>
             </div>
 
-            <div className="mt-5 rounded-2xl border border-sky-300/18 bg-sky-400/8 px-4 py-3 text-sm text-white/82">
+            <div className="mt-5 rounded-2xl border border-sky-300/18 bg-sky-400/8 px-4 py-3 text-sm text-white">
               Current mixer shape: {mixerSummary}
             </div>
           </section>
 
           <section className={sectionClass}>
             <div className="mb-4">
-              <div className="text-xs font-semibold tracking-[0.2em] text-sky-100/70">
+              <div className="text-xs font-semibold tracking-[0.2em] text-white">
                 DIRECTION & IDEAS
               </div>
               <div className="mt-1 text-lg font-semibold text-white">
@@ -984,7 +1007,7 @@ export default function CreatePage() {
             <div className="mt-5 grid gap-5 xl:grid-cols-2">
               <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
                 <div className="mb-4">
-                  <div className="text-xs font-semibold tracking-[0.2em] text-sky-100/70">
+                  <div className="text-xs font-semibold tracking-[0.2em] text-white">
                     LYRICS
                   </div>
                   <div className="mt-1 text-base font-semibold text-white">
@@ -1028,7 +1051,7 @@ export default function CreatePage() {
 
               <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
                 <div className="mb-4">
-                  <div className="text-xs font-semibold tracking-[0.2em] text-sky-100/70">
+                  <div className="text-xs font-semibold tracking-[0.2em] text-white">
                     VOICEOVER
                   </div>
                   <div className="mt-1 text-base font-semibold text-white">
@@ -1047,7 +1070,7 @@ export default function CreatePage() {
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <label className="block">
-                      <div className="mb-2 text-sm font-medium text-white/75">Voice style</div>
+                      <div className="mb-2 text-sm font-medium text-white">Voice style</div>
                       <select
                         value={voiceStyle}
                         onChange={(event) => setVoiceStyle(event.target.value as VoiceStyle)}
@@ -1062,7 +1085,7 @@ export default function CreatePage() {
                     </label>
 
                     <label className="block">
-                      <div className="mb-2 text-sm font-medium text-white/75">Delivery</div>
+                      <div className="mb-2 text-sm font-medium text-white">Delivery</div>
                       <select
                         value={voiceDelivery}
                         onChange={(event) => setVoiceDelivery(event.target.value as VoiceDelivery)}
@@ -1098,7 +1121,7 @@ export default function CreatePage() {
 
           <section className={sectionClass}>
             <div className="mb-4">
-              <div className="text-xs font-semibold tracking-[0.2em] text-sky-100/70">VOICE</div>
+              <div className="text-xs font-semibold tracking-[0.2em] text-white">VOICE</div>
               <div className="mt-1 text-lg font-semibold text-white">
                 Choose the main vocal mode clearly
               </div>
@@ -1136,7 +1159,7 @@ export default function CreatePage() {
           <section className={sectionClass}>
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
-                <div className="text-xs font-semibold tracking-[0.2em] text-sky-100/70">
+                <div className="text-xs font-semibold tracking-[0.2em] text-white">
                   GENERATE
                 </div>
                 <div className="mt-1 text-lg font-semibold text-white">
@@ -1176,7 +1199,7 @@ export default function CreatePage() {
                             ? "text-emerald-300"
                             : active
                               ? "text-sky-200"
-                              : "text-white/38"
+                              : "text-white"
                         }`}
                       >
                         {done ? "Done" : active ? "Working..." : "Pending"}
@@ -1190,13 +1213,13 @@ export default function CreatePage() {
 
           <section className={sectionClass}>
             <div className="mb-4">
-              <div className="text-xs font-semibold tracking-[0.2em] text-sky-100/70">VERSIONS</div>
+              <div className="text-xs font-semibold tracking-[0.2em] text-white">VERSIONS</div>
               <div className="mt-1 text-lg font-semibold text-white">
                 Original stays intact while new edits branch forward
               </div>
             </div>
 
-            <div className="mb-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/74">
+            <div className="mb-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white">
               Any edit or create action branches a new mock version. Original remains untouched and
               version notes explain what changed.
             </div>
@@ -1218,7 +1241,7 @@ export default function CreatePage() {
                   >
                     <div>
                       <div className="text-sm font-semibold">{version.label}</div>
-                      <div className={`text-xs ${isActive ? "text-white/82" : "text-white/50"}`}>
+                      <div className="text-xs text-white">
                         {version.note}
                       </div>
                     </div>
