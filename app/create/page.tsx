@@ -7,6 +7,7 @@ type VoiceStyle = "cinematic" | "warm" | "broadcast" | "trailer" | "intimate";
 type VoiceDelivery = "steady" | "dramatic" | "soft" | "urgent" | "measured";
 type StepKey = "track" | "vocals" | "artwork";
 type DirectionKey = "music" | "lyrics" | "artwork";
+type CoProducerMode = DirectionKey | "voiceover" | "edit";
 type FaderKey =
   | "drums"
   | "bass"
@@ -48,6 +49,7 @@ const secondaryButtonClass =
   "inline-flex cursor-pointer items-center justify-center rounded-full border border-white/12 bg-white/7 px-4 py-2.5 text-sm font-medium text-white/82 transition hover:bg-white/12";
 const toolButtonClass =
   "inline-flex cursor-pointer items-center justify-center rounded-2xl border border-white/12 bg-white/7 px-4 py-3 text-sm font-medium text-white/86 transition hover:bg-white/12";
+const MAX_CO_PRODUCER_ACTIONS = 5;
 
 const initialMixer: MixerState = {
   drums: 72,
@@ -303,6 +305,15 @@ export default function CreatePage() {
     lyrics: false,
     artwork: false,
   });
+  const [coProducerLoading, setCoProducerLoading] = useState<Record<CoProducerMode, boolean>>({
+    music: false,
+    lyrics: false,
+    artwork: false,
+    voiceover: false,
+    edit: false,
+  });
+  const [coProducerRemaining, setCoProducerRemaining] = useState(MAX_CO_PRODUCER_ACTIONS);
+  const [coProducerError, setCoProducerError] = useState<string | null>(null);
 
   const [lyricsPrompt, setLyricsPrompt] = useState(
     "Emotional synth-pop lyric with a strong first chorus payoff and a compact memorable hook."
@@ -407,80 +418,220 @@ export default function CreatePage() {
     setDirectionLoading((current) => ({ ...current, [key]: next }));
   }
 
-  function generateDirection(key: DirectionKey) {
-    setDirectionState(key, true);
+  function setCoProducerState(key: CoProducerMode, next: boolean) {
+    setCoProducerLoading((current) => ({ ...current, [key]: next }));
+  }
 
-    queue(800, () => {
-      if (key === "music") {
-        setMusicDirection(
-          `Shape the production around this idea: ${idea.trim()} ${
-            references.trim() ? `Reference cues: ${references.trim()}.` : ""
-          } Push the arrangement toward a stronger first payoff and clearer lift into the main hook.`
-        );
+  function getCurrentDirectionForMode(mode: CoProducerMode) {
+    if (mode === "music") return musicDirection;
+    if (mode === "lyrics") return lyricsDirection;
+    if (mode === "artwork") return artworkDirection;
+    if (mode === "voiceover") return voiceoverScript;
+    return `${musicDirection}\n\n${uploadedTrackNotes}`;
+  }
+
+  function applyCoProducerResult(mode: CoProducerMode, result: string, source: "chat" | "action") {
+    if (mode === "music") {
+      setMusicDirection(result);
+      return;
+    }
+
+    if (mode === "lyrics") {
+      if (source === "chat") {
+        setLyricsDirection(result);
+      } else {
+        setLyricsPreview(result);
+      }
+      return;
+    }
+
+    if (mode === "artwork") {
+      setArtworkDirection(result);
+      return;
+    }
+
+    if (mode === "voiceover") {
+      setVoiceoverScript(result);
+      return;
+    }
+
+    setWorkspaceStatus(result);
+  }
+
+  function resolveChatMode(input: string): CoProducerMode {
+    const normalized = input.toLowerCase();
+
+    if (
+      normalized.includes("cover") ||
+      normalized.includes("artwork") ||
+      normalized.includes("album art") ||
+      normalized.includes("visual")
+    ) {
+      return "artwork";
+    }
+
+    if (
+      normalized.includes("voiceover") ||
+      normalized.includes("spoken") ||
+      normalized.includes("narration") ||
+      normalized.includes("intro voice")
+    ) {
+      return "voiceover";
+    }
+
+    if (
+      normalized.includes("lyric") ||
+      normalized.includes("chorus") ||
+      normalized.includes("hook") ||
+      normalized.includes("verse")
+    ) {
+      return "lyrics";
+    }
+
+    if (
+      normalized.includes("mix") ||
+      normalized.includes("edit") ||
+      normalized.includes("bass") ||
+      normalized.includes("drop") ||
+      normalized.includes("intro")
+    ) {
+      return "edit";
+    }
+
+    return "music";
+  }
+
+  async function requestCoProducer({
+    mode,
+    userRequest,
+    currentDirection,
+  }: {
+    mode: CoProducerMode;
+    userRequest: string;
+    currentDirection: string;
+  }) {
+    if (coProducerRemaining <= 0) {
+      setCoProducerError("No co-producer actions remaining for this track.");
+      return null;
+    }
+
+    setCoProducerError(null);
+    setCoProducerState(mode, true);
+    if (mode === "music" || mode === "lyrics" || mode === "artwork") {
+      setDirectionState(mode, true);
+    }
+
+    try {
+      const response = await fetch("/api/co-producer", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          mode,
+          idea: `${title}\n${idea}${references.trim() ? `\n${references.trim()}` : ""}`,
+          currentDirection,
+          userRequest,
+          remaining: coProducerRemaining,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Co-producer request failed");
       }
 
-      if (key === "lyrics") {
-        setLyricsDirection(
-          `Focus the lyric around longing, city light imagery, and a chorus that resolves quickly into a repeatable hook tied to: ${idea.trim()}`
-        );
+      const result = typeof payload?.result === "string" ? payload.result.trim() : "";
+
+      if (!result) {
+        throw new Error("Co-producer returned an empty result");
       }
 
-      if (key === "artwork") {
-        setArtworkDirection(
-          `Use the music direction to create premium cover art for "${title}" with reflective skyline surfaces, cinematic blue lighting, and a sleek streaming-era finish.`
-        );
-      }
+      setCoProducerRemaining(
+        typeof payload?.usage?.remaining === "number"
+          ? Math.max(0, payload.usage.remaining)
+          : Math.max(0, coProducerRemaining - 1)
+      );
 
-      setDirectionState(key, false);
+      return result;
+    } catch (error: any) {
+      setCoProducerError(error?.message || "Co-producer request failed");
+      return null;
+    } finally {
+      setCoProducerState(mode, false);
+      if (mode === "music" || mode === "lyrics" || mode === "artwork") {
+        setDirectionState(mode, false);
+      }
+    }
+  }
+
+  async function generateDirection(key: DirectionKey) {
+    const requests: Record<DirectionKey, string> = {
+      music: "Generate or improve the music direction for this track.",
+      lyrics: "Generate or improve the lyrics direction with stronger emotional clarity and hook focus.",
+      artwork: "Generate or improve premium streaming cover artwork direction.",
+    };
+
+    const result = await requestCoProducer({
+      mode: key,
+      userRequest: requests[key],
+      currentDirection: getCurrentDirectionForMode(key),
     });
+
+    if (result) {
+      applyCoProducerResult(key, result, "action");
+    }
   }
 
-  function improveDirection(key: DirectionKey, addition: string) {
-    if (key === "music") setMusicDirection((current) => `${current} ${addition}`);
-    if (key === "lyrics") setLyricsDirection((current) => `${current} ${addition}`);
-    if (key === "artwork") setArtworkDirection((current) => `${current} ${addition}`);
+  async function improveDirection(key: DirectionKey, addition: string) {
+    const result = await requestCoProducer({
+      mode: key,
+      userRequest: addition,
+      currentDirection: getCurrentDirectionForMode(key),
+    });
+
+    if (result) {
+      applyCoProducerResult(key, result, "action");
+    }
   }
 
-  function handleLyricsAction(action: "generate" | "hook" | "emotional" | "chorus") {
-    if (action === "generate") {
-      setLyricsPreview(
-        "Skyline flickers in the rear-view light\nWe run the dark until the colors rise\nSay my name when the signal turns bright\nHold the chorus open through the night"
-      );
-      return;
-    }
+  async function handleLyricsAction(action: "generate" | "hook" | "emotional" | "chorus") {
+    const requests = {
+      generate: "Generate concise lyrics with a strong hook and emotional clarity.",
+      hook: "Improve the hook and make the chorus more repeatable.",
+      emotional: "Make the lyrics more emotional and direct.",
+      chorus: "Rewrite the chorus for a stronger payoff.",
+    };
 
-    if (action === "hook") {
-      setLyricsPreview((current) => `${current}\n\nHook: Stay in the glow, stay in the glow tonight`);
-      return;
-    }
+    const result = await requestCoProducer({
+      mode: "lyrics",
+      userRequest: requests[action],
+      currentDirection: `${lyricsDirection}\n\n${lyricsPrompt}\n\n${lyricsPreview}`,
+    });
 
-    if (action === "emotional") {
-      setLyricsPreview((current) => `${current}\n\nI still hear your heartbeat under the neon rain`);
-      return;
+    if (result) {
+      setLyricsPreview(result);
     }
-
-    setLyricsPreview((current) => `${current}\n\nRewritten chorus: We don't fade when the skyline calls`);
   }
 
-  function handleVoiceoverAction(action: "generate" | "warmer" | "dramatic" | "shorter") {
-    if (action === "generate") {
-      setVoiceoverScript(
-        "When the skyline wakes, let the first note rise like a signal through the dark. Follow it until the whole city answers back."
-      );
-      return;
-    }
+  async function handleVoiceoverAction(action: "generate" | "warmer" | "dramatic" | "shorter") {
+    const requests = {
+      generate: "Generate a short spoken intro or voiceover script.",
+      warmer: "Make the voiceover warmer and more human.",
+      dramatic: "Make the voiceover more dramatic and cinematic.",
+      shorter: "Shorten the spoken intro while keeping the key image.",
+    };
 
-    if (action === "warmer") {
-      setVoiceoverScript((current) => `${current} Keep the tone warmer, closer, and more human.`);
-      return;
-    }
+    const result = await requestCoProducer({
+      mode: "voiceover",
+      userRequest: requests[action],
+      currentDirection: voiceoverScript,
+    });
 
-    if (action === "dramatic") {
-      setVoiceoverScript((current) => `${current} Add more dramatic pauses and tension before the final line.`);
-      return;
+    if (result) {
+      setVoiceoverScript(result);
     }
-
-    setVoiceoverScript("When the skyline wakes, let the first note arrive like a signal.");
   }
 
   function handleGenerate() {
@@ -605,16 +756,9 @@ export default function CreatePage() {
     createVersion(action, "generated");
   }
 
-  function handleChatSend() {
+  async function handleChatSend() {
     const trimmed = chatInput.trim();
     if (!trimmed) return;
-
-    const nextAiResponse =
-      trimmed.toLowerCase().includes("intro")
-        ? "I’d shorten the opening bars, raise drop impact slightly, and widen the master image for a cleaner first impression."
-        : trimmed.toLowerCase().includes("vocal")
-          ? "I’d keep the lead vocal centered, lower voiceover weight, and add a more emotional chorus delivery on the next branch."
-          : "I’d turn that into a new branch with a tighter structure, slightly stronger bass, and a more premium artwork direction.";
 
     setChatMessages((current) => [
       ...current,
@@ -623,14 +767,29 @@ export default function CreatePage() {
         role: "user",
         text: trimmed,
       },
-      {
-        id: `ai-${Date.now() + 1}`,
-        role: "ai",
-        text: nextAiResponse,
-        canApply: true,
-      },
     ]);
-    setChatInput("");
+
+    const mode = resolveChatMode(trimmed);
+    const currentDirection = getCurrentDirectionForMode(mode);
+    const result = await requestCoProducer({
+      mode,
+      userRequest: trimmed,
+      currentDirection,
+    });
+
+    if (result) {
+      applyCoProducerResult(mode, result, "chat");
+      setChatMessages((current) => [
+        ...current,
+        {
+          id: `ai-${Date.now() + 1}`,
+          role: "ai",
+          text: result,
+          canApply: true,
+        },
+      ]);
+      setChatInput("");
+    }
   }
 
   return (
@@ -701,6 +860,9 @@ export default function CreatePage() {
                   <div className="mt-1 text-lg font-semibold text-white">
                     Real-time creator guidance
                   </div>
+                  <div className="mt-2 text-xs font-semibold text-white">
+                    {coProducerRemaining} of {MAX_CO_PRODUCER_ACTIONS} actions remaining
+                  </div>
                 </div>
                 <div className="inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-200">
                   <span className="h-2 w-2 rounded-full bg-emerald-300" />
@@ -736,6 +898,12 @@ export default function CreatePage() {
                   ))}
                 </div>
 
+                {coProducerError ? (
+                  <div className="mt-4 rounded-2xl border border-rose-300/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
+                    {coProducerError}
+                  </div>
+                ) : null}
+
                 <div className="mt-4 flex gap-3">
                   <input
                     value={chatInput}
@@ -748,8 +916,13 @@ export default function CreatePage() {
                     className={inputClass}
                     placeholder="Ask co-producer anything..."
                   />
-                  <button type="button" onClick={handleChatSend} className={primaryButtonClass}>
-                    Send
+                  <button
+                    type="button"
+                    onClick={() => void handleChatSend()}
+                    disabled={coProducerLoading.edit || coProducerRemaining <= 0}
+                    className={primaryButtonClass}
+                  >
+                    {coProducerLoading.edit ? "Thinking..." : "Send"}
                   </button>
                 </div>
               </div>
@@ -955,8 +1128,8 @@ export default function CreatePage() {
                     <div className="text-sm font-semibold text-white">{label}</div>
                     <button
                       type="button"
-                      onClick={() => generateDirection(key)}
-                      disabled={directionLoading[key]}
+                      onClick={() => void generateDirection(key)}
+                      disabled={directionLoading[key] || coProducerRemaining <= 0}
                       className={secondaryButtonClass}
                     >
                       {directionLoading[key] ? "Improving..." : "Improve"}
@@ -993,7 +1166,8 @@ export default function CreatePage() {
                       <button
                         key={chipLabel}
                         type="button"
-                        onClick={() => improveDirection(key, addition)}
+                        onClick={() => void improveDirection(key, addition)}
+                        disabled={directionLoading[key] || coProducerRemaining <= 0}
                         className={secondaryButtonClass}
                       >
                         {chipLabel}
@@ -1033,16 +1207,36 @@ export default function CreatePage() {
                   />
 
                   <div className="flex flex-wrap gap-2">
-                    <button type="button" onClick={() => handleLyricsAction("generate")} className={primaryButtonClass}>
-                      Generate lyrics
+                    <button
+                      type="button"
+                      onClick={() => void handleLyricsAction("generate")}
+                      disabled={coProducerLoading.lyrics || coProducerRemaining <= 0}
+                      className={primaryButtonClass}
+                    >
+                      {coProducerLoading.lyrics ? "Generating..." : "Generate lyrics"}
                     </button>
-                    <button type="button" onClick={() => handleLyricsAction("hook")} className={secondaryButtonClass}>
+                    <button
+                      type="button"
+                      onClick={() => void handleLyricsAction("hook")}
+                      disabled={coProducerLoading.lyrics || coProducerRemaining <= 0}
+                      className={secondaryButtonClass}
+                    >
                       Improve hook
                     </button>
-                    <button type="button" onClick={() => handleLyricsAction("emotional")} className={secondaryButtonClass}>
+                    <button
+                      type="button"
+                      onClick={() => void handleLyricsAction("emotional")}
+                      disabled={coProducerLoading.lyrics || coProducerRemaining <= 0}
+                      className={secondaryButtonClass}
+                    >
                       Make more emotional
                     </button>
-                    <button type="button" onClick={() => handleLyricsAction("chorus")} className={secondaryButtonClass}>
+                    <button
+                      type="button"
+                      onClick={() => void handleLyricsAction("chorus")}
+                      disabled={coProducerLoading.lyrics || coProducerRemaining <= 0}
+                      className={secondaryButtonClass}
+                    >
                       Rewrite chorus
                     </button>
                   </div>
@@ -1101,16 +1295,36 @@ export default function CreatePage() {
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    <button type="button" onClick={() => handleVoiceoverAction("generate")} className={primaryButtonClass}>
-                      Generate voiceover
+                    <button
+                      type="button"
+                      onClick={() => void handleVoiceoverAction("generate")}
+                      disabled={coProducerLoading.voiceover || coProducerRemaining <= 0}
+                      className={primaryButtonClass}
+                    >
+                      {coProducerLoading.voiceover ? "Generating..." : "Generate voiceover"}
                     </button>
-                    <button type="button" onClick={() => handleVoiceoverAction("warmer")} className={secondaryButtonClass}>
+                    <button
+                      type="button"
+                      onClick={() => void handleVoiceoverAction("warmer")}
+                      disabled={coProducerLoading.voiceover || coProducerRemaining <= 0}
+                      className={secondaryButtonClass}
+                    >
                       Make warmer
                     </button>
-                    <button type="button" onClick={() => handleVoiceoverAction("dramatic")} className={secondaryButtonClass}>
+                    <button
+                      type="button"
+                      onClick={() => void handleVoiceoverAction("dramatic")}
+                      disabled={coProducerLoading.voiceover || coProducerRemaining <= 0}
+                      className={secondaryButtonClass}
+                    >
                       Make more dramatic
                     </button>
-                    <button type="button" onClick={() => handleVoiceoverAction("shorter")} className={secondaryButtonClass}>
+                    <button
+                      type="button"
+                      onClick={() => void handleVoiceoverAction("shorter")}
+                      disabled={coProducerLoading.voiceover || coProducerRemaining <= 0}
+                      className={secondaryButtonClass}
+                    >
                       Shorter spoken intro
                     </button>
                   </div>
