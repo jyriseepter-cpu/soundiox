@@ -28,6 +28,13 @@ type ChatMessage = {
   text: string;
   canApply?: boolean;
 };
+type LatestAiEditAdvice = {
+  raw: string;
+  change: string;
+  impact: string;
+  finalDirection: string;
+  versionNote: string;
+} | null;
 
 type VersionRecord = {
   id: string;
@@ -385,6 +392,7 @@ export default function CreatePage() {
   ]);
   const [chatInput, setChatInput] = useState("");
   const [workspaceStatus, setWorkspaceStatus] = useState("No export or submission action triggered yet.");
+  const [latestAiEditAdvice, setLatestAiEditAdvice] = useState<LatestAiEditAdvice>(null);
 
   const timersRef = useRef<number[]>([]);
 
@@ -456,6 +464,27 @@ export default function CreatePage() {
     }
 
     setWorkspaceStatus(result);
+  }
+
+  function parseEditAdvice(result: string) {
+    const changeMatch = result.match(
+      /CHANGE:\s*([\s\S]*?)(?:\nIMPACT:|\nFINAL DIRECTION:|\nVERSION NOTE:|$)/i
+    );
+    const impactMatch = result.match(
+      /IMPACT:\s*([\s\S]*?)(?:\nFINAL DIRECTION:|\nVERSION NOTE:|$)/i
+    );
+    const finalDirectionMatch = result.match(
+      /FINAL DIRECTION:\s*([\s\S]*?)(?:\nVERSION NOTE:|$)/i
+    );
+    const versionNoteMatch = result.match(/VERSION NOTE:\s*([\s\S]*?)$/i);
+
+    return {
+      raw: result.trim(),
+      change: changeMatch?.[1]?.trim() || "",
+      impact: impactMatch?.[1]?.trim() || "",
+      finalDirection: finalDirectionMatch?.[1]?.trim() || "",
+      versionNote: versionNoteMatch?.[1]?.trim() || "",
+    };
   }
 
   function resolveChatMode(input: string): CoProducerMode {
@@ -751,6 +780,41 @@ export default function CreatePage() {
     setActiveVersionId(nextId);
   }
 
+  function applyAiAdviceToTrack() {
+    if (!latestAiEditAdvice) return;
+
+    const nextNumber = versions.length + 1;
+    const nextId = `version-${nextNumber}`;
+    const nextLabel = `Version ${nextNumber}`;
+    const nextMixer = { ...mixer };
+    const nextDynamics = { ...dynamics };
+
+    if (latestAiEditAdvice.finalDirection) {
+      setMusicDirection(latestAiEditAdvice.finalDirection);
+    }
+
+    const nextVersion: VersionRecord = {
+      id: nextId,
+      label: nextLabel,
+      title: `${title} AI Edit`,
+      note:
+        latestAiEditAdvice.versionNote ||
+        latestAiEditAdvice.impact ||
+        buildVersionNote("AI Edit", nextMixer, nextDynamics, vocalMode),
+      source: "generated",
+      mixer: nextMixer,
+      dynamics: nextDynamics,
+    };
+
+    setVersions((current) => [...current, nextVersion]);
+    setActiveVersionId(nextId);
+    setWorkspaceStatus(
+      latestAiEditAdvice.impact
+        ? `Applied AI edit. ${latestAiEditAdvice.impact}`
+        : "Applied AI edit to the current track direction."
+    );
+  }
+
   function handleWorkspaceAction(action: string) {
     setWorkspaceStatus(`${action} prepared as a mock studio step. A new branch can be created without overwriting the original.`);
     createVersion(action, "generated");
@@ -778,6 +842,9 @@ export default function CreatePage() {
     });
 
     if (result) {
+      if (mode === "edit") {
+        setLatestAiEditAdvice(parseEditAdvice(result));
+      }
       applyCoProducerResult(mode, result, "chat");
       setChatMessages((current) => [
         ...current,
@@ -861,7 +928,9 @@ export default function CreatePage() {
                     Real-time creator guidance
                   </div>
                   <div className="mt-2 text-xs font-semibold text-white">
-                    {coProducerRemaining} of {MAX_CO_PRODUCER_ACTIONS} actions remaining
+                    {coProducerRemaining === 1
+                      ? "1 action left — upgrade for more co-producer help"
+                      : `${coProducerRemaining} of ${MAX_CO_PRODUCER_ACTIONS} actions remaining`}
                   </div>
                 </div>
                 <div className="inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-200">
@@ -888,10 +957,11 @@ export default function CreatePage() {
                       {message.canApply ? (
                         <button
                           type="button"
-                          onClick={() => createVersion("Apply & Create Version", "generated")}
+                          onClick={() => applyAiAdviceToTrack()}
+                          disabled={!latestAiEditAdvice}
                           className="mt-3 inline-flex cursor-pointer items-center justify-center rounded-full bg-sky-400 px-4 py-2 text-xs font-semibold text-white ring-1 ring-sky-200/60 shadow-[0_0_18px_rgba(56,189,248,0.22)] transition hover:bg-sky-300"
                         >
-                          Apply & Create Version
+                          Apply to Track & Create Version
                         </button>
                       ) : null}
                     </div>
@@ -901,6 +971,37 @@ export default function CreatePage() {
                 {coProducerError ? (
                   <div className="mt-4 rounded-2xl border border-rose-300/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
                     {coProducerError}
+                  </div>
+                ) : null}
+
+                {latestAiEditAdvice ? (
+                  <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <div className="space-y-3 text-sm text-white">
+                      <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+                          Change
+                        </div>
+                        <div className="mt-1 whitespace-pre-wrap">
+                          {latestAiEditAdvice.change || "No change summary returned."}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+                          Impact
+                        </div>
+                        <div className="mt-1 whitespace-pre-wrap">
+                          {latestAiEditAdvice.impact || "No impact summary returned."}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+                          Final Direction Preview
+                        </div>
+                        <div className="mt-1 whitespace-pre-wrap rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-white">
+                          {latestAiEditAdvice.finalDirection || "No rewritten direction returned."}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 ) : null}
 
@@ -914,7 +1015,7 @@ export default function CreatePage() {
                       handleChatSend();
                     }}
                     className={inputClass}
-                    placeholder="Ask co-producer anything..."
+                    placeholder="Describe what you want to improve..."
                   />
                   <button
                     type="button"
