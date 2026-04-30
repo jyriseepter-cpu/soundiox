@@ -670,7 +670,7 @@ export default function CreatePage() {
     }
   }
 
-  function handleGenerate() {
+  async function handleGenerate() {
     const trimmedTitle = title.trim();
     const trimmedIdea = idea.trim();
     const trimmedFinalDirection = finalDirection.trim() || musicDirection.trim();
@@ -696,6 +696,32 @@ export default function CreatePage() {
     }
 
     setGenerateError(null);
+
+    try {
+      const response = await fetch("/api/generate-track", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: trimmedTitle,
+          finalDirection: trimmedFinalDirection,
+          vocalMode,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Mock generation request failed");
+      }
+
+      console.log("generate-track mock response", payload);
+    } catch (error: any) {
+      setGenerateError(error?.message || "Mock generation request failed");
+      return;
+    }
+
     timersRef.current.forEach((timer) => window.clearTimeout(timer));
     timersRef.current = [];
 
@@ -1578,7 +1604,7 @@ export default function CreatePage() {
 
               <button
                 type="button"
-                onClick={handleGenerate}
+                onClick={() => void handleGenerate()}
                 disabled={!idea.trim() || studioPhase === "loading"}
                 className={primaryButtonClass}
               >
