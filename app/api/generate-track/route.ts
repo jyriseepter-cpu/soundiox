@@ -87,6 +87,49 @@ async function handleModalGeneration(payload: {
   };
 }
 
+// Modal benchmark mode simulates generation to measure flow before real GPU integration
+async function handleModalBenchmark(payload: {
+  title: string;
+  finalDirection: string;
+  vocalMode: string;
+  artistIdentity?: GenerateTrackBody["artistIdentity"];
+}) {
+  const start = Date.now();
+
+  console.log("MODAL BENCHMARK START");
+
+  await new Promise((resolve) => setTimeout(resolve, 3000));
+
+  const end = Date.now();
+  const durationMs = end - start;
+  const durationSec = durationMs / 1000;
+  const estimatedCost = durationSec * 0.0003;
+
+  console.log("MODAL BENCHMARK END");
+  console.log("DURATION:", durationSec, "sec");
+  console.log("ESTIMATED COST:", estimatedCost);
+
+  return {
+    success: true,
+    provider: "modal",
+    benchmark: true,
+    timing: {
+      durationSec,
+      durationMs,
+    },
+    cost: {
+      estimated: estimatedCost,
+    },
+    track: {
+      id: `modal_${Date.now()}`,
+      title: payload.title,
+      duration: 180,
+      status: "generated",
+      previewUrl: null,
+    },
+  };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as GenerateTrackBody;
@@ -117,13 +160,16 @@ export async function POST(request: NextRequest) {
 
     console.log("GENERATION PROVIDER:", provider);
     console.log("PAYLOAD:", payload);
+    if (provider === "modal") {
+      console.log("FINAL DIRECTION:", payload.finalDirection);
+    }
 
     let result;
 
-    if (provider === "runpod") {
+    if (provider === "modal") {
+      result = await handleModalBenchmark(payload);
+    } else if (provider === "runpod") {
       result = await handleRunpodGeneration(payload);
-    } else if (provider === "modal") {
-      result = await handleModalGeneration(payload);
     } else {
       result = await handleMockGeneration(payload);
     }
