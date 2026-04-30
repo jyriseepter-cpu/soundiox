@@ -863,332 +863,20 @@ export default function CreatePage() {
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.16),transparent_30%),radial-gradient(circle_at_right,rgba(14,165,233,0.12),transparent_25%),linear-gradient(180deg,#050912_0%,#0b1120_100%)] px-4 pb-24 pt-8 text-white">
       <div className="mx-auto max-w-6xl">
         <div className="mb-6 max-w-3xl">
-          <h1 className="text-3xl font-semibold tracking-tight text-white md:text-4xl">Create</h1>
+          <h1 className="text-3xl font-semibold tracking-tight text-white md:text-4xl">Studio</h1>
           <p className="mt-2 text-sm text-white">
-            Start with your idea, shape it with the co-producer, direct lyrics and voiceover
-            separately, mix the layers, and branch new versions without overwriting the original.
+            Start with your idea, shape it in the studio, and use the AI co-producer when you need guidance.
           </p>
         </div>
 
         <div className="space-y-6">
-          <section className="grid gap-6 xl:grid-cols-3">
-            <div className={sectionClass}>
-              <div className="mb-4">
-                <div className="text-xs font-semibold tracking-[0.2em] text-white">
-                  UPLOADED / EXISTING TRACK EDIT
-                </div>
-                <div className="mt-1 text-lg font-semibold text-white">
-                  Edit imported or uploaded source tracks
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <input
-                  value={uploadedTrackName}
-                  onChange={(event) => setUploadedTrackName(event.target.value)}
-                  className={inputClass}
-                  placeholder="Uploaded or imported track name"
-                />
-
-                <textarea
-                  value={uploadedTrackNotes}
-                  onChange={(event) => setUploadedTrackNotes(event.target.value)}
-                  rows={5}
-                  className={`${inputClass} resize-none`}
-                  placeholder="Describe the changes you want for this uploaded / imported track..."
-                />
-
-                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white">
-                  The original source track is never overwritten. Every edit saves into a new mock
-                  version branch.
-                </div>
-
-                <div className="grid gap-3">
-                  {["Instrumental version", "Create remix", "Create new version"].map((label) => (
-                    <button
-                      key={label}
-                      type="button"
-                      onClick={() => createVersion(label, "imported")}
-                      className={toolButtonClass}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className={sectionClass}>
-              <div className="mb-4 flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-xs font-semibold tracking-[0.2em] text-white">
-                    CO-PRODUCER AI
-                  </div>
-                  <div className="mt-1 text-lg font-semibold text-white">
-                    Real-time creator guidance
-                  </div>
-                  <div className="mt-2 text-xs font-semibold text-white">
-                    {coProducerRemaining === 1
-                      ? "1 action left — upgrade for more co-producer help"
-                      : `${coProducerRemaining} of ${MAX_CO_PRODUCER_ACTIONS} actions remaining`}
-                  </div>
-                </div>
-                <div className="inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-200">
-                  <span className="h-2 w-2 rounded-full bg-emerald-300" />
-                  AI Online
-                </div>
-              </div>
-
-              <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
-                <div className="max-h-[300px] space-y-3 overflow-y-auto pr-1">
-                  {chatMessages.map((message) => (
-                    <div
-                      key={message.id}
-                      className={`max-w-[92%] rounded-2xl px-4 py-3 text-sm ${
-                        message.role === "ai"
-                          ? "border border-sky-300/20 bg-sky-400/10 text-white/88"
-                          : "ml-auto border border-white/10 bg-white/8 text-white"
-                      }`}
-                    >
-                      <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
-                        {message.role === "ai" ? "Co-producer" : "You"}
-                      </div>
-                      <div>{message.text}</div>
-                      {message.canApply ? (
-                        <button
-                          type="button"
-                          onClick={() => applyAiAdviceToTrack()}
-                          disabled={!latestAiEditAdvice}
-                          className="mt-3 inline-flex cursor-pointer items-center justify-center rounded-full bg-sky-400 px-4 py-2 text-xs font-semibold text-white ring-1 ring-sky-200/60 shadow-[0_0_18px_rgba(56,189,248,0.22)] transition hover:bg-sky-300"
-                        >
-                          Apply to Track & Create Version
-                        </button>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-
-                {coProducerError ? (
-                  <div className="mt-4 rounded-2xl border border-rose-300/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
-                    {coProducerError}
-                  </div>
-                ) : null}
-
-                {latestAiEditAdvice ? (
-                  <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <div className="space-y-3 text-sm text-white">
-                      <div>
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
-                          Change
-                        </div>
-                        <div className="mt-1 whitespace-pre-wrap">
-                          {latestAiEditAdvice.change || "No change summary returned."}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
-                          Impact
-                        </div>
-                        <div className="mt-1 whitespace-pre-wrap">
-                          {latestAiEditAdvice.impact || "No impact summary returned."}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
-                          Final Direction Preview
-                        </div>
-                        <div className="mt-1 whitespace-pre-wrap rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-white">
-                          {latestAiEditAdvice.finalDirection || "No rewritten direction returned."}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-
-                <div className="mt-4 flex gap-3">
-                  <input
-                    value={chatInput}
-                    onChange={(event) => setChatInput(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key !== "Enter") return;
-                      event.preventDefault();
-                      handleChatSend();
-                    }}
-                    className={inputClass}
-                    placeholder="Describe what you want to improve..."
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void handleChatSend()}
-                    disabled={coProducerLoading.edit || coProducerRemaining <= 0}
-                    className={primaryButtonClass}
-                  >
-                    {coProducerLoading.edit ? "Thinking..." : "Send"}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className={sectionClass}>
-              <div className="mb-4">
-                <div className="text-xs font-semibold tracking-[0.2em] text-white">
-                  RESULT / EDIT AREA
-                </div>
-                <div className="mt-1 text-lg font-semibold text-white">
-                  Current version and release prep
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="rounded-[24px] border border-white/10 bg-[linear-gradient(135deg,rgba(56,189,248,0.14),rgba(255,255,255,0.05))] p-4">
-                  <div className="flex items-start gap-4">
-                    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-sky-400 text-lg font-semibold text-white ring-1 ring-sky-200/60 shadow-[0_0_18px_rgba(56,189,248,0.25)]">
-                      ▶
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="truncate text-lg font-semibold text-white">
-                          {activeVersion.title}
-                        </div>
-                        <span className="rounded-full border border-sky-300/20 bg-sky-400/10 px-2.5 py-1 text-[11px] font-semibold text-sky-100">
-                          {activeVersion.label}
-                        </span>
-                      </div>
-
-                      <div className="mt-1 text-sm text-white">
-                        {activeVersion.source === "imported" ? "Imported track edit" : "Generated track"} •{" "}
-                        {vocalMode === "instrumental"
-                          ? "Instrumental"
-                          : vocalMode === "auto-lyrics"
-                            ? "Auto lyrics"
-                            : vocalMode === "write-lyrics"
-                              ? "Write lyrics"
-                              : vocalMode === "duet"
-                                ? "Duet vocal"
-                                : `${vocalMode} vocal`}
-                      </div>
-
-                      <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
-                        <div className="text-[11px] font-semibold tracking-[0.18em] text-white">
-                          VERSION NOTE
-                        </div>
-                        <div className="mt-2 text-sm text-white">{activeVersion.note}</div>
-                      </div>
-
-                      <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
-                        <div className="text-[11px] font-semibold tracking-[0.18em] text-white">
-                          MIXER SUMMARY
-                        </div>
-                        <div className="mt-2 text-sm text-white">{mixerSummary}</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid gap-3">
-                  {["Instrumental version", "Create remix", "Create new version"].map((label) => (
-                    <button
-                      key={label}
-                      type="button"
-                      onClick={() => createVersion(label, "generated")}
-                      className={`w-full ${toolButtonClass}`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="grid gap-3">
-                  {[
-                    "Submit to SoundioX YouTube",
-                    "Export for Spotify",
-                    "Export release package",
-                  ].map((label) => (
-                    <button
-                      key={label}
-                      type="button"
-                      onClick={() => handleWorkspaceAction(label)}
-                      className={`w-full ${toolButtonClass}`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
-                  <div className="text-[11px] font-semibold tracking-[0.18em] text-white">
-                    WORKSPACE STATUS
-                  </div>
-                  <div className="mt-2 text-sm text-white">{workspaceStatus}</div>
-                </div>
-              </div>
-            </div>
-          </section>
-
           <section className={sectionClass}>
             <div className="mb-4">
               <div className="text-xs font-semibold tracking-[0.2em] text-white">
-                STUDIO CONTROLS
+                CREATE YOUR TRACK
               </div>
               <div className="mt-1 text-lg font-semibold text-white">
-                Mix the layers like a small control desk
-              </div>
-            </div>
-
-            <div className="rounded-[24px] border border-sky-200/18 bg-black/18 p-4">
-              <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9">
-                {([
-                  ["drums", "Drums"],
-                  ["bass", "Bass"],
-                  ["music", "Music"],
-                  ["vocal", "Vocal"],
-                  ["voiceover", "Voiceover"],
-                  ["fx", "FX / Ambience"],
-                  ["master", "Master"],
-                ] as Array<[FaderKey, string]>).map(([key, label]) => (
-                  <Fader
-                    key={key}
-                    label={label}
-                    value={mixer[key]}
-                    muted={muted[key]}
-                    soloed={soloed[key]}
-                    onChange={(value) => updateFader(key, value)}
-                    onMute={() => toggleMute(key)}
-                    onSolo={() => toggleSolo(key)}
-                  />
-                ))}
-                {([
-                  ["fadeIn", "Fade In"],
-                  ["fadeOut", "Fade Out"],
-                ] as Array<[DynamicsKey, string]>).map(([key, label]) => (
-                  <Fader
-                    key={key}
-                    label={label}
-                    value={dynamics[key]}
-                    muted={false}
-                    soloed={false}
-                    showMuteSolo={false}
-                    onChange={(value) => updateDynamics(key, value)}
-                    onMute={() => {}}
-                    onSolo={() => {}}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div className="mt-5 rounded-2xl border border-sky-300/18 bg-sky-400/8 px-4 py-3 text-sm text-white">
-              Current mixer shape: {mixerSummary}
-            </div>
-          </section>
-
-          <section className={sectionClass}>
-            <div className="mb-4">
-              <div className="text-xs font-semibold tracking-[0.2em] text-white">
-                DIRECTION & IDEAS
-              </div>
-              <div className="mt-1 text-lg font-semibold text-white">
-                Start from the main idea, then shape music, lyrics, and artwork
+                Start from the main idea
               </div>
             </div>
 
@@ -1430,6 +1118,315 @@ export default function CreatePage() {
                     </button>
                   </div>
                 </div>
+              </div>
+            </div>
+          </section>
+
+          <section className={sectionClass}>
+            <div className="mb-4">
+              <div className="text-xs font-semibold tracking-[0.2em] text-white">
+                STUDIO CONTROLS
+              </div>
+              <div className="mt-1 text-lg font-semibold text-white">
+                Mix the layers like a small control desk
+              </div>
+            </div>
+
+            <div className="rounded-[24px] border border-sky-200/18 bg-black/18 p-4">
+              <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9">
+                {([
+                  ["drums", "Drums"],
+                  ["bass", "Bass"],
+                  ["music", "Music"],
+                  ["vocal", "Vocal"],
+                  ["voiceover", "Voiceover"],
+                  ["fx", "FX / Ambience"],
+                  ["master", "Master"],
+                ] as Array<[FaderKey, string]>).map(([key, label]) => (
+                  <Fader
+                    key={key}
+                    label={label}
+                    value={mixer[key]}
+                    muted={muted[key]}
+                    soloed={soloed[key]}
+                    onChange={(value) => updateFader(key, value)}
+                    onMute={() => toggleMute(key)}
+                    onSolo={() => toggleSolo(key)}
+                  />
+                ))}
+                {([
+                  ["fadeIn", "Fade In"],
+                  ["fadeOut", "Fade Out"],
+                ] as Array<[DynamicsKey, string]>).map(([key, label]) => (
+                  <Fader
+                    key={key}
+                    label={label}
+                    value={dynamics[key]}
+                    muted={false}
+                    soloed={false}
+                    showMuteSolo={false}
+                    onChange={(value) => updateDynamics(key, value)}
+                    onMute={() => {}}
+                    onSolo={() => {}}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-sky-300/18 bg-sky-400/8 px-4 py-3 text-sm text-white">
+              Current mixer shape: {mixerSummary}
+            </div>
+          </section>
+
+          <section className={sectionClass}>
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-semibold tracking-[0.2em] text-white">
+                  CO-PRODUCER AI
+                </div>
+                <div className="mt-1 text-lg font-semibold text-white">
+                  Real-time creator guidance
+                </div>
+                <div className="mt-2 text-xs font-semibold text-white">
+                  {coProducerRemaining === 1
+                    ? "1 action left — upgrade for more co-producer help"
+                    : `${coProducerRemaining} of ${MAX_CO_PRODUCER_ACTIONS} actions remaining`}
+                </div>
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-200">
+                <span className="h-2 w-2 rounded-full bg-emerald-300" />
+                AI Online
+              </div>
+            </div>
+
+            <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
+              <div className="max-h-[300px] space-y-3 overflow-y-auto pr-1">
+                {chatMessages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`max-w-[92%] rounded-2xl px-4 py-3 text-sm ${
+                      message.role === "ai"
+                        ? "border border-sky-300/20 bg-sky-400/10 text-white/88"
+                        : "ml-auto border border-white/10 bg-white/8 text-white"
+                    }`}
+                  >
+                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+                      {message.role === "ai" ? "Co-producer" : "You"}
+                    </div>
+                    <div>{message.text}</div>
+                    {message.canApply ? (
+                      <button
+                        type="button"
+                        onClick={() => applyAiAdviceToTrack()}
+                        disabled={!latestAiEditAdvice}
+                        className="mt-3 inline-flex cursor-pointer items-center justify-center rounded-full bg-sky-400 px-4 py-2 text-xs font-semibold text-white ring-1 ring-sky-200/60 shadow-[0_0_18px_rgba(56,189,248,0.22)] transition hover:bg-sky-300"
+                      >
+                        Apply to Track & Create Version
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+
+              {coProducerError ? (
+                <div className="mt-4 rounded-2xl border border-rose-300/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
+                  {coProducerError}
+                </div>
+              ) : null}
+
+              {latestAiEditAdvice ? (
+                <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="space-y-3 text-sm text-white">
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+                        Change
+                      </div>
+                      <div className="mt-1 whitespace-pre-wrap">
+                        {latestAiEditAdvice.change || "No change summary returned."}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+                        Impact
+                      </div>
+                      <div className="mt-1 whitespace-pre-wrap">
+                        {latestAiEditAdvice.impact || "No impact summary returned."}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+                        Final Direction Preview
+                      </div>
+                      <div className="mt-1 whitespace-pre-wrap rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-white">
+                        {latestAiEditAdvice.finalDirection || "No rewritten direction returned."}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="mt-4 flex gap-3">
+                <input
+                  value={chatInput}
+                  onChange={(event) => setChatInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter") return;
+                    event.preventDefault();
+                    handleChatSend();
+                  }}
+                  className={inputClass}
+                  placeholder="Describe what you want to improve..."
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleChatSend()}
+                  disabled={coProducerLoading.edit || coProducerRemaining <= 0}
+                  className={primaryButtonClass}
+                >
+                  {coProducerLoading.edit ? "Thinking..." : "Send"}
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section className={sectionClass}>
+            <div className="mb-4">
+              <div className="text-xs font-semibold tracking-[0.2em] text-white">
+                EDIT EXISTING TRACK
+              </div>
+              <div className="mt-1 text-lg font-semibold text-white">
+                Edit imported or uploaded source tracks
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <input
+                value={uploadedTrackName}
+                onChange={(event) => setUploadedTrackName(event.target.value)}
+                className={inputClass}
+                placeholder="Uploaded or imported track name"
+              />
+
+              <textarea
+                value={uploadedTrackNotes}
+                onChange={(event) => setUploadedTrackNotes(event.target.value)}
+                rows={5}
+                className={`${inputClass} resize-none`}
+                placeholder="Describe the changes you want for this uploaded / imported track..."
+              />
+
+              <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white">
+                The original source track is never overwritten. Every edit saves into a new mock
+                version branch.
+              </div>
+
+              <div className="grid gap-3">
+                {["Instrumental version", "Create remix", "Create new version"].map((label) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => createVersion(label, "imported")}
+                    className={toolButtonClass}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section className={sectionClass}>
+            <div className="mb-4">
+              <div className="text-xs font-semibold tracking-[0.2em] text-white">
+                RESULT / EDIT AREA
+              </div>
+              <div className="mt-1 text-lg font-semibold text-white">
+                Current version and release prep
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-[24px] border border-white/10 bg-[linear-gradient(135deg,rgba(56,189,248,0.14),rgba(255,255,255,0.05))] p-4">
+                <div className="flex items-start gap-4">
+                  <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-sky-400 text-lg font-semibold text-white ring-1 ring-sky-200/60 shadow-[0_0_18px_rgba(56,189,248,0.25)]">
+                    ▶
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="truncate text-lg font-semibold text-white">
+                        {activeVersion.title}
+                      </div>
+                      <span className="rounded-full border border-sky-300/20 bg-sky-400/10 px-2.5 py-1 text-[11px] font-semibold text-sky-100">
+                        {activeVersion.label}
+                      </span>
+                    </div>
+
+                    <div className="mt-1 text-sm text-white">
+                      {activeVersion.source === "imported" ? "Imported track edit" : "Generated track"} •{" "}
+                      {vocalMode === "instrumental"
+                        ? "Instrumental"
+                        : vocalMode === "auto-lyrics"
+                          ? "Auto lyrics"
+                          : vocalMode === "write-lyrics"
+                            ? "Write lyrics"
+                            : vocalMode === "duet"
+                              ? "Duet vocal"
+                              : `${vocalMode} vocal`}
+                    </div>
+
+                    <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
+                      <div className="text-[11px] font-semibold tracking-[0.18em] text-white">
+                        VERSION NOTE
+                      </div>
+                      <div className="mt-2 text-sm text-white">{activeVersion.note}</div>
+                    </div>
+
+                    <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
+                      <div className="text-[11px] font-semibold tracking-[0.18em] text-white">
+                        MIXER SUMMARY
+                      </div>
+                      <div className="mt-2 text-sm text-white">{mixerSummary}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-3">
+                {["Instrumental version", "Create remix", "Create new version"].map((label) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => createVersion(label, "generated")}
+                    className={`w-full ${toolButtonClass}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid gap-3">
+                {[
+                  "Submit to SoundioX YouTube",
+                  "Export for Spotify",
+                  "Export release package",
+                ].map((label) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => handleWorkspaceAction(label)}
+                    className={`w-full ${toolButtonClass}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                <div className="text-[11px] font-semibold tracking-[0.18em] text-white">
+                  WORKSPACE STATUS
+                </div>
+                <div className="mt-2 text-sm text-white">{workspaceStatus}</div>
               </div>
             </div>
           </section>
