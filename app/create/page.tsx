@@ -301,6 +301,9 @@ export default function CreatePage() {
   const [musicDirection, setMusicDirection] = useState(
     "Build a polished SoundioX release with a fast emotional payoff, a memorable hook, and a chorus lift that feels ready for repeat listens."
   );
+  const [finalDirection, setFinalDirection] = useState(
+    "Build a polished SoundioX release with a fast emotional payoff, a memorable hook, and a chorus lift that feels ready for repeat listens."
+  );
   const [lyricsDirection, setLyricsDirection] = useState(
     "Write lyrics that feel intimate in the verse and emotionally direct in the chorus, with a short repeatable hook."
   );
@@ -393,6 +396,7 @@ export default function CreatePage() {
   const [chatInput, setChatInput] = useState("");
   const [workspaceStatus, setWorkspaceStatus] = useState("No export or submission action triggered yet.");
   const [latestAiEditAdvice, setLatestAiEditAdvice] = useState<LatestAiEditAdvice>(null);
+  const [generateError, setGenerateError] = useState<string | null>(null);
 
   const timersRef = useRef<number[]>([]);
 
@@ -401,6 +405,14 @@ export default function CreatePage() {
       timersRef.current.forEach((timer) => window.clearTimeout(timer));
     };
   }, []);
+
+  useEffect(() => {
+    setFinalDirection(musicDirection);
+  }, [musicDirection]);
+
+  useEffect(() => {
+    setGenerateError(null);
+  }, [finalDirection, idea, title, vocalMode]);
 
   const activeVersion = useMemo(
     () => versions.find((version) => version.id === activeVersionId) ?? versions[0],
@@ -431,16 +443,17 @@ export default function CreatePage() {
   }
 
   function getCurrentDirectionForMode(mode: CoProducerMode) {
-    if (mode === "music") return musicDirection;
+    if (mode === "music") return finalDirection;
     if (mode === "lyrics") return lyricsDirection;
     if (mode === "artwork") return artworkDirection;
     if (mode === "voiceover") return voiceoverScript;
-    return `${musicDirection}\n\n${uploadedTrackNotes}`;
+    return `${finalDirection}\n\n${uploadedTrackNotes}`;
   }
 
   function applyCoProducerResult(mode: CoProducerMode, result: string, source: "chat" | "action") {
     if (mode === "music") {
       setMusicDirection(result);
+      setFinalDirection(result);
       return;
     }
 
@@ -494,36 +507,30 @@ export default function CreatePage() {
       normalized.includes("cover") ||
       normalized.includes("artwork") ||
       normalized.includes("album art") ||
-      normalized.includes("visual")
+      normalized.includes("image")
     ) {
       return "artwork";
     }
 
     if (
       normalized.includes("voiceover") ||
-      normalized.includes("spoken") ||
-      normalized.includes("narration") ||
-      normalized.includes("intro voice")
+      normalized.includes("spoken intro") ||
+      normalized.includes("narration")
     ) {
       return "voiceover";
     }
 
     if (
       normalized.includes("lyric") ||
-      normalized.includes("chorus") ||
-      normalized.includes("hook") ||
-      normalized.includes("verse")
+      normalized.includes("write lyrics") ||
+      normalized.includes("song words") ||
+      normalized.includes("verse") ||
+      normalized.includes("chorus lyrics")
     ) {
       return "lyrics";
     }
 
-    if (
-      normalized.includes("mix") ||
-      normalized.includes("edit") ||
-      normalized.includes("bass") ||
-      normalized.includes("drop") ||
-      normalized.includes("intro")
-    ) {
+    if (normalized.trim()) {
       return "edit";
     }
 
@@ -664,6 +671,31 @@ export default function CreatePage() {
   }
 
   function handleGenerate() {
+    const trimmedTitle = title.trim();
+    const trimmedIdea = idea.trim();
+    const trimmedFinalDirection = finalDirection.trim() || musicDirection.trim();
+
+    if (!trimmedTitle) {
+      setGenerateError("Add a track title before previewing generation.");
+      return;
+    }
+
+    if (!trimmedIdea) {
+      setGenerateError("Add the main track idea before previewing generation.");
+      return;
+    }
+
+    if (!trimmedFinalDirection) {
+      setGenerateError("Add a final music direction before previewing generation.");
+      return;
+    }
+
+    if (!vocalMode) {
+      setGenerateError("Choose a vocal mode before previewing generation.");
+      return;
+    }
+
+    setGenerateError(null);
     timersRef.current.forEach((timer) => window.clearTimeout(timer));
     timersRef.current = [];
 
@@ -791,6 +823,7 @@ export default function CreatePage() {
 
     if (latestAiEditAdvice.finalDirection) {
       setMusicDirection(latestAiEditAdvice.finalDirection);
+      setFinalDirection(latestAiEditAdvice.finalDirection);
     }
 
     const nextVersion: VersionRecord = {
@@ -859,6 +892,97 @@ export default function CreatePage() {
     }
   }
 
+  const coProducerPanelContent = (
+    <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
+      <div className="max-h-[300px] space-y-3 overflow-y-auto pr-1 lg:max-h-[42vh]">
+        {chatMessages.map((message) => (
+          <div
+            key={message.id}
+            className={`max-w-[92%] rounded-2xl px-4 py-3 text-sm ${
+              message.role === "ai"
+                ? "border border-sky-300/20 bg-sky-400/10 text-white/88"
+                : "ml-auto border border-white/10 bg-white/8 text-white"
+            }`}
+          >
+            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+              {message.role === "ai" ? "Co-producer" : "You"}
+            </div>
+            <div>{message.text}</div>
+            {message.canApply ? (
+              <button
+                type="button"
+                onClick={() => applyAiAdviceToTrack()}
+                disabled={!latestAiEditAdvice}
+                className="mt-3 inline-flex cursor-pointer items-center justify-center rounded-full bg-sky-400 px-4 py-2 text-xs font-semibold text-white ring-1 ring-sky-200/60 shadow-[0_0_18px_rgba(56,189,248,0.22)] transition hover:bg-sky-300"
+              >
+                Apply to Track & Create Version
+              </button>
+            ) : null}
+          </div>
+        ))}
+      </div>
+
+      {coProducerError ? (
+        <div className="mt-4 rounded-2xl border border-rose-300/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
+          {coProducerError}
+        </div>
+      ) : null}
+
+      {latestAiEditAdvice ? (
+        <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+          <div className="space-y-3 text-sm text-white">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+                Change
+              </div>
+              <div className="mt-1 whitespace-pre-wrap">
+                {latestAiEditAdvice.change || "No change summary returned."}
+              </div>
+            </div>
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+                Impact
+              </div>
+              <div className="mt-1 whitespace-pre-wrap">
+                {latestAiEditAdvice.impact || "No impact summary returned."}
+              </div>
+            </div>
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+                Final Direction Preview
+              </div>
+              <div className="mt-1 whitespace-pre-wrap rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-white">
+                {latestAiEditAdvice.finalDirection || "No rewritten direction returned."}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="mt-4 flex gap-3">
+        <input
+          value={chatInput}
+          onChange={(event) => setChatInput(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            handleChatSend();
+          }}
+          className={inputClass}
+          placeholder="Describe what you want to improve..."
+        />
+        <button
+          type="button"
+          onClick={() => void handleChatSend()}
+          disabled={coProducerLoading.edit || coProducerRemaining <= 0}
+          className={primaryButtonClass}
+        >
+          {coProducerLoading.edit ? "Thinking..." : "Send"}
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.16),transparent_30%),radial-gradient(circle_at_right,rgba(14,165,233,0.12),transparent_25%),linear-gradient(180deg,#050912_0%,#0b1120_100%)] px-4 pb-24 pt-8 text-white">
       <div className="mx-auto max-w-6xl">
@@ -870,257 +994,306 @@ export default function CreatePage() {
         </div>
 
         <div className="space-y-6">
-          <section className={sectionClass}>
-            <div className="mb-4">
-              <div className="text-xs font-semibold tracking-[0.2em] text-white">
-                CREATE YOUR TRACK
+          <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
+            <section className={sectionClass}>
+              <div className="mb-4">
+                <div className="text-xs font-semibold tracking-[0.2em] text-white">
+                  CREATE YOUR TRACK
+                </div>
+                <div className="mt-1 text-lg font-semibold text-white">
+                  Start from the main idea
+                </div>
               </div>
-              <div className="mt-1 text-lg font-semibold text-white">
-                Start from the main idea
+
+              <div className="space-y-4">
+                <input
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  className={inputClass}
+                  placeholder="Track title"
+                />
+
+                <textarea
+                  value={idea}
+                  onChange={(event) => setIdea(event.target.value)}
+                  rows={5}
+                  className={`${inputClass} resize-none`}
+                  placeholder="Describe the track idea..."
+                />
+
+                <input
+                  value={references}
+                  onChange={(event) => setReferences(event.target.value)}
+                  className={inputClass}
+                  placeholder="Optional references"
+                />
               </div>
-            </div>
 
-            <div className="space-y-4">
-              <input
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                className={inputClass}
-                placeholder="Track title"
-              />
-
-              <textarea
-                value={idea}
-                onChange={(event) => setIdea(event.target.value)}
-                rows={5}
-                className={`${inputClass} resize-none`}
-                placeholder="Describe the track idea..."
-              />
-
-              <input
-                value={references}
-                onChange={(event) => setReferences(event.target.value)}
-                className={inputClass}
-                placeholder="Optional references"
-              />
-            </div>
-
-            <div className="mt-5 grid gap-4 xl:grid-cols-3">
-              {([
-                ["music", "Music direction", musicDirection, setMusicDirection],
-                ["lyrics", "Lyrics direction", lyricsDirection, setLyricsDirection],
-                ["artwork", "Artwork direction", artworkDirection, setArtworkDirection],
-              ] as Array<
-                [DirectionKey, string, string, Dispatch<SetStateAction<string>>]
-              >).map(([key, label, value, setter]) => (
-                <div key={key} className="rounded-[24px] border border-white/10 bg-black/20 p-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <div className="text-sm font-semibold text-white">{label}</div>
-                    <button
-                      type="button"
-                      onClick={() => void generateDirection(key)}
-                      disabled={directionLoading[key] || coProducerRemaining <= 0}
-                      className={secondaryButtonClass}
-                    >
-                      {directionLoading[key] ? "Improving..." : "Improve"}
-                    </button>
-                  </div>
-
-                  <textarea
-                    value={value}
-                    onChange={(event) => setter(event.target.value)}
-                    rows={7}
-                    className={`${inputClass} resize-none`}
-                  />
-
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {(
-                      key === "music"
-                        ? [
-                            ["More cinematic", "Push the arrangement wider with more atmosphere and lift."],
-                            ["Stronger hook", "Move the topline toward a faster first payoff."],
-                            ["Radio-ready", "Tighten the structure for a cleaner release shape."],
-                          ]
-                        : key === "lyrics"
-                          ? [
-                              ["More emotional", "Increase emotional specificity in the verse and hook."],
-                              ["Improve hook", "Make the chorus line shorter and more repeatable."],
-                              ["Rewrite chorus", "Give the chorus a bigger resolution line."],
-                            ]
-                          : [
-                              ["More premium", "Refine the cover into a cleaner premium streaming-era finish."],
-                              ["More neon", "Add stronger neon reflections and darker skyline contrast."],
-                              ["More cinematic", "Make the scene wider and more atmospheric."],
-                            ]
-                    ).map(([chipLabel, addition]) => (
+              <div className="mt-5 grid gap-4 xl:grid-cols-3">
+                {([
+                  ["music", "Music direction", musicDirection, setMusicDirection],
+                  ["lyrics", "Lyrics direction", lyricsDirection, setLyricsDirection],
+                  ["artwork", "Artwork direction", artworkDirection, setArtworkDirection],
+                ] as Array<
+                  [DirectionKey, string, string, Dispatch<SetStateAction<string>>]
+                >).map(([key, label, value, setter]) => (
+                  <div key={key} className="rounded-[24px] border border-white/10 bg-black/20 p-4">
+                    <div className="mb-3 space-y-3">
+                      <div className="text-sm font-semibold text-white">{label}</div>
                       <button
-                        key={chipLabel}
                         type="button"
-                        onClick={() => void improveDirection(key, addition)}
+                        onClick={() => void generateDirection(key)}
                         disabled={directionLoading[key] || coProducerRemaining <= 0}
-                        className={secondaryButtonClass}
+                        className={`${secondaryButtonClass} w-full justify-center`}
                       >
-                        {chipLabel}
+                        {directionLoading[key] ? "Improving..." : "Improve"}
                       </button>
-                    ))}
+                    </div>
+
+                    <textarea
+                      value={value}
+                      onChange={(event) => setter(event.target.value)}
+                      rows={7}
+                      className={`${inputClass} resize-none`}
+                    />
+
+                    <div className="mt-3 flex flex-col gap-2">
+                      {(
+                        key === "music"
+                          ? [
+                              ["More cinematic", "Push the arrangement wider with more atmosphere and lift."],
+                              ["Stronger hook", "Move the topline toward a faster first payoff."],
+                              ["Radio-ready", "Tighten the structure for a cleaner release shape."],
+                            ]
+                          : key === "lyrics"
+                            ? [
+                                ["More emotional", "Increase emotional specificity in the verse and hook."],
+                                ["Improve hook", "Make the chorus line shorter and more repeatable."],
+                                ["Rewrite chorus", "Give the chorus a bigger resolution line."],
+                              ]
+                            : [
+                                ["More premium", "Refine the cover into a cleaner premium streaming-era finish."],
+                                ["More neon", "Add stronger neon reflections and darker skyline contrast."],
+                                ["More cinematic", "Make the scene wider and more atmospheric."],
+                              ]
+                      ).map(([chipLabel, addition]) => (
+                        <button
+                          key={chipLabel}
+                          type="button"
+                          onClick={() => void improveDirection(key, addition)}
+                          disabled={directionLoading[key] || coProducerRemaining <= 0}
+                          className={`${secondaryButtonClass} w-full justify-center`}
+                        >
+                          {chipLabel}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-5 grid gap-5 xl:grid-cols-2">
+                <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
+                  <div className="mb-4">
+                    <div className="text-xs font-semibold tracking-[0.2em] text-white">
+                      LYRICS
+                    </div>
+                    <div className="mt-1 text-base font-semibold text-white">
+                      Work lyrics separately from voiceover
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <textarea
+                      value={lyricsPrompt}
+                      onChange={(event) => setLyricsPrompt(event.target.value)}
+                      rows={4}
+                      className={`${inputClass} resize-none`}
+                      placeholder="Lyrics prompt"
+                    />
+
+                    <textarea
+                      value={lyricsPreview}
+                      onChange={(event) => setLyricsPreview(event.target.value)}
+                      rows={7}
+                      className={`${inputClass} resize-none`}
+                      placeholder="Generated lyrics preview"
+                    />
+
+                    <div className="flex flex-col gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleLyricsAction("generate")}
+                        disabled={coProducerLoading.lyrics || coProducerRemaining <= 0}
+                        className={`${primaryButtonClass} h-11 w-full justify-center`}
+                      >
+                        {coProducerLoading.lyrics ? "Generating..." : "Generate lyrics"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleLyricsAction("hook")}
+                        disabled={coProducerLoading.lyrics || coProducerRemaining <= 0}
+                        className={`${secondaryButtonClass} h-11 w-full justify-center`}
+                      >
+                        Improve hook
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleLyricsAction("emotional")}
+                        disabled={coProducerLoading.lyrics || coProducerRemaining <= 0}
+                        className={`${secondaryButtonClass} h-11 w-full justify-center`}
+                      >
+                        Make more emotional
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleLyricsAction("chorus")}
+                        disabled={coProducerLoading.lyrics || coProducerRemaining <= 0}
+                        className={`${secondaryButtonClass} h-11 w-full justify-center`}
+                      >
+                        Rewrite chorus
+                      </button>
+                    </div>
                   </div>
                 </div>
-              ))}
-            </div>
 
-            <div className="mt-5 grid gap-5 xl:grid-cols-2">
-              <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
-                <div className="mb-4">
-                  <div className="text-xs font-semibold tracking-[0.2em] text-white">
-                    LYRICS
+                <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
+                  <div className="mb-4">
+                    <div className="text-xs font-semibold tracking-[0.2em] text-white">
+                      VOICEOVER
+                    </div>
+                    <div className="mt-1 text-base font-semibold text-white">
+                      Build spoken narration independently
+                    </div>
                   </div>
-                  <div className="mt-1 text-base font-semibold text-white">
-                    Work lyrics separately from voiceover
-                  </div>
-                </div>
 
-                <div className="space-y-4">
-                  <textarea
-                    value={lyricsPrompt}
-                    onChange={(event) => setLyricsPrompt(event.target.value)}
-                    rows={4}
-                    className={`${inputClass} resize-none`}
-                    placeholder="Lyrics prompt"
-                  />
+                  <div className="space-y-4">
+                    <textarea
+                      value={voiceoverScript}
+                      onChange={(event) => setVoiceoverScript(event.target.value)}
+                      rows={5}
+                      className={`${inputClass} resize-none`}
+                      placeholder="Voiceover script"
+                    />
 
-                  <textarea
-                    value={lyricsPreview}
-                    onChange={(event) => setLyricsPreview(event.target.value)}
-                    rows={7}
-                    className={`${inputClass} resize-none`}
-                    placeholder="Generated lyrics preview"
-                  />
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <label className="block">
+                        <div className="mb-2 text-sm font-medium text-white">Voice style</div>
+                        <select
+                          value={voiceStyle}
+                          onChange={(event) => setVoiceStyle(event.target.value as VoiceStyle)}
+                          className={inputClass}
+                        >
+                          <option value="cinematic">Cinematic</option>
+                          <option value="warm">Warm</option>
+                          <option value="broadcast">Broadcast</option>
+                          <option value="trailer">Trailer</option>
+                          <option value="intimate">Intimate</option>
+                        </select>
+                      </label>
 
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => void handleLyricsAction("generate")}
-                      disabled={coProducerLoading.lyrics || coProducerRemaining <= 0}
-                      className={primaryButtonClass}
-                    >
-                      {coProducerLoading.lyrics ? "Generating..." : "Generate lyrics"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleLyricsAction("hook")}
-                      disabled={coProducerLoading.lyrics || coProducerRemaining <= 0}
-                      className={secondaryButtonClass}
-                    >
-                      Improve hook
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleLyricsAction("emotional")}
-                      disabled={coProducerLoading.lyrics || coProducerRemaining <= 0}
-                      className={secondaryButtonClass}
-                    >
-                      Make more emotional
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleLyricsAction("chorus")}
-                      disabled={coProducerLoading.lyrics || coProducerRemaining <= 0}
-                      className={secondaryButtonClass}
-                    >
-                      Rewrite chorus
-                    </button>
+                      <label className="block">
+                        <div className="mb-2 text-sm font-medium text-white">Delivery</div>
+                        <select
+                          value={voiceDelivery}
+                          onChange={(event) => setVoiceDelivery(event.target.value as VoiceDelivery)}
+                          className={inputClass}
+                        >
+                          <option value="steady">Steady</option>
+                          <option value="dramatic">Dramatic</option>
+                          <option value="soft">Soft</option>
+                          <option value="urgent">Urgent</option>
+                          <option value="measured">Measured</option>
+                        </select>
+                      </label>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleVoiceoverAction("generate")}
+                        disabled={coProducerLoading.voiceover || coProducerRemaining <= 0}
+                        className={`${primaryButtonClass} h-11 w-full justify-center`}
+                      >
+                        {coProducerLoading.voiceover ? "Generating..." : "Generate voiceover"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleVoiceoverAction("warmer")}
+                        disabled={coProducerLoading.voiceover || coProducerRemaining <= 0}
+                        className={`${secondaryButtonClass} h-11 w-full justify-center`}
+                      >
+                        Make warmer
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleVoiceoverAction("dramatic")}
+                        disabled={coProducerLoading.voiceover || coProducerRemaining <= 0}
+                        className={`${secondaryButtonClass} h-11 w-full justify-center`}
+                      >
+                        Make more dramatic
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleVoiceoverAction("shorter")}
+                        disabled={coProducerLoading.voiceover || coProducerRemaining <= 0}
+                        className={`${secondaryButtonClass} h-11 w-full justify-center`}
+                      >
+                        Shorter spoken intro
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
+            </section>
 
-              <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
-                <div className="mb-4">
-                  <div className="text-xs font-semibold tracking-[0.2em] text-white">
-                    VOICEOVER
-                  </div>
-                  <div className="mt-1 text-base font-semibold text-white">
-                    Build spoken narration independently
-                  </div>
+            <section className={sectionClass}>
+              <div className="mb-4">
+                <div className="text-xs font-semibold tracking-[0.2em] text-white">
+                  YOUR ARTIST IDENTITY
                 </div>
-
-                <div className="space-y-4">
-                  <textarea
-                    value={voiceoverScript}
-                    onChange={(event) => setVoiceoverScript(event.target.value)}
-                    rows={5}
-                    className={`${inputClass} resize-none`}
-                    placeholder="Voiceover script"
-                  />
-
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <label className="block">
-                      <div className="mb-2 text-sm font-medium text-white">Voice style</div>
-                      <select
-                        value={voiceStyle}
-                        onChange={(event) => setVoiceStyle(event.target.value as VoiceStyle)}
-                        className={inputClass}
-                      >
-                        <option value="cinematic">Cinematic</option>
-                        <option value="warm">Warm</option>
-                        <option value="broadcast">Broadcast</option>
-                        <option value="trailer">Trailer</option>
-                        <option value="intimate">Intimate</option>
-                      </select>
-                    </label>
-
-                    <label className="block">
-                      <div className="mb-2 text-sm font-medium text-white">Delivery</div>
-                      <select
-                        value={voiceDelivery}
-                        onChange={(event) => setVoiceDelivery(event.target.value as VoiceDelivery)}
-                        className={inputClass}
-                      >
-                        <option value="steady">Steady</option>
-                        <option value="dramatic">Dramatic</option>
-                        <option value="soft">Soft</option>
-                        <option value="urgent">Urgent</option>
-                        <option value="measured">Measured</option>
-                      </select>
-                    </label>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => void handleVoiceoverAction("generate")}
-                      disabled={coProducerLoading.voiceover || coProducerRemaining <= 0}
-                      className={primaryButtonClass}
-                    >
-                      {coProducerLoading.voiceover ? "Generating..." : "Generate voiceover"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleVoiceoverAction("warmer")}
-                      disabled={coProducerLoading.voiceover || coProducerRemaining <= 0}
-                      className={secondaryButtonClass}
-                    >
-                      Make warmer
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleVoiceoverAction("dramatic")}
-                      disabled={coProducerLoading.voiceover || coProducerRemaining <= 0}
-                      className={secondaryButtonClass}
-                    >
-                      Make more dramatic
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleVoiceoverAction("shorter")}
-                      disabled={coProducerLoading.voiceover || coProducerRemaining <= 0}
-                      className={secondaryButtonClass}
-                    >
-                      Shorter spoken intro
-                    </button>
-                  </div>
+                <div className="mt-1 text-lg font-semibold text-white">
+                  Create your artist identity
                 </div>
               </div>
-            </div>
-          </section>
+
+              <div className="space-y-4">
+                <div className="flex items-center gap-4 rounded-[24px] border border-white/10 bg-black/20 p-4">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 text-sm font-semibold text-white">
+                    AI
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold text-white">AI Artist</div>
+                    <div className="mt-1 text-sm text-white">
+                      Save your artist voice and identity once, then reuse it across tracks.
+                    </div>
+                  </div>
+                </div>
+
+                <button type="button" className={`${secondaryButtonClass} w-full justify-center py-3`}>
+                  Create or add your profile picture
+                </button>
+
+                <textarea
+                  rows={4}
+                  className={`${inputClass} resize-none`}
+                  placeholder="Describe your artist identity or visual style..."
+                />
+
+                <div className="flex flex-col gap-3">
+                  {["Record your voice", "Generate artist voice", "Edit identity"].map((label) => (
+                    <button
+                      key={label}
+                      type="button"
+                      className={`${toolButtonClass} h-11 w-full justify-center px-4 py-2`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </section>
+          </div>
 
           <section className={sectionClass}>
             <div className="mb-4">
@@ -1130,6 +1303,10 @@ export default function CreatePage() {
               <div className="mt-1 text-lg font-semibold text-white">
                 Mix the layers like a small control desk
               </div>
+            </div>
+
+            <div className="mb-4 text-sm text-white/80">
+              Currently editing: {title.trim() ? `${title} · ${activeVersion.label}` : "New track draft"}
             </div>
 
             <div className="rounded-[24px] border border-sky-200/18 bg-black/18 p-4">
@@ -1199,94 +1376,7 @@ export default function CreatePage() {
               </div>
             </div>
 
-            <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
-              <div className="max-h-[300px] space-y-3 overflow-y-auto pr-1">
-                {chatMessages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`max-w-[92%] rounded-2xl px-4 py-3 text-sm ${
-                      message.role === "ai"
-                        ? "border border-sky-300/20 bg-sky-400/10 text-white/88"
-                        : "ml-auto border border-white/10 bg-white/8 text-white"
-                    }`}
-                  >
-                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
-                      {message.role === "ai" ? "Co-producer" : "You"}
-                    </div>
-                    <div>{message.text}</div>
-                    {message.canApply ? (
-                      <button
-                        type="button"
-                        onClick={() => applyAiAdviceToTrack()}
-                        disabled={!latestAiEditAdvice}
-                        className="mt-3 inline-flex cursor-pointer items-center justify-center rounded-full bg-sky-400 px-4 py-2 text-xs font-semibold text-white ring-1 ring-sky-200/60 shadow-[0_0_18px_rgba(56,189,248,0.22)] transition hover:bg-sky-300"
-                      >
-                        Apply to Track & Create Version
-                      </button>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-
-              {coProducerError ? (
-                <div className="mt-4 rounded-2xl border border-rose-300/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
-                  {coProducerError}
-                </div>
-              ) : null}
-
-              {latestAiEditAdvice ? (
-                <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <div className="space-y-3 text-sm text-white">
-                    <div>
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
-                        Change
-                      </div>
-                      <div className="mt-1 whitespace-pre-wrap">
-                        {latestAiEditAdvice.change || "No change summary returned."}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
-                        Impact
-                      </div>
-                      <div className="mt-1 whitespace-pre-wrap">
-                        {latestAiEditAdvice.impact || "No impact summary returned."}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
-                        Final Direction Preview
-                      </div>
-                      <div className="mt-1 whitespace-pre-wrap rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-white">
-                        {latestAiEditAdvice.finalDirection || "No rewritten direction returned."}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="mt-4 flex gap-3">
-                <input
-                  value={chatInput}
-                  onChange={(event) => setChatInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key !== "Enter") return;
-                    event.preventDefault();
-                    handleChatSend();
-                  }}
-                  className={inputClass}
-                  placeholder="Describe what you want to improve..."
-                />
-                <button
-                  type="button"
-                  onClick={() => void handleChatSend()}
-                  disabled={coProducerLoading.edit || coProducerRemaining <= 0}
-                  className={primaryButtonClass}
-                >
-                  {coProducerLoading.edit ? "Thinking..." : "Send"}
-                </button>
-              </div>
-            </div>
+              {coProducerPanelContent}
           </section>
 
           <section className={sectionClass}>
@@ -1320,13 +1410,13 @@ export default function CreatePage() {
                 version branch.
               </div>
 
-              <div className="grid gap-3">
+              <div className="mt-4 grid gap-3 lg:grid-cols-3">
                 {["Instrumental version", "Create remix", "Create new version"].map((label) => (
                   <button
                     key={label}
                     type="button"
                     onClick={() => createVersion(label, "imported")}
-                    className={toolButtonClass}
+                    className={`${toolButtonClass} w-full px-4 py-2`}
                   >
                     {label}
                   </button>
@@ -1392,20 +1482,20 @@ export default function CreatePage() {
                 </div>
               </div>
 
-              <div className="grid gap-3">
+              <div className="mt-4 grid gap-3 lg:grid-cols-3">
                 {["Instrumental version", "Create remix", "Create new version"].map((label) => (
                   <button
                     key={label}
                     type="button"
                     onClick={() => createVersion(label, "generated")}
-                    className={`w-full ${toolButtonClass}`}
+                    className={`${toolButtonClass} w-full px-4 py-2`}
                   >
                     {label}
                   </button>
                 ))}
               </div>
 
-              <div className="grid gap-3">
+              <div className="grid gap-3 lg:grid-cols-3">
                 {[
                   "Submit to SoundioX YouTube",
                   "Export for Spotify",
@@ -1415,7 +1505,7 @@ export default function CreatePage() {
                     key={label}
                     type="button"
                     onClick={() => handleWorkspaceAction(label)}
-                    className={`w-full ${toolButtonClass}`}
+                    className={`${toolButtonClass} w-full px-4 py-2`}
                   >
                     {label}
                   </button>
@@ -1439,7 +1529,7 @@ export default function CreatePage() {
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
               {([
                 ["instrumental", "Instrumental"],
                 ["auto-lyrics", "Auto lyrics"],
@@ -1455,7 +1545,7 @@ export default function CreatePage() {
                     key={value}
                     type="button"
                     onClick={() => setVocalMode(value)}
-                    className={`inline-flex cursor-pointer items-center justify-center rounded-full px-4 py-2.5 text-sm font-medium transition ${
+                    className={`inline-flex w-full cursor-pointer items-center justify-center rounded-full px-4 py-2.5 text-sm font-medium transition ${
                       isActive
                         ? "bg-sky-400 text-white ring-1 ring-sky-200/60 shadow-[0_0_18px_rgba(56,189,248,0.25)]"
                         : "border border-white/12 bg-white/7 text-white/80 hover:bg-white/12"
@@ -1474,10 +1564,17 @@ export default function CreatePage() {
                 <div className="text-xs font-semibold tracking-[0.2em] text-white">
                   GENERATE
                 </div>
-                <div className="mt-1 text-lg font-semibold text-white">
-                  Run a mock generation from the current direction
-                </div>
+              <div className="mt-1 text-lg font-semibold text-white">
+                Run a mock generation from the current direction
               </div>
+              <div className="mt-2 text-sm text-white">
+                Generation provider is not connected yet. This preview only validates the Studio
+                direction.
+              </div>
+              <div className="mt-1 text-xs text-white">
+                Provider guard: plan limits and paid credits will be checked before real generation.
+              </div>
+            </div>
 
               <button
                 type="button"
@@ -1488,6 +1585,12 @@ export default function CreatePage() {
                 {studioPhase === "loading" ? "Generating..." : "Generate"}
               </button>
             </div>
+
+            {generateError ? (
+              <div className="mt-4 rounded-2xl border border-rose-300/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
+                {generateError}
+              </div>
+            ) : null}
 
             {studioPhase !== "idle" ? (
               <div className="mt-5 grid gap-3 md:grid-cols-3">

@@ -59,6 +59,7 @@ function buildModeInstructions(mode: CoProducerMode) {
   return [
     "You are SoundioX Co-Producer.",
     "Give practical studio edit advice based on the current direction and user request.",
+    "Do not write full lyrics in edit mode.",
     "Maximum 80 words.",
     "Output only this structure:",
     "CHANGE:",
@@ -102,6 +103,55 @@ function extractOutputText(payload: any) {
   return "";
 }
 
+function inferMode(requestedMode: CoProducerMode | undefined, userRequest: string) {
+  const normalized = userRequest.trim().toLowerCase();
+
+  const asksForLyrics =
+    /\blyrics?\b/.test(normalized) ||
+    /\bwrite lyrics\b/.test(normalized) ||
+    /\bsong words\b/.test(normalized) ||
+    /\bverse\b/.test(normalized) ||
+    /\bchorus lyrics\b/.test(normalized);
+
+  const asksForArtwork =
+    /\bcover\b/.test(normalized) ||
+    /\bartwork\b/.test(normalized) ||
+    /\balbum art\b/.test(normalized) ||
+    /\bimage\b/.test(normalized);
+
+  const asksForVoiceover =
+    /\bvoiceover\b/.test(normalized) ||
+    /\bspoken intro\b/.test(normalized) ||
+    /\bnarration\b/.test(normalized);
+
+  const asksForEdit =
+    /\bmake\b/.test(normalized) ||
+    /\bmore\b/.test(normalized) ||
+    /\bbigger\b/.test(normalized) ||
+    /\bstronger\b/.test(normalized) ||
+    /\bshorter\b/.test(normalized) ||
+    /\btighter\b/.test(normalized) ||
+    /\bcleaner\b/.test(normalized) ||
+    /\benergy\b/.test(normalized) ||
+    /\bintro\b/.test(normalized) ||
+    /\bchorus\b/.test(normalized) ||
+    /\bvocals?\b/.test(normalized) ||
+    /\bdrop\b/.test(normalized) ||
+    /\bmix\b/.test(normalized) ||
+    /\bedit\b/.test(normalized);
+
+  if (asksForLyrics) return "lyrics";
+  if (asksForArtwork) return "artwork";
+  if (asksForVoiceover) return "voiceover";
+  if (asksForEdit) return "edit";
+
+  if (requestedMode && ["music", "lyrics", "artwork", "voiceover", "edit"].includes(requestedMode)) {
+    return requestedMode;
+  }
+
+  return "music";
+}
+
 export async function POST(request: NextRequest) {
   try {
     const apiKey = process.env.OPENAI_API_KEY;
@@ -111,16 +161,12 @@ export async function POST(request: NextRequest) {
     }
 
     const body = (await request.json()) as RequestBody;
-    const mode = body.mode;
     const idea = body.idea?.trim() || "";
     const currentDirection = body.currentDirection?.trim() || "";
     const userRequest = body.userRequest?.trim() || "";
+    const mode = inferMode(body.mode, userRequest);
     const remaining =
       typeof body.remaining === "number" ? Math.max(0, Math.floor(body.remaining)) : 0;
-
-    if (!mode || !["music", "lyrics", "artwork", "voiceover", "edit"].includes(mode)) {
-      return NextResponse.json({ error: "Invalid mode" }, { status: 400 });
-    }
 
     const instructions = buildModeInstructions(mode);
     const prompt = [
