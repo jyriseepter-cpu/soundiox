@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
 // Set GENERATION_PROVIDER=runpod or modal in env to switch providers
+// Set MODAL_GENERATE_TRACK_URL=<Modal deployed endpoint URL> to forward modal requests
 const DEFAULT_PROVIDER = process.env.GENERATION_PROVIDER || "mock";
+const MODAL_GENERATE_TRACK_URL = process.env.MODAL_GENERATE_TRACK_URL;
 
 type GenerateTrackBody = {
   title?: string;
@@ -70,21 +72,52 @@ async function handleModalGeneration(payload: {
   vocalMode: string;
   artistIdentity?: GenerateTrackBody["artistIdentity"];
 }) {
-  console.log("MODAL GENERATION (stub)");
+  if (!MODAL_GENERATE_TRACK_URL) {
+    return handleModalBenchmark(payload);
+  }
 
-  return {
-    success: true,
-    provider: "modal",
-    stub: true,
-    message: "Modal provider not connected yet",
-    track: {
-      id: `mock_${Date.now()}`,
-      title: payload.title,
-      duration: 180,
-      status: "generated",
-      previewUrl: null,
-    },
-  };
+  const start = Date.now();
+  console.log("MODAL GENERATION START");
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10 * 60 * 1000);
+
+  try {
+    const response = await fetch(MODAL_GENERATE_TRACK_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: payload.title,
+        finalDirection: payload.finalDirection,
+        vocalMode: payload.vocalMode,
+      }),
+      signal: controller.signal,
+    });
+
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(
+        result?.error || `Modal generate-track request failed with status ${response.status}`
+      );
+    }
+
+    const durationMs = Date.now() - start;
+    console.log("MODAL GENERATION END");
+    console.log("DURATION:", durationMs / 1000, "sec");
+
+    return result;
+  } catch (error: any) {
+    if (error?.name === "AbortError") {
+      throw new Error("Modal generate-track request timed out after 10 minutes");
+    }
+
+    throw new Error(error?.message || "Modal generate-track request failed");
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 // Modal benchmark mode simulates generation to measure flow before real GPU integration
@@ -167,7 +200,7 @@ export async function POST(request: NextRequest) {
     let result;
 
     if (provider === "modal") {
-      result = await handleModalBenchmark(payload);
+      result = await handleModalGeneration(payload);
     } else if (provider === "runpod") {
       result = await handleRunpodGeneration(payload);
     } else {
