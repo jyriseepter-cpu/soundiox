@@ -1,5 +1,4 @@
-FROM runpod/pytorch:2.1.0-py3.10-cuda12.1.1-runtime
-
+FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
 WORKDIR /app
 
 COPY worker/musicgen/requirements.txt /app/requirements.txt
