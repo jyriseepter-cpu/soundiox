@@ -2,12 +2,13 @@ import runpod
 import uuid
 import requests
 
-SUPABASE_UPLOAD_URL = "PUT_YOUR_SUPABASE_UPLOAD_URL_HERE"
-SUPABASE_KEY = "PUT_YOUR_SERVICE_ROLE_KEY_HERE"
-
 
 def handler(event):
     import os
+
+    supabase_url = os.environ["SUPABASE_URL"].rstrip("/")
+    supabase_key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+    supabase_bucket = os.environ.get("SUPABASE_BUCKET", "tracks")
 
     file_path = f"/tmp/{uuid.uuid4()}.wav"
 
@@ -17,20 +18,27 @@ def handler(event):
 
     # upload to Supabase
     file_name = file_path.split("/")[-1]
-    upload_url = f"{SUPABASE_UPLOAD_URL}/{file_name}"
+    upload_url = (
+        f"{supabase_url}/storage/v1/object/"
+        f"{supabase_bucket}/ai-generated/{file_name}"
+    )
 
     with open(file_path, "rb") as f:
         requests.put(
             upload_url,
             data=f,
             headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {SUPABASE_KEY}",
-                "Content-Type": "audio/wav"
+                "apikey": supabase_key,
+                "Authorization": f"Bearer {supabase_key}",
+                "Content-Type": "audio/wav",
+                "x-upsert": "true",
             }
         )
 
-    public_url = f"{SUPABASE_UPLOAD_URL}/public/{file_name}"
+    public_url = (
+        f"{supabase_url}/storage/v1/object/public/"
+        f"{supabase_bucket}/ai-generated/{file_name}"
+    )
 
     return {
         "success": True,
