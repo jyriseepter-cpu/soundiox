@@ -9,9 +9,9 @@ from transformers import AutoProcessor, MusicgenForConditionalGeneration
 
 MODEL_NAME = "facebook/musicgen-small"
 OUTPUT_DIR = "/tmp"
-MAX_NEW_TOKENS = 320
-GUIDANCE_SCALE = 3.0
-TEMPERATURE = 1.0
+MAX_NEW_TOKENS = 128
+GUIDANCE_SCALE = 2.0
+TEMPERATURE = 0.9
 
 _processor = None
 _model = None
@@ -24,6 +24,9 @@ def _load_musicgen():
         print("LOAD MODEL START", flush=True)
         _processor = AutoProcessor.from_pretrained(MODEL_NAME)
         _model = MusicgenForConditionalGeneration.from_pretrained(MODEL_NAME)
+        _device = "cuda" if torch.cuda.is_available() else "cpu"
+        print("MODEL DEVICE:", _device, flush=True)
+        _model = _model.to(_device)
         _model.eval()
         print("LOAD MODEL DONE", flush=True)
 
@@ -51,11 +54,13 @@ def handler(event):
 
         stage = "generation"
         print("GENERATION START", flush=True)
+        print("GENERATE CONFIG:", MAX_NEW_TOKENS, GUIDANCE_SCALE, TEMPERATURE, flush=True)
         inputs = processor(
             text=[prompt],
             padding=True,
             return_tensors="pt",
         )
+        inputs = {key: value.to(model.device) for key, value in inputs.items()}
 
         with torch.no_grad():
             wav = model.generate(
