@@ -44,6 +44,7 @@ type VersionRecord = {
   source: "generated" | "imported";
   mixer: MixerState;
   dynamics: DynamicsState;
+  audioUrl?: string | null;
 };
 
 const sectionClass =
@@ -57,6 +58,7 @@ const secondaryButtonClass =
 const toolButtonClass =
   "inline-flex cursor-pointer items-center justify-center rounded-2xl border border-white/12 bg-white/7 px-4 py-3 text-sm font-medium text-white/86 transition hover:bg-white/12";
 const MAX_CO_PRODUCER_ACTIONS = 5;
+const GENERATE_TIMEOUT_MS = 3 * 60 * 1000;
 
 const initialMixer: MixerState = {
   drums: 72,
@@ -397,14 +399,15 @@ export default function CreatePage() {
   const [workspaceStatus, setWorkspaceStatus] = useState("No export or submission action triggered yet.");
   const [latestAiEditAdvice, setLatestAiEditAdvice] = useState<LatestAiEditAdvice>(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [generateStatus, setGenerateStatus] = useState<string | null>(null);
+  const [generateJobId, setGenerateJobId] = useState<string | null>(null);
+  const [generateStartedAt, setGenerateStartedAt] = useState<number | null>(null);
 
-  const timersRef = useRef<number[]>([]);
-
-  useEffect(() => {
-    return () => {
-      timersRef.current.forEach((timer) => window.clearTimeout(timer));
-    };
-  }, []);
+  const activeGenerateJobIdRef = useRef<string | null>(null);
+  const activeGenerateStartedAtRef = useRef<number | null>(null);
+  const activeGenerateTokenRef = useRef<string | null>(null);
+  const generatePollTimeoutRef = useRef<number | null>(null);
+  const generationDeadlineRef = useRef<number | null>(null);
 
   useEffect(() => {
     setFinalDirection(musicDirection);
@@ -413,6 +416,14 @@ export default function CreatePage() {
   useEffect(() => {
     setGenerateError(null);
   }, [finalDirection, idea, title, vocalMode]);
+
+  useEffect(() => {
+    return () => {
+      if (generatePollTimeoutRef.current) {
+        window.clearTimeout(generatePollTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const activeVersion = useMemo(
     () => versions.find((version) => version.id === activeVersionId) ?? versions[0],
@@ -428,11 +439,6 @@ export default function CreatePage() {
     setMixer(activeVersion.mixer);
     setDynamics(activeVersion.dynamics);
   }, [activeVersion]);
-
-  function queue(delayMs: number, callback: () => void) {
-    const timer = window.setTimeout(callback, delayMs);
-    timersRef.current.push(timer);
-  }
 
   function setDirectionState(key: DirectionKey, next: boolean) {
     setDirectionLoading((current) => ({ ...current, [key]: next }));
@@ -670,6 +676,227 @@ export default function CreatePage() {
     }
   }
 
+  function stringifyDetails(value: unknown) {
+    if (typeof value === "string") return value;
+
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+
+  function extractApiError(payload: any, fallback: string) {
+    if (typeof payload?.error === "string" && payload.error.trim()) return payload.error.trim();
+    if (typeof payload?.message === "string" && payload.message.trim()) return payload.message.trim();
+    if (typeof payload?.details === "string" && payload.details.trim()) return payload.details.trim();
+    if (typeof payload?.runpod?.error === "string" && payload.runpod.error.trim()) {
+      return payload.runpod.error.trim();
+    }
+    if (payload?.runpod) return stringifyDetails(payload.runpod);
+    if (payload) return stringifyDetails(payload);
+    return fallback;
+  }
+
+  function createGenerationToken() {
+    return `${Date.now()}-${crypto.randomUUID()}`;
+  }
+
+  function isActiveGeneration(jobId: string | null, startedAt: number, token: string) {
+    return (
+      activeGenerateJobIdRef.current === jobId &&
+      activeGenerateStartedAtRef.current === startedAt &&
+      activeGenerateTokenRef.current === token
+    );
+  }
+
+  function stopGenerationPolling() {
+    if (generatePollTimeoutRef.current) {
+      window.clearTimeout(generatePollTimeoutRef.current);
+      generatePollTimeoutRef.current = null;
+    }
+    generationDeadlineRef.current = null;
+  }
+
+  function clearActiveGenerationRefs() {
+    activeGenerateJobIdRef.current = null;
+    activeGenerateStartedAtRef.current = null;
+    activeGenerateTokenRef.current = null;
+  }
+
+  async function cancelActiveGeneration(jobId: string) {
+    try {
+      const response = await fetch("/api/generate-track/cancel", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ jobId }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      return {
+        cancelled: Boolean(payload?.cancelled),
+        available: payload?.available !== false,
+        message: extractApiError(
+          payload,
+          payload?.cancelled
+            ? "Generation timed out and RunPod job was cancelled."
+            : "Generation timed out. RunPod cancellation was not available."
+        ),
+        details:
+          typeof payload?.details === "string" && payload.details.trim()
+            ? payload.details.trim()
+            : payload?.runpod
+              ? stringifyDetails(payload.runpod)
+              : null,
+      };
+    } catch {
+      return {
+        cancelled: false,
+        available: false,
+        message: "Generation timed out. RunPod cancellation was not available.",
+        details: null,
+      };
+    }
+  }
+
+  async function pollGenerateStatus(
+    jobId: string,
+    trackTitle: string,
+    startedAt: number,
+    token: string
+  ) {
+    if (!isActiveGeneration(jobId, startedAt, token)) {
+      return;
+    }
+
+    if (generationDeadlineRef.current && Date.now() >= generationDeadlineRef.current) {
+      stopGenerationPolling();
+      const cancellation = await cancelActiveGeneration(jobId);
+      if (!isActiveGeneration(jobId, startedAt, token)) {
+        return;
+      }
+      clearActiveGenerationRefs();
+      setStudioPhase("idle");
+      setGenerateStatus(cancellation.message);
+      setGenerateError(
+        cancellation.details ? `${cancellation.message} ${cancellation.details}` : cancellation.message
+      );
+      setGenerateJobId(null);
+      setGenerateStartedAt(null);
+      setStepState({
+        track: false,
+        vocals: false,
+        artwork: false,
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `/api/generate-track/status?jobId=${encodeURIComponent(jobId)}&title=${encodeURIComponent(trackTitle)}&startedAt=${startedAt}`,
+        {
+          cache: "no-store",
+        }
+      );
+      const payload = await response.json().catch(() => null);
+
+      if (!isActiveGeneration(jobId, startedAt, token)) {
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(extractApiError(payload, "RunPod status request failed"));
+      }
+
+      if (payload?.status === "IN_QUEUE") {
+        if (!isActiveGeneration(jobId, startedAt, token)) {
+          return;
+        }
+        setGenerateStatus("Queued in RunPod...");
+        generatePollTimeoutRef.current = window.setTimeout(() => {
+          void pollGenerateStatus(jobId, trackTitle, startedAt, token);
+        }, 3000);
+        return;
+      }
+
+      if (payload?.status === "IN_PROGRESS") {
+        if (!isActiveGeneration(jobId, startedAt, token)) {
+          return;
+        }
+        setGenerateStatus("RunPod is generating your track...");
+        setStepState({
+          track: true,
+          vocals: vocalMode !== "instrumental",
+          artwork: false,
+        });
+        generatePollTimeoutRef.current = window.setTimeout(() => {
+          void pollGenerateStatus(jobId, trackTitle, startedAt, token);
+        }, 3000);
+        return;
+      }
+
+      if (payload?.status === "COMPLETED" && payload?.track?.audioUrl) {
+        if (!isActiveGeneration(jobId, startedAt, token)) {
+          return;
+        }
+        stopGenerationPolling();
+        clearActiveGenerationRefs();
+        setStudioPhase("complete");
+        setGenerateStatus("Generation completed");
+        setGenerateJobId(null);
+        setGenerateStartedAt(null);
+        setStepState({
+          track: false,
+          vocals: false,
+          artwork: false,
+        });
+
+        const nextNumber = versions.length + 1;
+        const nextId = `version-${nextNumber}`;
+        const nextVersion: VersionRecord = {
+          id: nextId,
+          label: `Version ${nextNumber}`,
+          title: payload.track.title || trackTitle,
+          note: `Generated from RunPod async job ${jobId}. ${mixerSummary}. Original remains intact.`,
+          source: "generated",
+          mixer: { ...mixer },
+          dynamics: { ...dynamics },
+          audioUrl: payload.track.audioUrl,
+        };
+
+        setVersions((current) => [...current, nextVersion]);
+        setActiveVersionId(nextId);
+        return;
+      }
+
+      throw new Error(extractApiError(payload, "Unexpected RunPod status response"));
+    } catch (error: any) {
+      if (!isActiveGeneration(jobId, startedAt, token)) {
+        return;
+      }
+      stopGenerationPolling();
+      clearActiveGenerationRefs();
+      setStudioPhase("idle");
+      setGenerateJobId(null);
+      setGenerateStartedAt(null);
+      setStepState({
+        track: false,
+        vocals: false,
+        artwork: false,
+      });
+      setGenerateError(error?.message || "Generation status check failed");
+      setGenerateStatus(
+        error?.message === "Generation timed out and RunPod job was cancelled." ||
+          error?.message === "Generation timed out. RunPod cancellation was not available."
+          ? error.message
+          : null
+      );
+    }
+  }
+
   async function handleGenerate() {
     const trimmedTitle = title.trim();
     const trimmedIdea = idea.trim();
@@ -696,6 +923,27 @@ export default function CreatePage() {
     }
 
     setGenerateError(null);
+    setGenerateStatus("Starting generation...");
+    const previousJobId = activeGenerateJobIdRef.current || generateJobId;
+    stopGenerationPolling();
+    clearActiveGenerationRefs();
+    setGenerateJobId(null);
+    setGenerateStartedAt(null);
+    if (previousJobId) {
+      await cancelActiveGeneration(previousJobId);
+    }
+    setStudioPhase("loading");
+    setStepState({
+      track: true,
+      vocals: false,
+      artwork: false,
+    });
+
+    const startedAt = Date.now();
+    const token = createGenerationToken();
+    activeGenerateStartedAtRef.current = startedAt;
+    activeGenerateTokenRef.current = token;
+    setGenerateStartedAt(startedAt);
 
     try {
       const response = await fetch("/api/generate-track", {
@@ -707,56 +955,55 @@ export default function CreatePage() {
           title: trimmedTitle,
           finalDirection: trimmedFinalDirection,
           vocalMode,
+          clientGenerationToken: token,
         }),
       });
 
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
-        throw new Error(payload?.error || "Mock generation request failed");
+        throw new Error(extractApiError(payload, "RunPod generation start failed"));
       }
 
-      console.log("generate-track mock response", payload);
+      const jobId = typeof payload?.jobId === "string" ? payload.jobId.trim() : "";
+      const status = typeof payload?.status === "string" ? payload.status.trim() : "";
+
+      if (
+        activeGenerateStartedAtRef.current !== startedAt ||
+        activeGenerateTokenRef.current !== token
+      ) {
+        return;
+      }
+
+      if (!jobId || !status) {
+        throw new Error("RunPod start response missing job id");
+      }
+
+      activeGenerateJobIdRef.current = jobId;
+      setGenerateJobId(jobId);
+      setGenerateStatus("Queued in RunPod...");
+      generationDeadlineRef.current = startedAt + GENERATE_TIMEOUT_MS;
+      void pollGenerateStatus(jobId, trimmedTitle, startedAt, token);
     } catch (error: any) {
-      setGenerateError(error?.message || "Mock generation request failed");
-      return;
-    }
-
-    timersRef.current.forEach((timer) => window.clearTimeout(timer));
-    timersRef.current = [];
-
-    setStudioPhase("loading");
-    setActiveVersionId("original");
-    setStepState({
-      track: true,
-      vocals: false,
-      artwork: false,
-    });
-
-    queue(900, () => {
-      setStepState({
-        track: true,
-        vocals: vocalMode !== "instrumental",
-        artwork: false,
-      });
-    });
-
-    queue(1800, () => {
-      setStepState({
-        track: true,
-        vocals: vocalMode !== "instrumental",
-        artwork: true,
-      });
-    });
-
-    queue(3200, () => {
+      if (
+        activeGenerateStartedAtRef.current !== startedAt ||
+        activeGenerateTokenRef.current !== token
+      ) {
+        return;
+      }
+      stopGenerationPolling();
+      clearActiveGenerationRefs();
+      setStudioPhase("idle");
       setStepState({
         track: false,
         vocals: false,
         artwork: false,
       });
-      setStudioPhase("complete");
-    });
+      setGenerateError(error?.message || "RunPod generation start failed");
+      setGenerateStatus(null);
+      setGenerateStartedAt(null);
+      setGenerateJobId(null);
+    }
   }
 
   function updateFader(key: FaderKey, value: number) {
@@ -1465,7 +1712,7 @@ export default function CreatePage() {
               <div className="rounded-[24px] border border-white/10 bg-[linear-gradient(135deg,rgba(56,189,248,0.14),rgba(255,255,255,0.05))] p-4">
                 <div className="flex items-start gap-4">
                   <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-sky-400 text-lg font-semibold text-white ring-1 ring-sky-200/60 shadow-[0_0_18px_rgba(56,189,248,0.25)]">
-                    ▶
+                    {activeVersion.audioUrl ? "♫" : "▶"}
                   </div>
 
                   <div className="min-w-0 flex-1">
@@ -1504,6 +1751,17 @@ export default function CreatePage() {
                       </div>
                       <div className="mt-2 text-sm text-white">{mixerSummary}</div>
                     </div>
+
+                    {activeVersion.audioUrl ? (
+                      <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
+                        <div className="text-[11px] font-semibold tracking-[0.18em] text-white">
+                          AUDIO PREVIEW
+                        </div>
+                        <audio className="mt-3 w-full" controls src={activeVersion.audioUrl}>
+                          Your browser does not support audio playback.
+                        </audio>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -1591,14 +1849,14 @@ export default function CreatePage() {
                   GENERATE
                 </div>
               <div className="mt-1 text-lg font-semibold text-white">
-                Run a mock generation from the current direction
+                Queue a short Studio test generation
               </div>
               <div className="mt-2 text-sm text-white">
-                Generation provider is not connected yet. This preview only validates the Studio
-                direction.
+                Generation runs through RunPod asynchronously and returns the finished audio when
+                the job completes.
               </div>
               <div className="mt-1 text-xs text-white">
-                Provider guard: plan limits and paid credits will be checked before real generation.
+                Short 15s test mode. The current job stays exclusive until it completes, fails, or times out.
               </div>
             </div>
 
@@ -1608,13 +1866,24 @@ export default function CreatePage() {
                 disabled={!idea.trim() || studioPhase === "loading"}
                 className={primaryButtonClass}
               >
-                {studioPhase === "loading" ? "Generating..." : "Generate"}
+                {studioPhase === "loading"
+                  ? generateStatus || "Starting generation..."
+                  : "Generate"}
               </button>
             </div>
 
             {generateError ? (
               <div className="mt-4 rounded-2xl border border-rose-300/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
                 {generateError}
+              </div>
+            ) : null}
+
+            {generateStatus && !generateError ? (
+              <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white">
+                {generateStatus}
+                {generateJobId ? (
+                  <span className="mt-1 block text-xs text-white">RunPod job: {generateJobId}</span>
+                ) : null}
               </div>
             ) : null}
 

@@ -1,14 +1,15 @@
+import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 
-// Set GENERATION_PROVIDER=runpod or modal in env to switch providers
-// Set MODAL_GENERATE_TRACK_URL=<Modal deployed endpoint URL> to forward modal requests
-const DEFAULT_PROVIDER = process.env.GENERATION_PROVIDER || "mock";
-const MODAL_GENERATE_TRACK_URL = process.env.MODAL_GENERATE_TRACK_URL;
+const RUNPOD_GENERATE_TRACK_URL = process.env.RUNPOD_GENERATE_TRACK_URL;
+const RUNPOD_API_KEY = process.env.RUNPOD_API_KEY;
+const RUNPOD_START_TIMEOUT_MS = 120 * 1000;
 
 type GenerateTrackBody = {
   title?: string;
   finalDirection?: string;
   vocalMode?: string;
+  clientGenerationToken?: string;
   artistIdentity?: {
     voiceType?: string;
     profileId?: string;
@@ -17,150 +18,74 @@ type GenerateTrackBody = {
 
 export const runtime = "nodejs";
 
-async function handleMockGeneration(payload: {
-  title: string;
-  finalDirection: string;
-  vocalMode: string;
-  artistIdentity?: GenerateTrackBody["artistIdentity"];
-}) {
-  console.log("MOCK GENERATION");
+type GenerationLock = {
+  expiresAt: number;
+  resultPromise: Promise<{
+    jobId: string;
+    status: string;
+  }>;
+};
 
-  return {
-    success: true,
-    provider: "mock",
-    mock: true,
-    track: {
-      id: `mock_${Date.now()}`,
-      title: payload.title,
-      duration: 180,
-      status: "generated",
-      previewUrl: null,
-    },
-    input: {
-      finalDirection: payload.finalDirection,
-      vocalMode: payload.vocalMode,
-    },
-  };
-}
+const LOCK_TTL_MS = 3 * 60 * 1000;
+const generationLocks = new Map<string, GenerationLock>();
 
-async function handleRunpodGeneration(payload: {
-  title: string;
-  finalDirection: string;
-  vocalMode: string;
-  artistIdentity?: GenerateTrackBody["artistIdentity"];
-}) {
-  console.log("RUNPOD GENERATION (stub)");
-
-  return {
-    success: true,
-    provider: "runpod",
-    stub: true,
-    message: "RunPod provider not connected yet",
-    track: {
-      id: `mock_${Date.now()}`,
-      title: payload.title,
-      duration: 180,
-      status: "generated",
-      previewUrl: null,
-    },
-  };
-}
-
-async function handleModalGeneration(payload: {
-  title: string;
-  finalDirection: string;
-  vocalMode: string;
-  artistIdentity?: GenerateTrackBody["artistIdentity"];
-}) {
-  if (!MODAL_GENERATE_TRACK_URL) {
-    return handleModalBenchmark(payload);
+function serializeError(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
   }
 
-  const start = Date.now();
-  console.log("MODAL GENERATION START");
+  return {
+    message: String(error),
+  };
+}
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10 * 60 * 1000);
+function getRunpodRunUrl() {
+  if (!RUNPOD_GENERATE_TRACK_URL) return "";
 
-  try {
-    const response = await fetch(MODAL_GENERATE_TRACK_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        title: payload.title,
-        finalDirection: payload.finalDirection,
-        vocalMode: payload.vocalMode,
-      }),
-      signal: controller.signal,
-    });
+  if (RUNPOD_GENERATE_TRACK_URL.endsWith("/runsync")) {
+    return `${RUNPOD_GENERATE_TRACK_URL.slice(0, -"runsync".length)}run`;
+  }
 
-    const result = await response.json().catch(() => null);
+  if (RUNPOD_GENERATE_TRACK_URL.endsWith("/run")) {
+    return RUNPOD_GENERATE_TRACK_URL;
+  }
 
-    if (!response.ok) {
-      throw new Error(
-        result?.error || `Modal generate-track request failed with status ${response.status}`
-      );
+  return `${RUNPOD_GENERATE_TRACK_URL.replace(/\/+$/, "")}/run`;
+}
+
+function cleanupExpiredLocks() {
+  const now = Date.now();
+
+  for (const [key, value] of generationLocks.entries()) {
+    if (value.expiresAt <= now) {
+      generationLocks.delete(key);
     }
-
-    const durationMs = Date.now() - start;
-    console.log("MODAL GENERATION END");
-    console.log("DURATION:", durationMs / 1000, "sec");
-
-    return result;
-  } catch (error: any) {
-    if (error?.name === "AbortError") {
-      throw new Error("Modal generate-track request timed out after 10 minutes");
-    }
-
-    throw new Error(error?.message || "Modal generate-track request failed");
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
-// Modal benchmark mode simulates generation to measure flow before real GPU integration
-async function handleModalBenchmark(payload: {
+function buildStablePromptKey(input: {
   title: string;
   finalDirection: string;
   vocalMode: string;
-  artistIdentity?: GenerateTrackBody["artistIdentity"];
-}) {
-  const start = Date.now();
-
-  console.log("MODAL BENCHMARK START");
-
-  await new Promise((resolve) => setTimeout(resolve, 3000));
-
-  const end = Date.now();
-  const durationMs = end - start;
-  const durationSec = durationMs / 1000;
-  const estimatedCost = durationSec * 0.0003;
-
-  console.log("MODAL BENCHMARK END");
-  console.log("DURATION:", durationSec, "sec");
-  console.log("ESTIMATED COST:", estimatedCost);
-
-  return {
-    success: true,
-    provider: "modal",
-    benchmark: true,
-    timing: {
-      durationSec,
-      durationMs,
-    },
-    cost: {
-      estimated: estimatedCost,
-    },
-    track: {
-      id: `modal_${Date.now()}`,
-      title: payload.title,
-      duration: 180,
-      status: "generated",
-      previewUrl: null,
-    },
+  artistIdentity?: {
+    voiceType?: string;
+    profileId?: string;
   };
+}) {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        title: input.title,
+        finalDirection: input.finalDirection,
+        vocalMode: input.vocalMode,
+        artistIdentity: input.artistIdentity ?? null,
+      })
+    )
+    .digest("hex");
 }
 
 export async function POST(request: NextRequest) {
@@ -169,6 +94,14 @@ export async function POST(request: NextRequest) {
     const title = body.title?.trim() || "";
     const finalDirection = body.finalDirection?.trim() || "";
     const vocalMode = body.vocalMode?.trim() || "";
+    const clientGenerationToken = body.clientGenerationToken?.trim() || "";
+    const artistIdentity =
+      body.artistIdentity && typeof body.artistIdentity === "object"
+        ? {
+            voiceType: body.artistIdentity.voiceType?.trim() || undefined,
+            profileId: body.artistIdentity.profileId?.trim() || undefined,
+          }
+        : undefined;
 
     if (!title) {
       return NextResponse.json({ error: "Title is required" }, { status: 400 });
@@ -182,37 +115,123 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Vocal mode is required" }, { status: 400 });
     }
 
+    cleanupExpiredLocks();
+
+    const endpoint = getRunpodRunUrl();
+    if (!endpoint) {
+      return NextResponse.json(
+        { error: "RUNPOD_GENERATE_TRACK_URL missing" },
+        { status: 500 }
+      );
+    }
+
+    if (!RUNPOD_API_KEY) {
+      return NextResponse.json(
+        { error: "RUNPOD_API_KEY missing" },
+        { status: 500 }
+      );
+    }
+
+    const lockKey =
+      clientGenerationToken ||
+      buildStablePromptKey({
+        title,
+        finalDirection,
+        vocalMode,
+        artistIdentity,
+      });
+    const existingLock = generationLocks.get(lockKey);
+
+    if (existingLock && existingLock.expiresAt > Date.now()) {
+      const existingResult = await existingLock.resultPromise;
+      return NextResponse.json(existingResult);
+    }
+
     const payload = {
-      title,
-      finalDirection,
-      vocalMode,
-      artistIdentity: body.artistIdentity,
+      input: {
+        title,
+        finalDirection,
+        vocalMode,
+        artistIdentity: artistIdentity ?? null,
+        prompt: finalDirection,
+        durationSeconds: 15,
+        max_new_tokens: 768,
+        testMode: true,
+        return_audio_url: true,
+      },
     };
 
-    const provider = DEFAULT_PROVIDER;
+    const resultPromise = (async () => {
+      let response: Response;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), RUNPOD_START_TIMEOUT_MS);
+      try {
+        response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${RUNPOD_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+      } catch (error) {
+        clearTimeout(timeout);
+        if (error instanceof Error && error.name === "AbortError") {
+          throw new Error("RunPod start request timed out after 120s");
+        }
+        console.error("RUNPOD START FETCH ERROR:", serializeError(error));
+        throw new Error("RunPod start request failed");
+      }
 
-    console.log("GENERATION PROVIDER:", provider);
-    console.log("PAYLOAD:", payload);
-    if (provider === "modal") {
-      console.log("FINAL DIRECTION:", payload.finalDirection);
-    }
+      const text = await response.text();
+      clearTimeout(timeout);
+      console.log("RUNPOD START RESPONSE STATUS:", response.status, response.statusText);
+      console.log("RUNPOD START RESPONSE BODY:", text);
 
-    let result;
+      if (!response.ok) {
+        throw new Error(`RunPod request failed (${response.status}) ${text}`);
+      }
 
-    if (provider === "modal") {
-      result = await handleModalGeneration(payload);
-    } else if (provider === "runpod") {
-      result = await handleRunpodGeneration(payload);
-    } else {
-      result = await handleMockGeneration(payload);
-    }
+      let parsed: any = null;
+      try {
+        parsed = text ? JSON.parse(text) : null;
+      } catch {
+        throw new Error(`RunPod returned non-JSON response: ${text}`);
+      }
 
-    return NextResponse.json({
-      success: true,
-      provider,
-      ...result,
+      const jobId = typeof parsed?.id === "string" ? parsed.id.trim() : "";
+      const status = typeof parsed?.status === "string" ? parsed.status.trim() : "";
+
+      if (!jobId || !status) {
+        throw new Error(
+          `RunPod start response missing id or status: ${JSON.stringify(parsed)}`
+        );
+      }
+
+      console.log("RUNPOD JOB ID:", jobId);
+
+      return { jobId, status };
+    })();
+
+    generationLocks.set(lockKey, {
+      expiresAt: Date.now() + LOCK_TTL_MS,
+      resultPromise,
     });
+
+    try {
+      const result = await resultPromise;
+      generationLocks.set(lockKey, {
+        expiresAt: Date.now() + LOCK_TTL_MS,
+        resultPromise: Promise.resolve(result),
+      });
+      return NextResponse.json(result);
+    } catch (error) {
+      generationLocks.delete(lockKey);
+      throw error;
+    }
   } catch (error: any) {
+    console.error("GENERATE TRACK ERROR:", serializeError(error));
     return NextResponse.json(
       {
         error: error?.message || "Unexpected generate-track error",
