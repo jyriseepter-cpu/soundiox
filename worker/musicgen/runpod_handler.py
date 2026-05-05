@@ -1,3 +1,4 @@
+import base64
 import os
 import uuid
 
@@ -80,8 +81,11 @@ def handler(event):
                 "stage": "write",
             }
 
+        with open(file_path, "rb") as wav_file:
+            encoded_audio = base64.b64encode(wav_file.read()).decode("utf-8")
+
         print("RETURNING OUTPUT", flush=True)
-        return {"audio_url": file_path}
+        return {"audio_url": f"data:audio/wav;base64,{encoded_audio}"}
     except Exception as error:
         return {
             "error": str(error),
