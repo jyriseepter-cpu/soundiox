@@ -57,6 +57,12 @@ export default function PlayerBar() {
   const title = currentTrack?.title ?? "No track selected";
   const artist =
     currentTrack?.artistDisplayName ?? currentTrack?.artist ?? "AI Artist";
+  const artworkSrc =
+    currentTrack?.artwork_url ||
+    currentTrack?.artworkUrl ||
+    currentTrack?.image_url ||
+    currentTrack?.cover_url ||
+    "/logo-new.png";
   const currentTrackId =
     typeof currentTrack?.id === "string" || typeof currentTrack?.id === "number"
       ? String(currentTrack.id)
@@ -290,18 +296,25 @@ export default function PlayerBar() {
         style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.12rem)" }}
       >
         <div className="flex flex-col gap-1.5 lg:flex-row lg:items-center lg:gap-4">
-          <div className="min-w-0 lg:w-[220px]">
-            <div className="truncate text-[10px] font-semibold leading-tight text-white lg:text-sm">
-              {title}
-            </div>
-            <div className="truncate text-[8px] leading-tight text-white/70 lg:text-xs">
-              {artist}
-            </div>
-            {feedback ? (
-              <div className="mt-0.5 truncate text-[8px] text-cyan-200 lg:text-[11px]">
-                {feedback}
+          <div className="flex min-w-0 items-center gap-2 lg:w-[220px]">
+            <img
+              src={artworkSrc}
+              alt=""
+              className="h-9 w-9 shrink-0 rounded-lg object-cover ring-1 ring-white/10"
+            />
+            <div className="min-w-0">
+              <div className="truncate text-[10px] font-semibold leading-tight text-white lg:text-sm">
+                {title}
               </div>
-            ) : null}
+              <div className="truncate text-[8px] leading-tight text-white/70 lg:text-xs">
+                {artist}
+              </div>
+              {feedback ? (
+                <div className="mt-0.5 truncate text-[8px] text-cyan-200 lg:text-[11px]">
+                  {feedback}
+                </div>
+              ) : null}
+            </div>
           </div>
 
           <div className="flex items-center justify-between gap-1 sm:justify-start lg:gap-2">

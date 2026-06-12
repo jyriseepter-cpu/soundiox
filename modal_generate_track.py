@@ -8,6 +8,7 @@ Env notes for the gateway side:
 
 from __future__ import annotations
 
+import base64
 import os
 import time
 from typing import Any
@@ -69,10 +70,13 @@ def generate_track(payload: dict[str, Any]) -> dict[str, Any]:
     """
 
     start = time.time()
+    print("MODAL HANDLER START", flush=True)
 
     title = str(payload.get("title") or "").strip()
     final_direction = str(payload.get("finalDirection") or "").strip()
     vocal_mode = str(payload.get("vocalMode") or "").strip()
+    generation_mode = str(payload.get("generationMode") or "seed").strip().lower()
+    requested_duration = payload.get("durationSeconds")
 
     if not title:
         return {"success": False, "error": "Title is required"}
@@ -83,21 +87,33 @@ def generate_track(payload: dict[str, Any]) -> dict[str, Any]:
     if not vocal_mode:
         return {"success": False, "error": "Vocal mode is required"}
 
+    if generation_mode == "full":
+        try:
+            duration_seconds = int(requested_duration)
+        except (TypeError, ValueError):
+            duration_seconds = 180
+        duration_seconds = max(30, min(180, duration_seconds))
+    else:
+        generation_mode = "seed"
+        duration_seconds = 15
+
     try:
-        print("MUSICGEN LOAD START")
+        print("MUSICGEN LOAD START", flush=True)
         import torch
         from audiocraft.data.audio import audio_write
         from audiocraft.models import MusicGen
 
         _ = torch.__version__
         model = MusicGen.get_pretrained(MODEL_NAME)
-        model.set_generation_params(duration=15)
-        print("MUSICGEN LOAD END")
+        model.set_generation_params(duration=duration_seconds)
+        print("MUSICGEN LOAD END", flush=True)
 
-        print("MUSICGEN GENERATION START")
+        print("MUSICGEN GENERATION START", flush=True)
+        print("GENERATION MODE:", generation_mode, flush=True)
+        print("DURATION SECONDS:", duration_seconds, flush=True)
         prompt = final_direction
         wav = model.generate([prompt])
-        print("MUSICGEN GENERATION END")
+        print("MUSICGEN GENERATION END", flush=True)
 
         if os.path.exists(OUTPUT_PATH):
             os.remove(OUTPUT_PATH)
@@ -110,9 +126,15 @@ def generate_track(payload: dict[str, Any]) -> dict[str, Any]:
             strategy="loudness",
             loudness_compressor=True,
         )
-        print("OUTPUT PATH:", OUTPUT_PATH)
+        print("OUTPUT PATH:", OUTPUT_PATH, flush=True)
+
+        with open(OUTPUT_PATH, "rb") as wav_file:
+            audio_url = "data:audio/wav;base64," + base64.b64encode(wav_file.read()).decode(
+                "utf-8"
+            )
 
         duration_sec = round(time.time() - start, 3)
+        print("RETURNING OUTPUT", flush=True)
 
         return {
             "success": True,
@@ -122,15 +144,19 @@ def generate_track(payload: dict[str, Any]) -> dict[str, Any]:
             "track": {
                 "id": f"musicgen_test_{int(time.time() * 1000)}",
                 "title": title,
-                "duration": 15,
+                "duration": duration_seconds,
                 "status": "generated",
                 "previewUrl": None,
             },
+            "audio_base64": audio_url.replace("data:audio/wav;base64,", ""),
+            "mime_type": "audio/wav",
+            "file_ext": "wav",
             "timing": {
                 "durationSec": duration_sec,
             },
         }
     except Exception as error:
+        print("MODAL GENERATION ERROR:", str(error), flush=True)
         return {
             "success": False,
             "provider": "modal",

@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { clearActiveGenerationJobByJobId } from "../activeJobStore";
+import { updateGenerationJobByProviderJobId } from "../generationJobStore";
 
 const RUNPOD_GENERATE_TRACK_URL = process.env.RUNPOD_GENERATE_TRACK_URL;
 const RUNPOD_API_KEY = process.env.RUNPOD_API_KEY;
+const REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN;
 
 export const runtime = "nodejs";
 
@@ -24,6 +27,7 @@ function getRunpodCancelUrl(jobId: string) {
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   const jobId = typeof body?.jobId === "string" ? body.jobId.trim() : "";
+  const provider = typeof body?.provider === "string" ? body.provider.trim().toLowerCase() : "runpod";
 
   if (!jobId) {
     return NextResponse.json(
@@ -36,6 +40,98 @@ export async function POST(request: NextRequest) {
       },
       { status: 400 }
     );
+  }
+
+  if (provider === "replicate") {
+    if (!REPLICATE_API_TOKEN) {
+      return NextResponse.json(
+        {
+          ok: false,
+          cancelled: false,
+          available: false,
+          message: "Replicate cancel endpoint unavailable",
+          details: "REPLICATE_API_TOKEN is missing.",
+          provider: "replicate",
+          replicate: null,
+        },
+        { status: 500 }
+      );
+    }
+
+    try {
+      const response = await fetch(
+        `https://api.replicate.com/v1/predictions/${jobId}/cancel`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${REPLICATE_API_TOKEN}`,
+          },
+          cache: "no-store",
+        }
+      );
+
+      const text = await response.text();
+      console.log("REPLICATE CANCEL RESPONSE STATUS:", response.status, response.statusText);
+      console.log("REPLICATE CANCEL RESPONSE BODY:", text || "[EMPTY]");
+      let parsed: any = null;
+
+      try {
+        parsed = text ? JSON.parse(text) : null;
+      } catch {
+        parsed = text || null;
+      }
+
+      if (!response.ok) {
+        return NextResponse.json(
+          {
+            ok: false,
+            cancelled: false,
+            available: false,
+            message: "Replicate cancel returned a non-OK response.",
+            details: `Replicate responded with ${response.status} ${response.statusText}.`,
+            provider: "replicate",
+            replicate: parsed,
+          },
+          { status: 502 }
+        );
+      }
+
+      await updateGenerationJobByProviderJobId(jobId, {
+        status: "cancelled",
+        provider_status: "canceled",
+        cancelled_at: new Date().toISOString(),
+      }).catch((error) => {
+        console.error("GENERATION JOB REPLICATE CANCEL UPDATE ERROR:", error?.message || error);
+      });
+
+      return NextResponse.json({
+        ok: true,
+        cancelled: true,
+        available: true,
+        jobId,
+        provider: "replicate",
+        message: "Replicate cancel request sent.",
+        details: text || "Replicate accepted the cancel request.",
+        replicate: parsed,
+      });
+    } catch (error: any) {
+      console.log("REPLICATE CANCEL RESPONSE STATUS:", "[FETCH FAILED]");
+      console.log("REPLICATE CANCEL RESPONSE BODY:", error?.message || "Cancel request failed");
+      return NextResponse.json(
+        {
+          ok: false,
+          cancelled: false,
+          available: false,
+          message: "Replicate cancel request failed.",
+          details: error?.message || "Cancel request failed",
+          provider: "replicate",
+          replicate: null,
+        },
+        { status: 500 }
+      );
+    } finally {
+      clearActiveGenerationJobByJobId(jobId);
+    }
   }
 
   const endpoint = getRunpodCancelUrl(jobId);
@@ -111,5 +207,8 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 }
     );
+  } finally {
+    // Best-effort in-memory MVP/serverless cleanup. Later this moves to DB-backed generation_jobs.
+    clearActiveGenerationJobByJobId(jobId);
   }
 }

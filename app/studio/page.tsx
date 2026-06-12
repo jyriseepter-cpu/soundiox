@@ -572,6 +572,27 @@ export default function StudioPage() {
                 >
                   With vocals
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!activeJob?.id) return;
+                    const handoffId = activeJob.id;
+                    const targetUrl = `/studio-pro?track=${encodeURIComponent(handoffId)}`;
+                    console.log("OPEN IN PRO CLICK", {
+                      handoffId,
+                      activeVersion: selectedVersion,
+                      activeDraftTrack: null,
+                      studioJob: activeJob,
+                      targetUrl,
+                    });
+                    window.location.href = targetUrl;
+                  }}
+                  disabled={!activeJob?.id}
+                  className={buttonClass}
+                >
+                  Open in Studio PRO
+                </button>
               </div>
 
               {playbackMode === "music" || !activeJob.vocal_url ? (

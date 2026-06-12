@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-type CoProducerMode = "music" | "lyrics" | "artwork" | "voiceover" | "edit";
+type CoProducerMode = "prompt" | "music" | "lyrics" | "artwork" | "voiceover" | "edit";
 
 type RequestBody = {
   mode?: CoProducerMode;
@@ -8,11 +8,24 @@ type RequestBody = {
   currentDirection?: string;
   userRequest?: string;
   remaining?: number;
+  context?: Record<string, unknown> | null;
 };
 
 export const runtime = "nodejs";
 
 function buildModeInstructions(mode: CoProducerMode) {
+  if (mode === "prompt") {
+    return [
+      "You are SoundioX Studio Prompt Help.",
+      "Improve the user's Studio generation prompt only.",
+      "Do not generate audio.",
+      "Do not write explanations.",
+      "Return only the improved prompt text.",
+      "Make it specific, natural, commercial when asked, and ready for a music generation model.",
+      "If the context indicates Estonian language, make the Estonian natural and idiomatic.",
+    ].join("\n");
+  }
+
   if (mode === "music") {
     return [
       "You are SoundioX Co-Producer.",
@@ -145,11 +158,21 @@ function inferMode(requestedMode: CoProducerMode | undefined, userRequest: strin
   if (asksForVoiceover) return "voiceover";
   if (asksForEdit) return "edit";
 
-  if (requestedMode && ["music", "lyrics", "artwork", "voiceover", "edit"].includes(requestedMode)) {
+  if (requestedMode && ["prompt", "music", "lyrics", "artwork", "voiceover", "edit"].includes(requestedMode)) {
     return requestedMode;
   }
 
   return "music";
+}
+
+function compactContext(value: unknown) {
+  if (!value || typeof value !== "object") return "";
+
+  try {
+    return JSON.stringify(value, null, 2).slice(0, 4000);
+  } catch {
+    return "";
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -165,6 +188,7 @@ export async function POST(request: NextRequest) {
     const currentDirection = body.currentDirection?.trim() || "";
     const userRequest = body.userRequest?.trim() || "";
     const mode = inferMode(body.mode, userRequest);
+    const context = compactContext(body.context);
     const remaining =
       typeof body.remaining === "number" ? Math.max(0, Math.floor(body.remaining)) : 0;
 
@@ -173,6 +197,7 @@ export async function POST(request: NextRequest) {
       `MODE: ${mode}`,
       `IDEA: ${idea || "None provided."}`,
       `CURRENT_DIRECTION: ${currentDirection || "None provided."}`,
+      `ACTIVE_STUDIO_CONTEXT:\n${context || "None provided."}`,
       `USER_REQUEST: ${userRequest || "Generate a concise helpful response."}`,
     ].join("\n\n");
 

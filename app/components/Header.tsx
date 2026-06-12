@@ -100,7 +100,20 @@ export default function Header() {
             .single<ProfileRow>();
 
           if (insertError) {
-            console.error("header profile bootstrap error:", insertError);
+            console.warn("header profile bootstrap error:", {
+              message: insertError.message,
+              details: insertError.details,
+              hint: insertError.hint,
+              code: insertError.code,
+              error: insertError,
+              query: {
+                table: "profiles",
+                operation: "upsert",
+                onConflict: "id",
+                payload: insertPayload,
+                select: "id, role, slug, display_name, plan, is_founding",
+              },
+            });
           } else {
             effectiveProfile = insertedProfile;
           }
@@ -190,7 +203,7 @@ export default function Header() {
 
   const linkClass = (href: string) =>
     `relative flex cursor-pointer items-center gap-2 text-base font-bold transition ${
-      pathname === href ? "text-white" : "text-white/75 hover:text-white"
+      pathname === href ? "text-white" : "text-white hover:text-white"
     }`;
 
   return (
@@ -231,6 +244,14 @@ export default function Header() {
 
             <Link href="/artists" className={linkClass("/artists")}>
               Artists
+            </Link>
+
+            <Link href="/create" className={linkClass("/create")}>
+              Studio
+            </Link>
+
+            <Link href="/studio-pro" className={linkClass("/studio-pro")}>
+              Studio PRO
             </Link>
           </nav>
 
@@ -275,13 +296,13 @@ export default function Header() {
           </div>
         </div>
 
-        <div className="mt-3 grid grid-cols-3 gap-2 md:hidden">
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5 md:hidden">
           <Link
             href="/discover"
             className={`justify-center rounded-xl border px-3 py-3 text-sm ${
               pathname === "/discover"
                 ? "border-cyan-300/40 bg-cyan-400/15 text-white"
-                : "border-white/10 bg-white/5 text-white/75 hover:text-white"
+                : "border-white/10 bg-white/5 text-white hover:text-white"
             } ${linkClass("/discover")}`}
           >
             Discover
@@ -292,7 +313,7 @@ export default function Header() {
             className={`justify-center rounded-xl border px-3 py-3 text-sm ${
               pathname === "/pulse"
                 ? "border-cyan-300/40 bg-cyan-400/15 text-white"
-                : "border-white/10 bg-white/5 text-white/75 hover:text-white"
+                : "border-white/10 bg-white/5 text-white hover:text-white"
             } ${linkClass("/pulse")}`}
           >
             <span className="relative inline-flex items-center gap-2">
@@ -312,10 +333,32 @@ export default function Header() {
             className={`justify-center rounded-xl border px-3 py-3 text-sm ${
               pathname === "/artists"
                 ? "border-cyan-300/40 bg-cyan-400/15 text-white"
-                : "border-white/10 bg-white/5 text-white/75 hover:text-white"
+                : "border-white/10 bg-white/5 text-white hover:text-white"
             } ${linkClass("/artists")}`}
           >
             Artists
+          </Link>
+
+          <Link
+            href="/create"
+            className={`justify-center rounded-xl border px-3 py-3 text-sm ${
+              pathname === "/create"
+                ? "border-cyan-300/40 bg-cyan-400/15 text-white"
+                : "border-white/10 bg-white/5 text-white hover:text-white"
+            } ${linkClass("/create")}`}
+          >
+            Studio
+          </Link>
+
+          <Link
+            href="/studio-pro"
+            className={`justify-center rounded-xl border px-3 py-3 text-sm ${
+              pathname === "/studio-pro"
+                ? "border-cyan-300/40 bg-cyan-400/15 text-white"
+                : "border-white/10 bg-white/5 text-white hover:text-white"
+            } ${linkClass("/studio-pro")}`}
+          >
+            Studio PRO
           </Link>
         </div>
 

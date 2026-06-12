@@ -75,6 +75,7 @@ type TrackLikesMonthlyRow = {
 
 type ProfileMini = ArtistIdentityProfile;
 type DiscoverTrack = TrackWithResolvedArtist<TrackRow>;
+type DiscoverSortKey = "newest" | "oldest";
 
 type ViewerProfile = {
   plan: string | null;
@@ -124,15 +125,9 @@ function monthStartDateString(offsetMonths = 0) {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
-function getTrackScore(t: DiscoverTrack) {
+function getCreatedTime(t: { created_at: string | null }) {
   const created = t.created_at ? new Date(t.created_at).getTime() : 0;
-  const ageHours = created ? (Date.now() - created) / 36e5 : 999;
-
-  return (
-    (t.plays_all_time ?? 0) * 0.7 +
-    (t.plays_this_month ?? 0) * 0.5 +
-    Math.max(0, 24 - ageHours) * 2
-  );
+  return Number.isFinite(created) ? created : 0;
 }
 
 export default function DiscoverPage() {
@@ -146,6 +141,7 @@ export default function DiscoverPage() {
 
   const [search, setSearch] = useState("");
   const [genre, setGenre] = useState("All genres");
+  const [sort, setSort] = useState<DiscoverSortKey>("newest");
   const [page, setPage] = useState(1);
 
   const [selectedTrack, setSelectedTrack] = useState<DiscoverTrack | null>(null);
@@ -775,12 +771,15 @@ export default function DiscoverPage() {
       return hay.includes(q);
     });
 
-    return filtered.sort((a, b) => getTrackScore(b) - getTrackScore(a));
-  }, [tracks, search, genre]);
+    return filtered.sort((a, b) => {
+      const byDate = getCreatedTime(b) - getCreatedTime(a);
+      return sort === "oldest" ? -byDate : byDate;
+    });
+  }, [tracks, search, genre, sort]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, genre]);
+  }, [search, genre, sort]);
 
   const totalTracks = displayedTracks.length;
   const totalPages = Math.max(1, Math.ceil(totalTracks / PAGE_SIZE));
@@ -1080,6 +1079,10 @@ export default function DiscoverPage() {
     value: genreValue,
     label: genreValue,
   }));
+  const sortOptions = [
+    { value: "newest", label: "Sort: Newest" },
+    { value: "oldest", label: "Sort: Oldest" },
+  ];
 
   return (
     <div className="mx-auto w-full max-w-6xl overflow-x-hidden px-4 pb-40 pt-4 sm:pt-6 md:pb-40">
@@ -1144,6 +1147,13 @@ export default function DiscoverPage() {
             onChange={setGenre}
             options={customGenreOptions}
             className="w-full lg:w-[220px]"
+          />
+
+          <CustomSelect
+            value={sort}
+            onChange={(value) => setSort(value as DiscoverSortKey)}
+            options={sortOptions}
+            className="w-full lg:w-[180px]"
           />
 
           <div className="relative w-full lg:w-[240px]">

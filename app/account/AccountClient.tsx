@@ -76,6 +76,7 @@ type TrackRow = {
   plays_all_time?: number | null;
   plays_this_month?: number | null;
   is_promo?: boolean | null;
+  is_published?: boolean | null;
   user_id?: string | null;
   album_id?: string | null;
   track_number?: number | null;
@@ -619,7 +620,7 @@ export default function AccountClient() {
       const { data, error } = await supabase
         .from("tracks")
         .select(
-          "id,title,artist,genre,artwork_url,audio_url,created_at,plays_all_time,plays_this_month,is_promo,user_id,album_id,track_number"
+          "id,title,artist,genre,artwork_url,audio_url,created_at,plays_all_time,plays_this_month,is_promo,is_published,user_id,album_id,track_number"
         )
         .eq("user_id", ownerId)
         .order("created_at", { ascending: false });
@@ -1905,6 +1906,7 @@ export default function AccountClient() {
         const isSaving = savingTrackId === track.id;
         const isDeleting = deletingTrackId === track.id;
         const artworkSrc = getAvatarUrl(track.artwork_url) || "/logo-new.png";
+        const statusLabel = track.is_published ? "Public" : "Draft";
 
         return (
           <div
@@ -1944,6 +1946,10 @@ export default function AccountClient() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex h-9 items-center rounded-full border border-white/10 bg-white/8 px-3 text-xs font-semibold uppercase tracking-[0.18em] text-white/65">
+                {statusLabel}
+              </span>
+
               <Link
                 href={`/track/${track.id}`}
                 className="inline-flex h-10 items-center justify-center rounded-full border border-white/15 bg-white/8 px-4 text-sm font-medium text-white transition hover:bg-white/12"
