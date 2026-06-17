@@ -603,6 +603,25 @@ function getBranchActionTitle(actionType: BranchActionType) {
   return "New version";
 }
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function stripBranchTitleSuffixes(value: string) {
+  let normalized = value.trim() || "Untitled track";
+  let previous = "";
+
+  while (previous !== normalized) {
+    previous = normalized;
+    normalized = normalized
+      .replace(/\s+-\s+Remix(?:\s+\d+)?$/i, "")
+      .replace(/\s+-\s+Version\s+\d+$/i, "")
+      .trim();
+  }
+
+  return normalized || value.trim() || "Untitled track";
+}
+
 function stripAudioExtension(fileName: string) {
   return fileName.replace(/\.(mp3|wav|flac|m4a)$/i, "").trim();
 }
@@ -882,6 +901,25 @@ function normalizeArtworkConcept(value: unknown): ArtworkConcept | null {
   };
 }
 
+function summarizeArtworkText(value: string) {
+  const trimmed = value.trim().replace(/\s+/g, " ");
+  if (trimmed.length <= 160) return trimmed;
+  return `${trimmed.slice(0, 157).trim()}...`;
+}
+
+function buildArtworkConceptFromDirection(value: string): ArtworkConcept | null {
+  const direction = value.trim();
+  if (!direction) return null;
+
+  return {
+    concept: direction,
+    imagePrompt: direction,
+    palette: "Use the palette described in the artwork direction.",
+    styleTags: ["Studio artwork direction"],
+    summary: summarizeArtworkText(direction),
+  };
+}
+
 function normalizeVocalMode(value: string | null | undefined): VocalMode | null {
   const normalized = String(value || "")
     .trim()
@@ -1156,6 +1194,8 @@ export default function CreatePage() {
   const [artworkDirection, setArtworkDirection] = useState(
     "Create glassy skyline cover art with cool light bloom, reflective surfaces, and a premium midnight blue palette."
   );
+  const [artworkDirectionConcept, setArtworkDirectionConcept] = useState<ArtworkConcept | null>(null);
+  const [songLanguage, setSongLanguage] = useState("");
   const [directionLoading, setDirectionLoading] = useState<Record<DirectionKey, boolean>>({
     music: false,
     lyrics: false,
@@ -1283,6 +1323,11 @@ export default function CreatePage() {
   const [studioDrafts, setStudioDrafts] = useState<StudioDraftTrack[]>([]);
   const [studioDraftsLoading, setStudioDraftsLoading] = useState(false);
   const [expandedDraftGroups, setExpandedDraftGroups] = useState<Record<string, boolean>>({});
+  const [pendingDeleteStudioProject, setPendingDeleteStudioProject] = useState<{
+    trackGroupId: string;
+    projectName: string;
+  } | null>(null);
+  const [studioProjectDeleting, setStudioProjectDeleting] = useState(false);
   const [publicReviewDraft, setPublicReviewDraft] = useState<StudioDraftTrack | null>(null);
   const [publicReviewSaving, setPublicReviewSaving] = useState(false);
   const [publicReviewMessage, setPublicReviewMessage] = useState<string | null>(null);
@@ -1818,6 +1863,21 @@ export default function CreatePage() {
   }, [activeVersion.id, activeVersion.audioUrl, activeVersion.vocalUrl, activeVersion.voiceoverUrl]);
 
   useEffect(() => {
+    const concept = normalizeArtworkConcept(activeVersion.artworkConcept);
+    if (!concept) {
+      if (activeVersion.trackGroupId) {
+        setArtworkDirectionConcept(null);
+      }
+      return;
+    }
+
+    setArtworkDirectionConcept(concept);
+    if (concept.imagePrompt) {
+      setArtworkDirection(concept.imagePrompt);
+    }
+  }, [activeVersion.id, activeVersion.artworkConcept]);
+
+  useEffect(() => {
     if (musicMixRef.current) {
       musicMixRef.current.volume = musicPreviewVolume;
     }
@@ -1844,6 +1904,51 @@ export default function CreatePage() {
     if (mode === "artwork") return artworkDirection;
     if (mode === "voiceover") return voiceoverScript;
     return `${finalDirection}\n\n${uploadedTrackNotes}`;
+  }
+
+  function getLanguageInstruction() {
+    const language = songLanguage.trim();
+    if (!language) return "";
+
+    return `Write and sing entirely in ${language}. Do not use any other language unless explicitly requested.`;
+  }
+
+  function appendLanguageInstruction(value: string) {
+    const instruction = getLanguageInstruction();
+    const trimmedValue = value.trim();
+    if (!instruction) return trimmedValue;
+    if (!trimmedValue) return instruction;
+    if (trimmedValue.includes(instruction)) return trimmedValue;
+
+    return `${trimmedValue}\n\n${instruction}`;
+  }
+
+  function getActiveArtworkConcept() {
+    return normalizeArtworkConcept(activeVersion.artworkConcept) || artworkDirectionConcept;
+  }
+
+  function getArtworkConceptForGeneration(parentVersion?: VersionRecord | null) {
+    return (
+      normalizeArtworkConcept(parentVersion?.artworkConcept) ||
+      artworkDirectionConcept ||
+      null
+    );
+  }
+
+  function applyArtworkConceptToActiveVersion(concept: ArtworkConcept) {
+    setVersions((current) =>
+      current.map((version) =>
+        version.id === activeVersion.id
+          ? {
+              ...version,
+              artworkConcept: concept,
+              note: version.note.includes("Artwork concept:")
+                ? version.note
+                : `${version.note} Artwork concept: ${concept.summary}`,
+            }
+          : version
+      )
+    );
   }
 
   function updateReleaseTitle(nextTitle: string) {
@@ -1888,6 +1993,8 @@ export default function CreatePage() {
 
     if (mode === "artwork") {
       setArtworkDirection(result);
+      const concept = buildArtworkConceptFromDirection(result);
+      setArtworkDirectionConcept(concept);
       return;
     }
 
@@ -2157,6 +2264,7 @@ export default function CreatePage() {
         `Mood/vibe: ${references.trim() || musicDirection || finalDirection || idea}`,
         `Lyrics direction: ${lyricsDirection}`,
         `Lyrics prompt: ${lyricsPrompt}`,
+        getLanguageInstruction(),
         `Current lyrics:\n${lyricsPreview}`,
         `Artist identity: ${artistIdentity.trim() || "None provided."}`,
         `Voice sample available: ${Boolean(voiceSampleUrl)}`,
@@ -2205,8 +2313,8 @@ export default function CreatePage() {
           projectName: getProjectNameFallback(),
           title,
           genre: trackGenre,
-          lyricsPrompt,
-          lyricsDirection,
+          lyricsPrompt: appendLanguageInstruction(lyricsPrompt),
+          lyricsDirection: appendLanguageInstruction(lyricsDirection),
           currentLyrics: lyricsPreview,
           vocalMode,
         }),
@@ -2572,6 +2680,63 @@ export default function CreatePage() {
     setStudioProjectNames(nextProjectNames);
   }
 
+  async function loadGeneratedStudioProjectDrafts() {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session?.access_token) return [];
+
+    try {
+      const response = await fetch("/api/studio/projects/list", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        logStudioDraftsLoadError(payload || { error: "Generated Studio projects route failed" }, "/api/studio/projects/list");
+        return [];
+      }
+
+      const drafts = Array.isArray(payload?.drafts) ? payload.drafts : [];
+      return normalizeStudioDrafts(drafts);
+    } catch (error) {
+      logStudioDraftsLoadError(error, "/api/studio/projects/list");
+      return [];
+    }
+  }
+
+  function mergeStudioDraftSources(
+    trackDrafts: StudioDraftTrack[],
+    generatedProjectDrafts: StudioDraftTrack[]
+  ) {
+    const merged = new Map<string, StudioDraftTrack>();
+
+    [...trackDrafts, ...generatedProjectDrafts].forEach((draft) => {
+      const key = draft.source_track_group_id || draft.id;
+      const existing = merged.get(key);
+
+      if (!existing) {
+        merged.set(key, draft);
+        return;
+      }
+
+      const draftTime = getDraftCreatedTime(draft);
+      const existingTime = getDraftCreatedTime(existing);
+      const draftHasAudio = Boolean(draft.audio_url);
+      const existingHasAudio = Boolean(existing.audio_url);
+
+      if ((draftHasAudio && !existingHasAudio) || draftTime >= existingTime) {
+        merged.set(key, draft);
+      }
+    });
+
+    return Array.from(merged.values()).sort((a, b) => getDraftCreatedTime(b) - getDraftCreatedTime(a));
+  }
+
   async function loadStudioDrafts() {
     setStudioDraftsLoading(true);
     try {
@@ -2586,6 +2751,7 @@ export default function CreatePage() {
       }
 
       await loadStudioProjectNames(user.id);
+      const generatedProjectDrafts = await loadGeneratedStudioProjectDrafts();
 
       const loadDraftsWithColumns = (selectedColumns: string) =>
         supabase
@@ -2597,14 +2763,15 @@ export default function CreatePage() {
       const extendedResult = await loadDraftsWithColumns(STUDIO_DRAFT_EXTENDED_COLUMNS);
 
       if (!extendedResult.error) {
-        setStudioDrafts(filterStudioCreatedTracks(normalizeStudioDrafts(extendedResult.data)));
+        const trackDrafts = filterStudioCreatedTracks(normalizeStudioDrafts(extendedResult.data));
+        setStudioDrafts(mergeStudioDraftSources(trackDrafts, generatedProjectDrafts));
         return;
       }
 
       logStudioDraftsLoadError(extendedResult.error, STUDIO_DRAFT_EXTENDED_COLUMNS);
 
       if (!isMissingColumnError(extendedResult.error)) {
-        setStudioDrafts([]);
+        setStudioDrafts(mergeStudioDraftSources([], generatedProjectDrafts));
         return;
       }
 
@@ -2612,13 +2779,12 @@ export default function CreatePage() {
 
       if (baseResult.error) {
         logStudioDraftsLoadError(baseResult.error, STUDIO_DRAFT_BASE_COLUMNS);
-        setStudioDrafts([]);
+        setStudioDrafts(mergeStudioDraftSources([], generatedProjectDrafts));
         return;
       }
 
-      setStudioDrafts(
-        normalizeStudioDrafts(baseResult.data).filter((draft) => draft.is_published === false)
-      );
+      const trackDrafts = normalizeStudioDrafts(baseResult.data).filter((draft) => draft.is_published === false);
+      setStudioDrafts(mergeStudioDraftSources(trackDrafts, generatedProjectDrafts));
       setWorkspaceStatus("Studio drafts loaded with fallback fields.");
     } catch (error) {
       logStudioDraftsLoadError(error, STUDIO_DRAFT_EXTENDED_COLUMNS);
@@ -2986,6 +3152,7 @@ export default function CreatePage() {
       (shouldAskProviderForLyrics
         ? "No written lyrics were provided. Generate original lyrics from the final music direction, lyrics direction, and lyrics prompt."
         : "");
+    const artworkConceptForGeneration = getArtworkConceptForGeneration(selectedParentVersion);
     activeGenerateStartedAtRef.current = startedAt;
     activeGenerateTokenRef.current = token;
     activeGenerateProviderRef.current = generationProvider;
@@ -3019,6 +3186,7 @@ export default function CreatePage() {
           lyricsPreview: lyricsPreviewForRequest,
           lyricsPrompt: lyricsPrompt.trim(),
           lyricsDirection: lyricsDirection.trim(),
+          artworkConcept: artworkConceptForGeneration,
           artistIdentity: {
             text: artistIdentity.trim(),
           },
@@ -3068,6 +3236,7 @@ export default function CreatePage() {
           mixer: { ...mixer },
           dynamics: { ...dynamics },
           audioUrl: immediatePreviewUrl,
+          artworkConcept: artworkConceptForGeneration,
           parentVersionId,
           versionNumber: null,
           generationIntent,
@@ -3502,6 +3671,86 @@ export default function CreatePage() {
     return null;
   }
 
+  function canGenerateElevenMusicBranch(version: VersionRecord | null | undefined) {
+    return Boolean(
+      version?.provider === "eleven_music" &&
+        version.audioUrl &&
+        version.trackGroupId
+    );
+  }
+
+  function resolveGenerationSourceVersion(
+    selectedActiveVersion: VersionRecord,
+    allLoadedVersions = versions,
+    currentActiveTrackGroupId = activeTrackGroupId
+  ) {
+    if (canGenerateElevenMusicBranch(selectedActiveVersion)) {
+      return selectedActiveVersion;
+    }
+
+    const byId = new Map(allLoadedVersions.map((version) => [version.id, version]));
+
+    if (selectedActiveVersion.status === "edit_plan") {
+      const visited = new Set<string>();
+      let parentVersionId = selectedActiveVersion.parentVersionId || null;
+
+      while (parentVersionId && !visited.has(parentVersionId)) {
+        visited.add(parentVersionId);
+        const parentVersion = byId.get(parentVersionId);
+        if (!parentVersion) break;
+        if (canGenerateElevenMusicBranch(parentVersion)) {
+          return parentVersion;
+        }
+        parentVersionId = parentVersion.parentVersionId || null;
+      }
+    }
+
+    const targetTrackGroupId = selectedActiveVersion.trackGroupId || currentActiveTrackGroupId;
+    if (!targetTrackGroupId) return null;
+
+    return (
+      allLoadedVersions
+        .filter(
+          (version) =>
+            version.trackGroupId === targetTrackGroupId &&
+            version.provider === "eleven_music" &&
+            Boolean(version.audioUrl)
+        )
+        .sort((a, b) => {
+          const byVersionNumber = getVersionNumber(b, 0) - getVersionNumber(a, 0);
+          if (byVersionNumber !== 0) return byVersionNumber;
+
+          const bCreated = b.createdAt ? Date.parse(b.createdAt) || 0 : 0;
+          const aCreated = a.createdAt ? Date.parse(a.createdAt) || 0 : 0;
+          return bCreated - aCreated;
+        })[0] || null
+    );
+  }
+
+  function buildBranchTitle(parentVersion: VersionRecord, actionType: BranchActionType) {
+    const baseTitle = stripBranchTitleSuffixes(
+      parentVersion.title?.trim() || title.trim() || "Untitled track"
+    );
+
+    if (actionType === "remix") {
+      const remixPattern = new RegExp(`^${escapeRegExp(baseTitle)}\\s+-\\s+Remix(?:\\s+(\\d+))?$`, "i");
+      const highestRemixNumber = versions.reduce((highest, version) => {
+        const match = version.title?.trim().match(remixPattern);
+        if (!match) return highest;
+        const remixNumber = match[1] ? Number(match[1]) : 1;
+        return Number.isFinite(remixNumber) ? Math.max(highest, remixNumber) : highest;
+      }, 0);
+      const nextRemixNumber = highestRemixNumber + 1;
+      return nextRemixNumber <= 1
+        ? `${baseTitle} - Remix`
+        : `${baseTitle} - Remix ${nextRemixNumber}`;
+    }
+
+    const nextVersionNumber =
+      Math.max(1, ...versions.map((version, index) => getVersionNumber(version, index))) + 1;
+    return `${baseTitle} - Version ${nextVersionNumber}`;
+  }
+
   function selectVersion(version: VersionRecord) {
     setActiveVersionId(version.id);
   }
@@ -3517,20 +3766,62 @@ export default function CreatePage() {
           : generationIntent === "instrumental"
             ? "instrumental"
             : "new-version";
+      const branchInstruction = buildBranchFinalDirection({
+        baseDirection: finalDirection.trim() || musicDirection.trim(),
+        generationIntent,
+        activeVersionLabel: selectedActiveVersion.label,
+        durationSeconds:
+          typeof selectedActiveVersion.duration === "number"
+            ? selectedActiveVersion.duration
+            : generationMode === "seed"
+              ? 15
+              : 30,
+      });
+
+      if (
+        actionType === "remix" ||
+        actionType === "new-version"
+      ) {
+        const generationSourceVersion = resolveGenerationSourceVersion(selectedActiveVersion);
+
+        if (generationSourceVersion) {
+          const sourceBranchInstruction = buildBranchFinalDirection({
+            baseDirection: finalDirection.trim() || musicDirection.trim(),
+            generationIntent,
+            activeVersionLabel: generationSourceVersion.label,
+            durationSeconds:
+              typeof generationSourceVersion.duration === "number"
+                ? generationSourceVersion.duration
+                : generationMode === "seed"
+                  ? 15
+                  : 30,
+          });
+
+          void generateSingingVersion({
+            actionKey: actionType === "remix" ? "createRemix" : "createNewVersion",
+            generationMode: actionType === "remix" ? "remix" : "new_version",
+            parentVersion: generationSourceVersion,
+            promptOverride: buildBranchInstruction({
+              actionType,
+              instruction: sourceBranchInstruction,
+              parentVersion: generationSourceVersion,
+            }),
+            titleOverride: buildBranchTitle(generationSourceVersion, actionType),
+            generatingMessage:
+              actionType === "remix" ? "Generating remix..." : "Generating new version...",
+            uploadingMessage:
+              actionType === "remix" ? "Uploading remix..." : "Uploading new version...",
+            readyMessage:
+              actionType === "remix" ? "Remix version ready ✓" : "New version ready ✓",
+          });
+          return;
+        }
+      }
+
       setWorkspaceStatus(getBranchWorkspaceStatus(generationIntent, selectedActiveVersion.label));
       createEditPlanVersion({
         actionType,
-        instruction: buildBranchFinalDirection({
-          baseDirection: finalDirection.trim() || musicDirection.trim(),
-          generationIntent,
-          activeVersionLabel: selectedActiveVersion.label,
-          durationSeconds:
-            typeof selectedActiveVersion.duration === "number"
-              ? selectedActiveVersion.duration
-              : generationMode === "seed"
-                ? 15
-                : 30,
-        }),
+        instruction: branchInstruction,
         parentVersion: selectedActiveVersion,
       });
       return;
@@ -3568,6 +3859,40 @@ export default function CreatePage() {
     createVersion(action, "generated");
   }
 
+  async function saveArtworkConceptForActiveVersion(concept: ArtworkConcept) {
+    if (!isUuid(activeVersion.id) || !activeVersion.trackGroupId) {
+      return false;
+    }
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error("Log in to save this artwork concept.");
+    }
+
+    const response = await fetch("/api/studio/versions/artwork-concept", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        trackVersionId: activeVersion.id,
+        trackGroupId: activeVersion.trackGroupId,
+        artworkConcept: concept,
+      }),
+    });
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(extractApiError(payload, "Artwork concept save failed"));
+    }
+
+    return true;
+  }
+
   async function createArtworkConcept() {
     setArtworkConceptLoading(true);
     setActionFeedback("artworkConcept", "working", 0);
@@ -3587,7 +3912,7 @@ export default function CreatePage() {
           musicDirection,
           lyricsDirection,
           mixerSummary,
-          currentArtworkConcept: activeVersion.artworkConcept?.concept || "",
+          currentArtworkConcept: getActiveArtworkConcept()?.concept || "",
         }),
       });
       const payload = await response.json().catch(() => null);
@@ -3612,21 +3937,15 @@ export default function CreatePage() {
         throw new Error("Artwork concept response was incomplete.");
       }
 
-      setVersions((current) =>
-        current.map((version) =>
-          version.id === activeVersion.id
-            ? {
-                ...version,
-                artworkConcept: concept,
-                note: version.note.includes("Artwork concept:")
-                  ? version.note
-                  : `${version.note} Artwork concept: ${concept.summary}`,
-              }
-            : version
-        )
-      );
+      applyArtworkConceptToActiveVersion(concept);
+      setArtworkDirectionConcept(concept);
       setArtworkDirection(concept.imagePrompt);
-      setWorkspaceStatus(`Artwork concept ready for ${activeVersion.label}: ${concept.summary}`);
+      const saved = await saveArtworkConceptForActiveVersion(concept);
+      setWorkspaceStatus(
+        saved
+          ? `Artwork concept saved for ${activeVersion.label}: ${concept.summary}`
+          : `Artwork concept ready for ${activeVersion.label}: ${concept.summary}`
+      );
       setActionFeedback("artworkConcept", "success");
     } catch (error: any) {
       setWorkspaceStatus(error?.message || "Artwork concept generation failed.");
@@ -3637,7 +3956,8 @@ export default function CreatePage() {
   }
 
   async function generateCoverImage() {
-    const imagePrompt = activeVersion.artworkConcept?.imagePrompt?.trim() || "";
+    const artworkConcept = getActiveArtworkConcept();
+    const imagePrompt = artworkConcept?.imagePrompt?.trim() || "";
 
     if (!imagePrompt) {
       setWorkspaceStatus("Create an artwork concept before generating a cover image.");
@@ -3667,7 +3987,7 @@ export default function CreatePage() {
           trackVersionId: activeVersion.id,
           trackGroupId: activeVersion.trackGroupId || activeTrackGroupId,
           imagePrompt,
-          artworkConcept: activeVersion.artworkConcept,
+          artworkConcept,
           title: activeVersion.title || title,
         }),
       });
@@ -3688,6 +4008,7 @@ export default function CreatePage() {
             ? {
                 ...version,
                 artworkUrl,
+                artworkConcept,
                 note: version.note.includes("Cover image:")
                   ? version.note
                   : `${version.note} Cover image: generated from Studio artwork concept.`,
@@ -3800,7 +4121,7 @@ export default function CreatePage() {
             voiceoverUrl: vocalUrl,
             note: voiceoverVersion.note.includes("Voiceover layer:")
               ? voiceoverVersion.note
-              : `${voiceoverVersion.note} Voiceover layer: generated separately with ElevenLabs. Singing vocals are not connected yet.`,
+              : `${voiceoverVersion.note} Voiceover layer: generated separately with ElevenLabs. Singing vocals use the Eleven Music generator.`,
           },
           ...current.filter((version) => version.id !== voiceoverVersion.id),
         ]);
@@ -3816,7 +4137,7 @@ export default function CreatePage() {
                   voiceoverUrl: vocalUrl,
                   note: version.note.includes("Voiceover layer:")
                     ? version.note
-                    : `${version.note} Voiceover layer: generated separately with ElevenLabs. Singing vocals are not connected yet.`,
+                    : `${version.note} Voiceover layer: generated separately with ElevenLabs. Singing vocals use the Eleven Music generator.`,
                 }
               : version
           )
@@ -3845,16 +4166,38 @@ export default function CreatePage() {
     }
   }
 
-  async function generateSingingVersion() {
-    const trimmedTitle = title.trim();
-    const stylePrompt = finalDirection.trim() || musicDirection.trim() || idea.trim();
-    const lyrics = lyricsPreview.trim();
+  async function generateSingingVersion(options?: {
+    actionKey?: ActionKey;
+    generationMode?: "singing" | "remix" | "new_version";
+    parentVersion?: VersionRecord;
+    promptOverride?: string;
+    titleOverride?: string;
+    durationSeconds?: number;
+    requireVocalMode?: boolean;
+    generatingMessage?: string;
+    uploadingMessage?: string;
+    readyMessage?: string;
+  }) {
+    const actionKey = options?.actionKey || "generateSingingVersion";
+    const parentVersion = options?.parentVersion || activeVersion;
+    const trimmedTitle =
+      options?.titleOverride?.trim() || title.trim() || parentVersion.title?.trim() || "";
+    const projectName = getProjectNameFallback(parentVersion.title?.trim() || title.trim() || trimmedTitle);
+    const stylePrompt = appendLanguageInstruction(
+      options?.promptOverride?.trim() || finalDirection.trim() || musicDirection.trim() || idea.trim()
+    );
+    const rawLyrics = lyricsPreview.trim();
+    const lyrics = appendLanguageInstruction(rawLyrics);
+    const artworkConceptForGeneration = getArtworkConceptForGeneration(parentVersion);
+    const generatingMessage = options?.generatingMessage || "Generating singing version...";
+    const uploadingMessage = options?.uploadingMessage || "Uploading singing version...";
+    const readyMessage = options?.readyMessage || "Singing version ready ✓";
 
     if (!trimmedTitle) {
       const message = "Failed: Add a track title first.";
       setSingingVersionMessage(message);
       setWorkspaceStatus(message);
-      setActionFeedback("generateSingingVersion", "error");
+      setActionFeedback(actionKey, "error");
       return;
     }
 
@@ -3862,22 +4205,30 @@ export default function CreatePage() {
       const message = "Failed: Add a prompt or final direction first.";
       setSingingVersionMessage(message);
       setWorkspaceStatus(message);
-      setActionFeedback("generateSingingVersion", "error");
+      setActionFeedback(actionKey, "error");
       return;
     }
 
-    if (!lyrics) {
+    if (!rawLyrics) {
       const message = "Failed: Add or generate lyrics first.";
       setSingingVersionMessage(message);
       setWorkspaceStatus(message);
-      setActionFeedback("generateSingingVersion", "error");
+      setActionFeedback(actionKey, "error");
+      return;
+    }
+
+    if (options?.requireVocalMode && vocalMode === "instrumental") {
+      const message = "Failed: Choose a vocal mode before generating a full song.";
+      setSingingVersionMessage(message);
+      setWorkspaceStatus(message);
+      setActionFeedback(actionKey, "error");
       return;
     }
 
     setSingingVersionLoading(true);
-    setSingingVersionMessage("Generating singing version...");
-    setWorkspaceStatus("Generating singing version...");
-    setActionFeedback("generateSingingVersion", "working", 0);
+    setSingingVersionMessage(generatingMessage);
+    setWorkspaceStatus(generatingMessage);
+    setActionFeedback(actionKey, "working", 0);
 
     try {
       const {
@@ -3889,8 +4240,10 @@ export default function CreatePage() {
       }
 
       const durationSeconds =
-        typeof activeVersion.duration === "number" && Number.isFinite(activeVersion.duration)
-          ? activeVersion.duration
+        typeof options?.durationSeconds === "number" && Number.isFinite(options.durationSeconds)
+          ? options.durationSeconds
+          : typeof parentVersion.duration === "number" && Number.isFinite(parentVersion.duration)
+          ? parentVersion.duration
           : generationMode === "seed"
             ? 15
             : 30;
@@ -3903,20 +4256,21 @@ export default function CreatePage() {
         },
         body: JSON.stringify({
           title: trimmedTitle,
-          projectName: getProjectNameFallback(trimmedTitle),
+          projectName,
           genre: trackGenre,
           prompt: stylePrompt,
           vocalMode,
           lyrics,
           durationSeconds,
-          trackGroupId: activeVersion.trackGroupId || activeTrackGroupId || null,
-          parentVersionId: isUuid(activeVersion.id) ? activeVersion.id : null,
-          artworkUrl: activeVersion.artworkUrl || null,
-          artworkConcept: activeVersion.artworkConcept || null,
+          generationMode: options?.generationMode || "singing",
+          trackGroupId: parentVersion.trackGroupId || activeTrackGroupId || null,
+          parentVersionId: isUuid(parentVersion.id) ? parentVersion.id : null,
+          artworkUrl: parentVersion.artworkUrl || null,
+          artworkConcept: artworkConceptForGeneration,
         }),
       });
-      setSingingVersionMessage("Uploading singing version...");
-      setWorkspaceStatus("Uploading singing version...");
+      setSingingVersionMessage(uploadingMessage);
+      setWorkspaceStatus(uploadingMessage);
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
@@ -3941,28 +4295,28 @@ export default function CreatePage() {
         singingVersion.trackGroupId
           ? {
               ...current,
-              [singingVersion.trackGroupId]: getProjectNameFallback(trimmedTitle),
+              [singingVersion.trackGroupId]: projectName,
             }
           : current
       );
       setGenerateError(null);
-      setGenerateStatus("Singing version ready ✓");
+      setGenerateStatus(readyMessage);
       setStudioPhase("complete");
       setStepState({
         track: false,
         vocals: false,
         artwork: false,
       });
-      setSingingVersionMessage("Singing version ready ✓");
-      setWorkspaceStatus("Singing version ready ✓");
-      setActionFeedback("generateSingingVersion", "success");
+      setSingingVersionMessage(readyMessage);
+      setWorkspaceStatus(readyMessage);
+      setActionFeedback(actionKey, "success");
       await loadStudioDrafts();
     } catch (error: any) {
       const message = `Failed: ${error?.message || "Singing version generation failed."}`;
       setSingingVersionMessage(message);
       setWorkspaceStatus(message);
       setGenerateError(message);
-      setActionFeedback("generateSingingVersion", "error");
+      setActionFeedback(actionKey, "error");
     } finally {
       setSingingVersionLoading(false);
     }
@@ -4747,11 +5101,57 @@ export default function CreatePage() {
       setProjectNameUnsaved(false);
       setWorkspaceStatus(`Studio project saved: ${trimmedProjectName}.`);
       setActionFeedback("saveProject", "success");
+      await loadStudioDrafts();
     } catch (error: any) {
       setWorkspaceStatus(error?.message || "Failed to save Studio project.");
       setActionFeedback("saveProject", "error");
     } finally {
       setProjectNameSaving(false);
+    }
+  }
+
+  async function deletePendingStudioProject() {
+    if (!pendingDeleteStudioProject?.trackGroupId) return;
+
+    setStudioProjectDeleting(true);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Log in to delete this Studio project.");
+      }
+
+      const response = await fetch("/api/studio/projects/delete", {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          trackGroupId: pendingDeleteStudioProject.trackGroupId,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(extractApiError(payload, "Failed to delete Studio project"));
+      }
+
+      setStudioProjectNames((current) => {
+        const next = { ...current };
+        delete next[pendingDeleteStudioProject.trackGroupId];
+        return next;
+      });
+      setPendingDeleteStudioProject(null);
+      setWorkspaceStatus("Studio project deleted.");
+      await loadStudioDrafts();
+    } catch (error: any) {
+      setWorkspaceStatus(error?.message || "Failed to delete Studio project.");
+    } finally {
+      setStudioProjectDeleting(false);
     }
   }
 
@@ -4860,6 +5260,8 @@ export default function CreatePage() {
     setFinalDirection("");
     setLyricsDirection("");
     setArtworkDirection("");
+    setArtworkDirectionConcept(null);
+    setSongLanguage("");
     setPromptHelpSuggestion("");
     setLyricsHelpSuggestion("");
     setLyricsPrompt("");
@@ -5426,19 +5828,24 @@ export default function CreatePage() {
                   <div className="min-w-0 max-w-full overflow-hidden rounded-[24px] border border-sky-200/25 bg-sky-300/10 p-4">
                     <div className="text-sm font-semibold text-white">Generate from prompt</div>
                     <div className="mt-1 text-xs text-white/70">
-                      Create a short seed or full test from the project idea and directions below.
+                      Choose one generator path from the project idea, final direction, lyrics, and vocal mode below.
                     </div>
-                    <div className="mt-4 flex flex-col gap-2">
-                      <div className="inline-flex w-fit rounded-full border border-white/12 bg-black/20 p-1">
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                        <div className="mb-2 text-xs font-semibold text-white/70">
+                          Seed 15s: music-only test
+                        </div>
                         <button
                           type="button"
-                          onClick={() => setGenerationMode("seed")}
-                          disabled={studioPhase === "loading"}
-                          className={
-                            generationMode === "seed"
-                              ? getActionButtonClass(getActionState("generateSeed"), "px-4 py-2")
-                              : secondaryButtonClass
-                          }
+                          onClick={() => {
+                            setGenerationMode("seed");
+                            void handleGenerate({ generationIntent: "seed" });
+                          }}
+                          disabled={!idea.trim() || studioPhase === "loading"}
+                          className={getActionButtonClass(
+                            getActionState("generateSeed"),
+                            "w-full justify-center"
+                          )}
                         >
                           {getActionStatusLabel(
                             getActionState("generateSeed"),
@@ -5446,15 +5853,23 @@ export default function CreatePage() {
                             "Generate seed (15s)"
                           )}
                         </button>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                        <div className="mb-2 text-xs font-semibold text-white/70">
+                          Full test 30s: music-only test
+                        </div>
                         <button
                           type="button"
-                          onClick={() => setGenerationMode("full")}
-                          disabled={studioPhase === "loading"}
-                          className={
-                            generationMode === "full"
-                              ? getActionButtonClass(getActionState("generateFull"), "px-4 py-2")
-                              : secondaryButtonClass
-                          }
+                          onClick={() => {
+                            setGenerationMode("full");
+                            void handleGenerate({ generationIntent: "full" });
+                          }}
+                          disabled={!idea.trim() || studioPhase === "loading"}
+                          className={getActionButtonClass(
+                            getActionState("generateFull"),
+                            "w-full justify-center"
+                          )}
                         >
                           {getActionStatusLabel(
                             getActionState("generateFull"),
@@ -5463,24 +5878,69 @@ export default function CreatePage() {
                           )}
                         </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => void handleGenerate()}
-                        disabled={!idea.trim() || studioPhase === "loading"}
-                        className={getActionButtonClass(
-                          getActionState(generationMode === "full" ? "generateFull" : "generateSeed"),
-                          "w-full justify-center"
-                        )}
-                      >
-                        {getActionStatusLabel(
-                          getActionState(generationMode === "full" ? "generateFull" : "generateSeed"),
-                          { working: "Generating...", success: "Done", error: "Error" },
-                          generationMode === "full" ? "Generate full track" : "Generate seed"
-                        )}
-                      </button>
-                      <div className="rounded-2xl border border-amber-200/20 bg-amber-300/10 px-3 py-2 text-xs font-semibold text-amber-50">
-                        Seed generation creates music only. Singing vocals require the singing provider.
+
+                      <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                        <div className="mb-2 text-xs font-semibold text-white/70">
+                          Singing version: uses current lyrics + vocal mode
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void generateSingingVersion()}
+                          disabled={singingVersionLoading}
+                          className={getActionButtonClass(
+                            getActionState("generateSingingVersion", singingVersionLoading ? "working" : "idle"),
+                            "w-full justify-center"
+                          )}
+                        >
+                          {getActionStatusLabel(
+                            getActionState("generateSingingVersion", singingVersionLoading ? "working" : "idle"),
+                            { working: "Generating...", success: "Ready", error: "Error" },
+                            "Generate singing version"
+                          )}
+                        </button>
                       </div>
+
+                      <div className="rounded-2xl border border-amber-200/20 bg-amber-300/10 p-3">
+                        <div className="mb-2 text-xs font-semibold text-amber-50">
+                          Full song 180s: paid Eleven Music test
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void generateSingingVersion({
+                              durationSeconds: 180,
+                              generationMode: "singing",
+                              requireVocalMode: true,
+                              generatingMessage: "Generating full Eleven Music song...",
+                              uploadingMessage: "Uploading full Eleven Music song...",
+                              readyMessage: "Full Eleven Music song ready ✓",
+                            })
+                          }
+                          disabled={singingVersionLoading}
+                          className={getActionButtonClass(
+                            getActionState("generateSingingVersion", singingVersionLoading ? "working" : "idle"),
+                            "w-full justify-center"
+                          )}
+                        >
+                          Generate full song (180s)
+                        </button>
+                      </div>
+                    </div>
+                    {singingVersionMessage ? (
+                      <div
+                        className={`mt-3 rounded-2xl border px-4 py-3 text-xs font-semibold ${
+                          singingVersionMessage.startsWith("Failed:")
+                            ? "border-rose-200/25 bg-rose-300/10 text-rose-50"
+                            : singingVersionMessage.includes("ready")
+                              ? "border-emerald-200/25 bg-emerald-300/10 text-emerald-50"
+                              : "border-sky-200/25 bg-sky-300/10 text-sky-50"
+                        }`}
+                      >
+                        {singingVersionMessage}
+                      </div>
+                    ) : null}
+                    <div className="mt-3 rounded-2xl border border-amber-200/20 bg-amber-300/10 px-3 py-2 text-xs font-semibold text-amber-50">
+                      Seed and full test use the music-only provider. Singing version and full song use Eleven Music.
                     </div>
                   </div>
 
@@ -5679,6 +6139,16 @@ export default function CreatePage() {
                     </option>
                   ))}
                 </select>
+
+                <label className="block">
+                  <div className="mb-2 text-sm font-medium text-white">Song language</div>
+                  <input
+                    value={songLanguage}
+                    onChange={(event) => setSongLanguage(event.target.value)}
+                    className={inputClass}
+                    placeholder="Enter language (examples: Estonian, Finnish, Japanese, Latin...)"
+                  />
+                </label>
               </div>
 
               <div className="mt-5 grid gap-4 xl:grid-cols-3">
@@ -5704,9 +6174,17 @@ export default function CreatePage() {
 
                     <textarea
                       value={key === "lyrics" ? lyricsPreview : value}
-                      onChange={(event) =>
-                        key === "lyrics" ? setLyricsPreview(event.target.value) : setter(event.target.value)
-                      }
+                      onChange={(event) => {
+                        if (key === "lyrics") {
+                          setLyricsPreview(event.target.value);
+                          return;
+                        }
+
+                        setter(event.target.value);
+                        if (key === "artwork") {
+                          setArtworkDirectionConcept(null);
+                        }
+                      }}
                       rows={7}
                       className={`${inputClass} resize-none`}
                       placeholder={
@@ -5908,10 +6386,7 @@ export default function CreatePage() {
                 Choose the main vocal mode clearly
               </div>
               <div className="mt-2 text-sm text-white/80">
-                Vocal mode currently guides the music prompt. Singing vocals are not connected yet.
-              </div>
-              <div className="mt-1 text-sm text-white/80">
-                Current music generation is prompt-guided. Singing vocals require a separate singing-capable model.
+                Vocal mode guides Eleven Music generation. Manual voiceover is separate spoken narration.
               </div>
             </div>
 
@@ -5946,57 +6421,12 @@ export default function CreatePage() {
               Auto lyrics chooses/uses lyrics during generation. To create editable lyrics, use Generate lyrics in the Lyrics section.
             </div>
 
-            {["male", "female", "duet"].includes(vocalMode) ? (
-              <div className="mt-4 rounded-2xl border border-amber-200/25 bg-amber-300/10 px-4 py-3 text-sm font-semibold text-amber-50">
-                Singing mode selected — generation provider not connected yet.
-              </div>
-            ) : null}
-
-            <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4 opacity-75">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <div className="text-sm font-semibold text-white">Generate singing version</div>
-                  <div className="mt-1 text-xs text-white/70">
-                    Uses Eleven Music to create a new song version with singing vocals from the current lyrics.
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void generateSingingVersion()}
-                  disabled={singingVersionLoading}
-                  className={getActionButtonClass(
-                    getActionState("generateSingingVersion", singingVersionLoading ? "working" : "idle"),
-                    "justify-center"
-                  )}
-                >
-                  {getActionStatusLabel(
-                    getActionState("generateSingingVersion", singingVersionLoading ? "working" : "idle"),
-                    { working: "Generating...", success: "Ready", error: "Error" },
-                    "Generate singing version"
-                  )}
-                </button>
-              </div>
-              {singingVersionMessage ? (
-                <div
-                  className={`mt-3 rounded-2xl border px-4 py-3 text-xs font-semibold ${
-                    singingVersionMessage.startsWith("Failed:")
-                      ? "border-rose-200/25 bg-rose-300/10 text-rose-50"
-                      : singingVersionMessage.includes("ready")
-                        ? "border-emerald-200/25 bg-emerald-300/10 text-emerald-50"
-                        : "border-sky-200/25 bg-sky-300/10 text-sky-50"
-                  }`}
-                >
-                  {singingVersionMessage}
-                </div>
-              ) : null}
-            </div>
-
             <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
                   <div className="text-sm font-semibold text-white">Manual voiceover layer</div>
                   <div className="mt-1 text-xs text-white/70">
-                    Creates spoken voiceover with ElevenLabs. Singing vocals are not connected yet.
+                    Creates spoken voiceover with ElevenLabs. Singing vocals are generated from the top generator area.
                   </div>
                   <div className="mt-2 text-xs font-semibold text-white/75">
                     Requires: generated version + lyrics + Male vocal or Female vocal.
@@ -6267,67 +6697,76 @@ export default function CreatePage() {
                     </div>
 
                     <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
+                      {(() => {
+                        const artworkConcept = getActiveArtworkConcept();
+                        const artworkConceptReady = Boolean(artworkConcept);
+
+                        return (
+                          <>
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <div className="text-[11px] font-semibold tracking-[0.18em] text-white">
                             ARTWORK CONCEPT
                           </div>
                           <div className="mt-1 text-sm text-white">
-                            Concept: {activeVersion.artworkConcept ? "Ready" : "Missing"}
+                            Concept: {artworkConceptReady ? "Ready" : "Missing"}
                           </div>
                           <div className="mt-1 text-xs text-white/65">
                             Image: {activeVersion.artworkUrl ? "Ready" : "Not generated yet"}
                           </div>
                         </div>
                         <div className="flex flex-col gap-2 sm:flex-row">
-                          <button
-                            type="button"
-                            onClick={() => void createArtworkConcept()}
-                            disabled={artworkConceptLoading}
-                            className={getActionButtonClass(
-                              getActionState("artworkConcept", artworkConceptLoading ? "working" : "idle"),
-                              "justify-center"
-                            )}
-                          >
-                            {getActionStatusLabel(
-                              getActionState("artworkConcept", artworkConceptLoading ? "working" : "idle"),
-                              { working: "Creating...", success: "Ready", error: "Error" },
-                              "Create artwork concept"
-                            )}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void generateCoverImage()}
-                            disabled={
-                              artworkImageLoading ||
-                              !activeVersion.artworkConcept?.imagePrompt
-                            }
-                            className={getActionButtonClass(
-                              !activeVersion.artworkConcept?.imagePrompt
-                                ? "disabled"
-                                : getActionState("coverImage", artworkImageLoading ? "working" : "idle"),
-                              "justify-center"
-                            )}
-                          >
-                            {getActionStatusLabel(
-                              getActionState("coverImage", artworkImageLoading ? "working" : "idle"),
-                              { working: "Generating...", success: "Done", error: "Error" },
-                              "Generate cover image"
-                            )}
-                          </button>
+                          {artworkConceptReady ? (
+                            <button
+                              type="button"
+                              onClick={() => void generateCoverImage()}
+                              disabled={artworkImageLoading || !artworkConcept?.imagePrompt}
+                              className={getActionButtonClass(
+                                !artworkConcept?.imagePrompt
+                                  ? "disabled"
+                                  : getActionState("coverImage", artworkImageLoading ? "working" : "idle"),
+                                "justify-center"
+                              )}
+                            >
+                              {getActionStatusLabel(
+                                getActionState("coverImage", artworkImageLoading ? "working" : "idle"),
+                                { working: "Generating...", success: "Done", error: "Error" },
+                                "Generate Cover Image"
+                              )}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => void createArtworkConcept()}
+                              disabled={artworkConceptLoading}
+                              className={getActionButtonClass(
+                                getActionState("artworkConcept", artworkConceptLoading ? "working" : "idle"),
+                                "justify-center"
+                              )}
+                            >
+                              {getActionStatusLabel(
+                                getActionState("artworkConcept", artworkConceptLoading ? "working" : "idle"),
+                                { working: "Generating...", success: "Ready", error: "Error" },
+                                "Generate Artwork Concept"
+                              )}
+                            </button>
+                          )}
                         </div>
                       </div>
-                      {activeVersion.artworkConcept ? (
+                      {artworkConcept ? (
                         <div className="mt-3 space-y-2 rounded-2xl border border-white/10 bg-black/20 p-3">
                           <div className="text-sm font-semibold text-white">
-                            {activeVersion.artworkConcept.summary}
+                            Theme: {artworkConcept.summary || artworkConcept.concept}
                           </div>
                           <div className="text-xs text-white/70">
-                            Palette: {activeVersion.artworkConcept.palette}
+                            Mood: {artworkConcept.concept}
                           </div>
-                          {activeVersion.artworkConcept.styleTags.length > 0 ? (
+                          <div className="text-xs text-white/70">
+                            Palette: {artworkConcept.palette}
+                          </div>
+                          {artworkConcept.styleTags.length > 0 ? (
                             <div className="flex flex-wrap gap-2">
-                              {activeVersion.artworkConcept.styleTags.map((tag) => (
+                              {artworkConcept.styleTags.map((tag) => (
                                 <span
                                   key={tag}
                                   className="rounded-full border border-white/10 bg-white/7 px-2.5 py-1 text-[11px] font-semibold text-white/75"
@@ -6337,8 +6776,14 @@ export default function CreatePage() {
                               ))}
                             </div>
                           ) : null}
+                          <div className="text-xs text-white/70">
+                            Style: {artworkConcept.imagePrompt}
+                          </div>
                         </div>
                       ) : null}
+                          </>
+                        );
+                      })()}
                       {activeVersion.artworkUrl ? (
                         <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
                           <div className="text-[11px] font-semibold tracking-[0.18em] text-white">
@@ -6494,19 +6939,35 @@ export default function CreatePage() {
               </div>
 
               <div className="mt-4 grid gap-3 lg:grid-cols-3">
-                {(["Instrumental version", "Create remix", "Create new version"] as const).map((label) => {
+                {(
+                  [
+                    { action: "Instrumental version", label: "Instrumental version" },
+                    {
+                      action: "Create remix",
+                      label: resolveGenerationSourceVersion(activeVersion)
+                        ? "Create remix"
+                        : "Create remix plan",
+                    },
+                    {
+                      action: "Create new version",
+                      label: resolveGenerationSourceVersion(activeVersion)
+                        ? "Create new version"
+                        : "Create new version plan",
+                    },
+                  ] as const
+                ).map(({ action, label }) => {
                   const actionKey: ActionKey =
-                    label === "Instrumental version"
+                    action === "Instrumental version"
                       ? "instrumentalVersion"
-                      : label === "Create remix"
+                      : action === "Create remix"
                         ? "createRemix"
                         : "createNewVersion";
 
                   return (
                     <button
-                      key={label}
+                      key={action}
                       type="button"
-                      onClick={() => handleWorkspaceAction(label)}
+                      onClick={() => handleWorkspaceAction(action)}
                       className={getActionButtonClass(
                         getActionState(actionKey),
                         "w-full rounded-2xl px-4 py-2"
@@ -6813,7 +7274,7 @@ export default function CreatePage() {
                       ["Provider", activeVersion.provider || "Not set"],
                       ["Music audio", activeVersion.audioUrl ? "Ready" : "Missing"],
                       ["Voiceover layer", activeVersionVoiceoverUrl ? "Ready" : "Missing"],
-                      ["Singing vocals", "Not connected yet"],
+                      ["Singing vocals", activeVersion.provider === "eleven_music" ? "Generated with Eleven Music" : "Use Eleven Music generator"],
                       ["Artwork concept", activeVersion.artworkConcept ? "Ready" : "Missing"],
                       ["Cover image", activeVersion.artworkUrl ? "Ready" : "Missing"],
                       ["Spotify metadata draft", "Ready"],
@@ -6982,236 +7443,44 @@ export default function CreatePage() {
                 </div>
               ) : null}
 
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <div className="text-[11px] font-semibold tracking-[0.18em] text-white">
-                      STUDIO PROJECTS
+              {pendingDeleteStudioProject ? (
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/65 px-4 py-6 backdrop-blur-sm">
+                  <div className="w-full max-w-lg rounded-[24px] border border-rose-200/35 bg-slate-950/95 p-5 shadow-[0_30px_100px_rgba(244,63,94,0.25)]">
+                    <div className="text-xs font-semibold tracking-[0.2em] text-rose-100">
+                      DELETE STUDIO PROJECT
                     </div>
-                    <div className="mt-1 text-sm text-white/72">
-                      Your saved Studio projects, drafts, review states, and published Studio releases.
+                    <div className="mt-2 text-xl font-semibold text-white">
+                      {pendingDeleteStudioProject.projectName}
+                    </div>
+                    <div className="mt-4 rounded-2xl border border-rose-200/25 bg-rose-400/10 px-4 py-3 text-sm text-rose-50">
+                      Delete this Studio project? Generated audio versions will remain in storage
+                      for now, but this project will be removed from the Studio Projects list.
+                    </div>
+                    <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setPendingDeleteStudioProject(null)}
+                        disabled={studioProjectDeleting}
+                        className={secondaryButtonClass}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void deletePendingStudioProject()}
+                        disabled={studioProjectDeleting}
+                        className={getActionButtonClass(
+                          studioProjectDeleting ? "working" : "error",
+                          "justify-center"
+                        )}
+                      >
+                        {studioProjectDeleting ? "Deleting..." : "Delete project"}
+                      </button>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => void loadStudioDrafts()}
-                    disabled={studioDraftsLoading}
-                    className={secondaryButtonClass}
-                  >
-                    {studioDraftsLoading ? "Refreshing..." : "Refresh"}
-                  </button>
                 </div>
+              ) : null}
 
-                <div className="mt-3 space-y-2">
-                  {studioDraftsLoading ? (
-                    <div className="rounded-xl border border-white/10 bg-black/18 px-3 py-3 text-sm text-white/72">
-                      Loading drafts...
-                    </div>
-                  ) : studioDraftGroups.length === 0 ? (
-                    <div className="rounded-xl border border-white/10 bg-black/18 px-3 py-3 text-sm text-white/72">
-                      No Studio drafts saved yet.
-                    </div>
-                  ) : (
-                    studioDraftGroups.map((group) => {
-                      const draft = group.latestDraft;
-                      const openableDraft =
-                        group.drafts.find((candidate) => candidate.source_track_group_id) || draft;
-                      const expanded = Boolean(expandedDraftGroups[group.id]);
-                      const projectReviewDisabled = isStudioDraftReviewActionDisabled(group.status);
-                      const isProjectActive =
-                        group.id === activeTrackGroupId ||
-                        group.id === activeVersion.trackGroupId ||
-                        group.drafts.some((candidate) =>
-                          isStudioDraftActive(candidate, activeVersion, activeVersionId, activeTrackGroupId)
-                        );
-                      const savedGroupProjectName = studioProjectNames[group.id]?.trim();
-                      const fallbackReleaseTitle = draft.title || "Untitled Studio project";
-                      const displayProjectName = savedGroupProjectName || fallbackReleaseTitle;
-
-                      return (
-                      <div
-                        key={group.id}
-                        className={`rounded-xl border px-3 py-3 ${
-                          isProjectActive
-                            ? "border-cyan-100/60 bg-cyan-400/16 shadow-[0_0_30px_rgba(56,189,248,0.24)] ring-1 ring-cyan-200/35"
-                            : group.status === "Ready for review"
-                            ? "border-emerald-200/35 bg-emerald-400/10"
-                            : group.status === "Approved"
-                              ? "border-blue-200/35 bg-blue-400/10"
-                            : group.status === "Rejected"
-                              ? "border-rose-200/35 bg-rose-400/10"
-                            : group.status === "Published"
-                              ? "border-cyan-200/35 bg-cyan-400/10"
-                            : "border-white/10 bg-black/18"
-                        }`}
-                      >
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <div className="truncate text-sm font-semibold text-white">
-                                {displayProjectName}
-                              </div>
-                              <span
-                                className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${getStudioDraftStatusBadgeClass(
-                                  group.status
-                                )}`}
-                              >
-                                {group.status}
-                              </span>
-                              {isProjectActive ? (
-                                <span className="rounded-full border border-cyan-100/45 bg-cyan-300/18 px-2 py-0.5 text-[11px] font-semibold text-cyan-50 shadow-[0_0_18px_rgba(125,211,252,0.25)]">
-                                  Open
-                                </span>
-                              ) : null}
-                            </div>
-                            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-semibold text-white/68">
-                              <span>{draft.artist || "Unknown artist"}</span>
-                              <span>{draft.genre || "No genre"}</span>
-                              <span>{group.latestCreatedAt ? formatVersionDate(group.latestCreatedAt) : "No date"}</span>
-                              <span>
-                                {group.drafts.length === 1
-                                  ? "1 saved draft"
-                                  : `${group.drafts.length} saved drafts`}
-                              </span>
-                              <span>{draft.audio_url ? "Audio ready" : "Audio missing"}</span>
-                              <span>{group.status}</span>
-                              <span>Release: {draft.title || "Untitled draft"}</span>
-                            </div>
-                          </div>
-
-                          <div className="flex flex-col gap-2 sm:flex-row">
-                            <button
-                              type="button"
-                              onClick={() => void openStudioProjectDraft(openableDraft)}
-                              className={`${secondaryButtonClass} justify-center`}
-                            >
-                              {isProjectActive ? "Opened" : "Open project"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (projectReviewDisabled) return;
-                                setPublicReviewMessage(null);
-                                setPublicReviewDraft(draft);
-                              }}
-                              disabled={projectReviewDisabled}
-                              className={`${secondaryButtonClass} justify-center disabled:cursor-not-allowed disabled:opacity-50`}
-                            >
-                              {getStudioDraftReviewButtonLabel(group.status)}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => toggleDraftGroup(group.id)}
-                              className={`${secondaryButtonClass} justify-center`}
-                            >
-                              {expanded ? "Collapse" : "Expand"}
-                            </button>
-                          </div>
-                        </div>
-
-                        {expanded ? (
-                          <div className="mt-3 space-y-2 border-t border-white/10 pt-3">
-                            {group.drafts.map((childDraft) => {
-                              const childStatus = getStudioDraftStatus(childDraft);
-                              const childReviewDisabled = isStudioDraftReviewActionDisabled(childStatus);
-                              const isChildActive = isStudioDraftActive(
-                                childDraft,
-                                activeVersion,
-                                activeVersionId,
-                                activeTrackGroupId
-                              );
-
-                              return (
-                                <div
-                                  key={childDraft.id}
-                                  className={`rounded-xl border px-3 py-3 ${
-                                    isChildActive
-                                      ? "border-cyan-100/55 bg-cyan-400/14 shadow-[0_0_22px_rgba(56,189,248,0.2)] ring-1 ring-cyan-200/30"
-                                    : childStatus === "Ready for review"
-                                      ? "border-emerald-200/25 bg-emerald-400/8"
-                                      : childStatus === "Approved"
-                                        ? "border-blue-200/25 bg-blue-400/8"
-                                      : childStatus === "Rejected"
-                                        ? "border-rose-200/25 bg-rose-400/8"
-                                      : childStatus === "Published"
-                                        ? "border-cyan-200/25 bg-cyan-400/8"
-                                      : "border-white/10 bg-black/18"
-                                  }`}
-                                >
-                                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                                    <div className="min-w-0">
-                                      <div className="flex flex-wrap items-center gap-2">
-                                        <div className="truncate text-sm font-semibold text-white">
-                                          {childDraft.title || "Untitled draft"}
-                                        </div>
-                                        <span
-                                          className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${getStudioDraftStatusBadgeClass(
-                                            childStatus
-                                          )}`}
-                                        >
-                                          {childStatus}
-                                        </span>
-                                        {isChildActive ? (
-                                          <span className="rounded-full border border-cyan-100/45 bg-cyan-300/18 px-2 py-0.5 text-[11px] font-semibold text-cyan-50">
-                                            Open
-                                          </span>
-                                        ) : null}
-                                      </div>
-                                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-semibold text-white/68">
-                                        <span>{childDraft.artist || "Unknown artist"}</span>
-                                        <span>{childDraft.genre || "No genre"}</span>
-                                        <span>
-                                          {childDraft.created_at
-                                            ? formatVersionDate(childDraft.created_at)
-                                            : "No date"}
-                                        </span>
-                                        <span>{childDraft.audio_url ? "Audio ready" : "Audio missing"}</span>
-                                        <span>{childStatus}</span>
-                                      </div>
-                                    </div>
-
-                                    <div className="flex flex-col gap-2 sm:flex-row">
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          if (childReviewDisabled) return;
-                                          setPublicReviewMessage(null);
-                                          setPublicReviewDraft(childDraft);
-                                        }}
-                                        disabled={childReviewDisabled}
-                                        className={`${secondaryButtonClass} justify-center disabled:cursor-not-allowed disabled:opacity-50`}
-                                      >
-                                        {getStudioDraftReviewButtonLabel(childStatus)}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => void previewStudioDraft(childDraft)}
-                                        className={`${secondaryButtonClass} justify-center`}
-                                      >
-                                        Preview
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => void openStudioProjectDraft(childDraft)}
-                                        className={`${secondaryButtonClass} justify-center`}
-                                      >
-                                        {isChildActive ? "Opened" : "Open project"}
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                    })
-                  )}
-                </div>
-              </div>
-            </div>
-          </section>
 
           <section className={sectionClass}>
             <div className="mb-4">
@@ -7897,6 +8166,255 @@ export default function CreatePage() {
 
               {coProducerPanelContent}
           </section>
+
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="text-[11px] font-semibold tracking-[0.18em] text-white">
+                      STUDIO PROJECTS
+                    </div>
+                    <div className="mt-1 text-sm text-white/72">
+                      Your saved Studio projects, drafts, review states, and published Studio releases.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void loadStudioDrafts()}
+                    disabled={studioDraftsLoading}
+                    className={secondaryButtonClass}
+                  >
+                    {studioDraftsLoading ? "Refreshing..." : "Refresh"}
+                  </button>
+                </div>
+
+                <div className="mt-3 space-y-2">
+                  {studioDraftsLoading ? (
+                    <div className="rounded-xl border border-white/10 bg-black/18 px-3 py-3 text-sm text-white/72">
+                      Loading drafts...
+                    </div>
+                  ) : studioDraftGroups.length === 0 ? (
+                    <div className="rounded-xl border border-white/10 bg-black/18 px-3 py-3 text-sm text-white/72">
+                      No Studio drafts saved yet.
+                    </div>
+                  ) : (
+                    studioDraftGroups.map((group) => {
+                      const draft = group.latestDraft;
+                      const openableDraft =
+                        group.drafts.find((candidate) => candidate.source_track_group_id) || draft;
+                      const expanded = Boolean(expandedDraftGroups[group.id]);
+                      const projectReviewDisabled = isStudioDraftReviewActionDisabled(group.status);
+                      const isProjectActive =
+                        group.id === activeTrackGroupId ||
+                        group.id === activeVersion.trackGroupId ||
+                        group.drafts.some((candidate) =>
+                          isStudioDraftActive(candidate, activeVersion, activeVersionId, activeTrackGroupId)
+                        );
+                      const savedGroupProjectName = studioProjectNames[group.id]?.trim();
+                      const fallbackReleaseTitle = draft.title || "Untitled Studio project";
+                      const displayProjectName = savedGroupProjectName || fallbackReleaseTitle;
+                      const deletableTrackGroupId =
+                        group.drafts.find((candidate) => candidate.source_track_group_id)
+                          ?.source_track_group_id || null;
+
+                      return (
+                      <div
+                        key={group.id}
+                        className={`rounded-xl border px-3 py-3 ${
+                          isProjectActive
+                            ? "border-cyan-100/60 bg-cyan-400/16 shadow-[0_0_30px_rgba(56,189,248,0.24)] ring-1 ring-cyan-200/35"
+                            : group.status === "Ready for review"
+                            ? "border-emerald-200/35 bg-emerald-400/10"
+                            : group.status === "Approved"
+                              ? "border-blue-200/35 bg-blue-400/10"
+                            : group.status === "Rejected"
+                              ? "border-rose-200/35 bg-rose-400/10"
+                            : group.status === "Published"
+                              ? "border-cyan-200/35 bg-cyan-400/10"
+                            : "border-white/10 bg-black/18"
+                        }`}
+                      >
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="truncate text-sm font-semibold text-white">
+                                {displayProjectName}
+                              </div>
+                              <span
+                                className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${getStudioDraftStatusBadgeClass(
+                                  group.status
+                                )}`}
+                              >
+                                {group.status}
+                              </span>
+                              {isProjectActive ? (
+                                <span className="rounded-full border border-cyan-100/45 bg-cyan-300/18 px-2 py-0.5 text-[11px] font-semibold text-cyan-50 shadow-[0_0_18px_rgba(125,211,252,0.25)]">
+                                  Open
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-semibold text-white/68">
+                              <span>{draft.artist || "Unknown artist"}</span>
+                              <span>{draft.genre || "No genre"}</span>
+                              <span>{group.latestCreatedAt ? formatVersionDate(group.latestCreatedAt) : "No date"}</span>
+                              <span>
+                                {group.drafts.length === 1
+                                  ? "1 saved draft"
+                                  : `${group.drafts.length} saved drafts`}
+                              </span>
+                              <span>{draft.audio_url ? "Audio ready" : "Audio missing"}</span>
+                              <span>{group.status}</span>
+                              <span>Release: {draft.title || "Untitled draft"}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col gap-2 sm:flex-row">
+                            <button
+                              type="button"
+                              onClick={() => void openStudioProjectDraft(openableDraft)}
+                              className={`${secondaryButtonClass} justify-center`}
+                            >
+                              {isProjectActive ? "Opened" : "Open project"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (projectReviewDisabled) return;
+                                setPublicReviewMessage(null);
+                                setPublicReviewDraft(draft);
+                              }}
+                              disabled={projectReviewDisabled}
+                              className={`${secondaryButtonClass} justify-center disabled:cursor-not-allowed disabled:opacity-50`}
+                            >
+                              {getStudioDraftReviewButtonLabel(group.status)}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => toggleDraftGroup(group.id)}
+                              className={`${secondaryButtonClass} justify-center`}
+                            >
+                              {expanded ? "Collapse" : "Expand"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!deletableTrackGroupId) return;
+                                setPendingDeleteStudioProject({
+                                  trackGroupId: deletableTrackGroupId,
+                                  projectName: displayProjectName,
+                                });
+                              }}
+                              disabled={!deletableTrackGroupId}
+                              className={`${secondaryButtonClass} justify-center disabled:cursor-not-allowed disabled:opacity-50`}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+
+                        {expanded ? (
+                          <div className="mt-3 space-y-2 border-t border-white/10 pt-3">
+                            {group.drafts.map((childDraft) => {
+                              const childStatus = getStudioDraftStatus(childDraft);
+                              const childReviewDisabled = isStudioDraftReviewActionDisabled(childStatus);
+                              const isChildActive = isStudioDraftActive(
+                                childDraft,
+                                activeVersion,
+                                activeVersionId,
+                                activeTrackGroupId
+                              );
+
+                              return (
+                                <div
+                                  key={childDraft.id}
+                                  className={`rounded-xl border px-3 py-3 ${
+                                    isChildActive
+                                      ? "border-cyan-100/55 bg-cyan-400/14 shadow-[0_0_22px_rgba(56,189,248,0.2)] ring-1 ring-cyan-200/30"
+                                    : childStatus === "Ready for review"
+                                      ? "border-emerald-200/25 bg-emerald-400/8"
+                                      : childStatus === "Approved"
+                                        ? "border-blue-200/25 bg-blue-400/8"
+                                      : childStatus === "Rejected"
+                                        ? "border-rose-200/25 bg-rose-400/8"
+                                      : childStatus === "Published"
+                                        ? "border-cyan-200/25 bg-cyan-400/8"
+                                      : "border-white/10 bg-black/18"
+                                  }`}
+                                >
+                                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                                    <div className="min-w-0">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <div className="truncate text-sm font-semibold text-white">
+                                          {childDraft.title || "Untitled draft"}
+                                        </div>
+                                        <span
+                                          className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${getStudioDraftStatusBadgeClass(
+                                            childStatus
+                                          )}`}
+                                        >
+                                          {childStatus}
+                                        </span>
+                                        {isChildActive ? (
+                                          <span className="rounded-full border border-cyan-100/45 bg-cyan-300/18 px-2 py-0.5 text-[11px] font-semibold text-cyan-50">
+                                            Open
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-semibold text-white/68">
+                                        <span>{childDraft.artist || "Unknown artist"}</span>
+                                        <span>{childDraft.genre || "No genre"}</span>
+                                        <span>
+                                          {childDraft.created_at
+                                            ? formatVersionDate(childDraft.created_at)
+                                            : "No date"}
+                                        </span>
+                                        <span>{childDraft.audio_url ? "Audio ready" : "Audio missing"}</span>
+                                        <span>{childStatus}</span>
+                                      </div>
+                                    </div>
+
+                                    <div className="flex flex-col gap-2 sm:flex-row">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (childReviewDisabled) return;
+                                          setPublicReviewMessage(null);
+                                          setPublicReviewDraft(childDraft);
+                                        }}
+                                        disabled={childReviewDisabled}
+                                        className={`${secondaryButtonClass} justify-center disabled:cursor-not-allowed disabled:opacity-50`}
+                                      >
+                                        {getStudioDraftReviewButtonLabel(childStatus)}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => void previewStudioDraft(childDraft)}
+                                        className={`${secondaryButtonClass} justify-center`}
+                                      >
+                                        Preview
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => void openStudioProjectDraft(childDraft)}
+                                        className={`${secondaryButtonClass} justify-center`}
+                                      >
+                                        {isChildActive ? "Opened" : "Open project"}
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+
 
           <aside className={sectionClass}>
             <button

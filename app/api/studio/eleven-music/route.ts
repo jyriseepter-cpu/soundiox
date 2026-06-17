@@ -12,6 +12,7 @@ type ElevenMusicBody = {
   vocalMode?: string;
   lyrics?: string;
   durationSeconds?: number | null;
+  generationMode?: string | null;
   trackGroupId?: string | null;
   parentVersionId?: string | null;
   artworkUrl?: string | null;
@@ -20,7 +21,11 @@ type ElevenMusicBody = {
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 const SUPABASE_BUCKET = process.env.SUPABASE_BUCKET || "tracks";
-const MAX_MUSIC_LENGTH_MS = 30000;
+const MIN_MUSIC_LENGTH_MS = 5000;
+const MAX_MUSIC_LENGTH_MS = 180000;
+const ELEVEN_MUSIC_MODEL_ID = "music_v1";
+const ELEVEN_MUSIC_OUTPUT_FORMAT = "mp3_44100_128";
+const ELEVEN_MUSIC_ROUTE = "/api/studio/eleven-music";
 
 function getBearerToken(header: string | null) {
   if (!header) return null;
@@ -83,11 +88,13 @@ function buildElevenMusicPrompt(args: {
   genre: string;
   prompt: string;
   vocalMode: string;
+  generationMode: string;
   lyrics: string;
 }) {
   return [
     `Title: ${args.title}`,
     args.genre ? `Genre: ${args.genre}` : "",
+    args.generationMode ? `Generation mode: ${args.generationMode}` : "",
     `Style and direction: ${args.prompt}`,
     args.vocalMode ? `Vocal mode: ${args.vocalMode}` : "Vocal mode: singing vocals",
     "Create a complete short song with clear singing vocals. Do not make it instrumental.",
@@ -102,7 +109,86 @@ function getDurationMs(durationSeconds: unknown) {
     typeof durationSeconds === "number" && Number.isFinite(durationSeconds)
       ? durationSeconds
       : 30;
-  return Math.min(MAX_MUSIC_LENGTH_MS, Math.max(1000, Math.round(parsed * 1000)));
+  return Math.min(MAX_MUSIC_LENGTH_MS, Math.max(MIN_MUSIC_LENGTH_MS, Math.round(parsed * 1000)));
+}
+
+function normalizeGenerationMode(value: unknown) {
+  const normalized = String(value || "singing")
+    .trim()
+    .toLowerCase()
+    .replace(/-/g, "_");
+
+  if (normalized === "remix" || normalized === "new_version" || normalized === "singing") {
+    return normalized;
+  }
+
+  return "singing";
+}
+
+function getGenerationIntentForMode(generationMode: string) {
+  if (generationMode === "remix") return "studio_remix";
+  if (generationMode === "new_version") return "studio_new_version";
+  return "studio_full_song";
+}
+
+function getHeaderValue(headers: Headers, names: string[]) {
+  for (const name of names) {
+    const value = headers.get(name);
+    if (value?.trim()) return value.trim();
+  }
+
+  return "";
+}
+
+function getElevenResponseMetadata(response: Response) {
+  return {
+    requestId: getHeaderValue(response.headers, [
+      "request-id",
+      "x-request-id",
+      "xi-request-id",
+      "elevenlabs-request-id",
+    ]),
+    responseContentType: response.headers.get("content-type") || null,
+    responseContentLength: response.headers.get("content-length") || null,
+  };
+}
+
+async function getExistingColumns(
+  serviceClient: ReturnType<typeof buildServiceClient>,
+  table: string,
+  columns: string[]
+) {
+  const entries = await Promise.all(
+    columns.map(async (column) => [column, await columnExists(serviceClient, table, column)] as const)
+  );
+  return Object.fromEntries(entries) as Record<string, boolean>;
+}
+
+async function updateGenerationJob(
+  serviceClient: ReturnType<typeof buildServiceClient>,
+  generationJobId: string | null,
+  columns: Record<string, boolean>,
+  updates: Record<string, unknown>
+) {
+  if (!generationJobId) return;
+
+  const filteredUpdates = Object.fromEntries(
+    Object.entries(updates).filter(([column]) => columns[column])
+  );
+
+  if (Object.keys(filteredUpdates).length === 0) return;
+
+  const { error } = await serviceClient
+    .from("generation_jobs")
+    .update(filteredUpdates)
+    .eq("id", generationJobId);
+
+  if (error) {
+    console.error("ELEVEN_MUSIC_JOB_UPDATE_FAILED", {
+      generationJobId,
+      message: error.message,
+    });
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -138,6 +224,7 @@ export async function POST(request: NextRequest) {
     const prompt = String(body?.prompt || "").trim();
     const vocalMode = String(body?.vocalMode || "singing").trim();
     const lyrics = String(body?.lyrics || "").trim();
+    const requestedGenerationMode = normalizeGenerationMode(body?.generationMode);
     const requestedTrackGroupId = String(body?.trackGroupId || "").trim();
     const requestedParentVersionId = String(body?.parentVersionId || "").trim();
     const trackGroupId = requestedTrackGroupId || randomUUID();
@@ -159,6 +246,33 @@ export async function POST(request: NextRequest) {
     const hasRootVersionId = await columnExists(serviceClient, "track_versions", "root_version_id");
     const hasArtworkConcept = await columnExists(serviceClient, "track_versions", "artwork_concept");
     const hasGenerationIntent = await columnExists(serviceClient, "track_versions", "generation_intent");
+    const hasGenerationMetadata = await columnExists(serviceClient, "track_versions", "generation_metadata");
+    const generationJobColumns = await getExistingColumns(serviceClient, "generation_jobs", [
+      "user_id",
+      "title",
+      "prompt",
+      "vocal_mode",
+      "provider",
+      "status",
+      "provider_job_id",
+      "provider_status",
+      "storage_path",
+      "generation_mode",
+      "generation_intent",
+      "duration_seconds",
+      "parent_version_id",
+      "track_group_id",
+      "track_version_id",
+      "started_at",
+      "completed_at",
+      "failed_at",
+      "audio_url",
+      "error",
+      "error_message",
+      "estimated_cost_credits",
+      "actual_cost_credits",
+      "cost_metadata",
+    ]);
 
     if (requestedTrackGroupId) {
       const { data: project, error: projectError } = await serviceClient
@@ -181,8 +295,90 @@ export async function POST(request: NextRequest) {
       genre,
       prompt,
       vocalMode,
+      generationMode: requestedGenerationMode,
       lyrics,
     });
+    const durationSeconds = Math.round(durationMs / 1000);
+    const generationIntent = getGenerationIntentForMode(requestedGenerationMode);
+    let generationJobId: string | null = null;
+    let costMetadata: Record<string, unknown> = {
+      model_id: ELEVEN_MUSIC_MODEL_ID,
+      output_format: ELEVEN_MUSIC_OUTPUT_FORMAT,
+      duration_ms: durationMs,
+      force_instrumental: false,
+      route: ELEVEN_MUSIC_ROUTE,
+    };
+
+    const generationJobInsert: Record<string, unknown> = {
+      user_id: user.id,
+      title,
+      prompt: elevenPrompt,
+      vocal_mode: vocalMode || "singing",
+      provider: "eleven_music",
+      status: "running",
+      provider_status: "started",
+      generation_mode: requestedGenerationMode,
+      generation_intent: generationIntent,
+      duration_seconds: durationSeconds,
+      parent_version_id: requestedParentVersionId || null,
+      track_group_id: trackGroupId,
+      started_at: new Date().toISOString(),
+      estimated_cost_credits: null,
+      cost_metadata: costMetadata,
+    };
+    const filteredGenerationJobInsert = Object.fromEntries(
+      Object.entries(generationJobInsert).filter(([column]) => generationJobColumns[column])
+    );
+    const generationJobSelect = [
+      "id",
+      generationJobColumns.cost_metadata ? "cost_metadata" : "",
+    ]
+      .filter(Boolean)
+      .join(",");
+    const { data: generationJob, error: generationJobError } = await serviceClient
+      .from("generation_jobs")
+      .insert(filteredGenerationJobInsert)
+      .select(generationJobSelect || "id")
+      .single<{ id: string; cost_metadata?: Record<string, unknown> | null }>();
+
+    if (generationJobError || !generationJob?.id) {
+      return NextResponse.json(
+        { error: generationJobError?.message || "Failed to create Eleven Music generation job." },
+        { status: 500 }
+      );
+    }
+
+    generationJobId = generationJob.id;
+    console.log("ELEVEN_MUSIC_JOB_STARTED", {
+      generationJobId,
+      generationMode: requestedGenerationMode,
+      generationIntent,
+      durationMs,
+    });
+
+    async function failGenerationJob(stage: string, message: string) {
+      costMetadata = {
+        ...costMetadata,
+        failure_stage: stage,
+        error: message,
+        failed_at: new Date().toISOString(),
+      };
+      await updateGenerationJob(serviceClient, generationJobId, generationJobColumns, {
+        status: "failed",
+        provider_status: stage,
+        provider_job_id:
+          typeof costMetadata.eleven_request_id === "string" ? costMetadata.eleven_request_id : null,
+        failed_at: new Date().toISOString(),
+        error: message,
+        error_message: message,
+        cost_metadata: costMetadata,
+      });
+      console.error("ELEVEN_MUSIC_JOB_FAILED", {
+        generationJobId,
+        stage,
+        message,
+      });
+    }
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 120 * 1000);
@@ -198,7 +394,7 @@ export async function POST(request: NextRequest) {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model_id: "music_v1",
+            model_id: ELEVEN_MUSIC_MODEL_ID,
             music_length_ms: durationMs,
             force_instrumental: false,
             prompt: elevenPrompt,
@@ -206,9 +402,28 @@ export async function POST(request: NextRequest) {
           signal: controller.signal,
         }
       );
+      const elevenResponseMetadata = getElevenResponseMetadata(elevenResponse);
+      costMetadata = {
+        ...costMetadata,
+        eleven_request_id: elevenResponseMetadata.requestId || null,
+        response_content_type: elevenResponseMetadata.responseContentType,
+        response_content_length: elevenResponseMetadata.responseContentLength,
+      };
+      console.log("ELEVEN_MUSIC_RESPONSE", {
+        generationJobId,
+        status: elevenResponse.status,
+        statusText: elevenResponse.statusText,
+        requestId: elevenResponseMetadata.requestId || null,
+        contentType: elevenResponseMetadata.responseContentType,
+        contentLength: elevenResponseMetadata.responseContentLength,
+      });
 
       if (!elevenResponse.ok) {
         const errorText = await elevenResponse.text().catch(() => "");
+        await failGenerationJob(
+          "eleven_failed",
+          errorText || `ElevenLabs failed with status ${elevenResponse.status}`
+        );
         return NextResponse.json(
           {
             error: "Eleven Music generation failed.",
@@ -224,18 +439,24 @@ export async function POST(request: NextRequest) {
       audioBuffer = await elevenResponse.arrayBuffer();
     } catch (error: any) {
       if (error?.name === "AbortError") {
+        await failGenerationJob("eleven_timeout", "Eleven Music generation timed out after 120 seconds.");
         return NextResponse.json(
           { error: "Eleven Music generation timed out after 120 seconds.", provider: "eleven_music" },
           { status: 504 }
         );
       }
 
+      await failGenerationJob(
+        "eleven_exception",
+        error?.message || "Unexpected Eleven Music provider error."
+      );
       throw error;
     } finally {
       clearTimeout(timeout);
     }
 
     if (!audioBuffer.byteLength) {
+      await failGenerationJob("eleven_empty_audio", "Eleven Music returned an empty audio response.");
       return NextResponse.json(
         { error: "Eleven Music returned an empty audio response.", provider: "eleven_music" },
         { status: 502 }
@@ -258,6 +479,10 @@ export async function POST(request: NextRequest) {
     const uploadText = await uploadResponse.text().catch(() => "");
 
     if (!uploadResponse.ok) {
+      await failGenerationJob(
+        "upload_failed",
+        uploadText || `Singing version upload failed with status ${uploadResponse.status}`
+      );
       return NextResponse.json(
         {
           error: uploadText || `Singing version upload failed with status ${uploadResponse.status}`,
@@ -269,6 +494,16 @@ export async function POST(request: NextRequest) {
     }
 
     const audioUrl = `${supabaseUrl}/storage/v1/object/public/${SUPABASE_BUCKET}/${storagePath}`;
+    costMetadata = {
+      ...costMetadata,
+      storage_path: storagePath,
+      audio_url: audioUrl,
+    };
+    console.log("ELEVEN_MUSIC_UPLOAD_DONE", {
+      generationJobId,
+      storagePath,
+      audioUrl,
+    });
 
     const { data: existingProject, error: existingProjectError } = await serviceClient
       .from("studio_projects")
@@ -277,6 +512,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle<{ id: string }>();
 
     if (existingProjectError) {
+      await failGenerationJob("project_lookup_failed", existingProjectError.message);
       return NextResponse.json({ error: existingProjectError.message }, { status: 500 });
     }
 
@@ -297,6 +533,7 @@ export async function POST(request: NextRequest) {
     const { error: projectSaveError } = await projectMutation;
 
     if (projectSaveError) {
+      await failGenerationJob("project_save_failed", projectSaveError.message);
       return NextResponse.json({ error: projectSaveError.message }, { status: 500 });
     }
 
@@ -309,6 +546,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle<{ id: string; version_number: number | null; root_version_id?: string | null; is_original?: boolean | null }>();
 
     if (latestError) {
+      await failGenerationJob("version_lookup_failed", latestError.message);
       return NextResponse.json({ error: latestError.message }, { status: 500 });
     }
 
@@ -317,21 +555,21 @@ export async function POST(request: NextRequest) {
     const versionId = randomUUID();
     const insertPayload: Record<string, unknown> = {
       id: versionId,
-      generation_job_id: null,
+      generation_job_id: generationJobId,
       parent_version_id: isOriginal ? null : requestedParentVersionId || latestVersion?.id || null,
       track_group_id: trackGroupId,
       version_number: nextVersionNumber,
       title,
-      version_label: isOriginal ? "Original" : `Singing Version ${nextVersionNumber}`,
+      version_label: isOriginal ? "Original" : `Version ${nextVersionNumber}`,
       provider: "eleven_music",
-      generation_mode: "singing",
+      generation_mode: requestedGenerationMode,
       prompt: elevenPrompt,
       lyrics,
       vocal_mode: vocalMode || "singing",
       audio_url: audioUrl,
       artwork_url: body?.artworkUrl || null,
       storage_path: storagePath,
-      duration: Math.round(durationMs / 1000),
+      duration: durationSeconds,
       is_original: isOriginal,
     };
 
@@ -342,7 +580,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (hasGenerationIntent) {
-      insertPayload.generation_intent = "new_version";
+      insertPayload.generation_intent =
+        requestedGenerationMode === "remix" ? "remix" : "new_version";
     }
 
     if (
@@ -351,6 +590,14 @@ export async function POST(request: NextRequest) {
       typeof body.artworkConcept === "object"
     ) {
       insertPayload.artwork_concept = body.artworkConcept;
+    }
+
+    if (hasGenerationMetadata) {
+      insertPayload.generation_metadata = {
+        ...costMetadata,
+        generation_job_id: generationJobId,
+        generation_intent: generationIntent,
+      };
     }
 
     const versionSelect = [
@@ -370,6 +617,7 @@ export async function POST(request: NextRequest) {
       "audio_url",
       "artwork_url",
       hasArtworkConcept ? "artwork_concept" : "",
+      hasGenerationMetadata ? "generation_metadata" : "",
       "storage_path",
       "duration",
       "is_original",
@@ -385,11 +633,46 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (versionError || !version) {
+      await failGenerationJob(
+        "version_insert_failed",
+        versionError?.message || "Failed to save singing version"
+      );
       return NextResponse.json(
         { error: versionError?.message || "Failed to save singing version" },
         { status: 500 }
       );
     }
+
+    const completedAt = new Date().toISOString();
+    costMetadata = {
+      ...costMetadata,
+      track_version_id: version.id,
+      storage_path: storagePath,
+      audio_url: audioUrl,
+      completed_at: completedAt,
+    };
+    console.log("ELEVEN_MUSIC_VERSION_INSERTED", {
+      generationJobId,
+      trackVersionId: version.id,
+      trackGroupId,
+    });
+    await updateGenerationJob(serviceClient, generationJobId, generationJobColumns, {
+      status: "completed",
+      provider_status: "completed",
+      provider_job_id:
+        typeof costMetadata.eleven_request_id === "string" ? costMetadata.eleven_request_id : null,
+      track_version_id: version.id,
+      actual_cost_credits: null,
+      audio_url: audioUrl,
+      storage_path: storagePath,
+      completed_at: completedAt,
+      cost_metadata: costMetadata,
+    });
+    console.log("ELEVEN_MUSIC_JOB_COMPLETED", {
+      generationJobId,
+      trackVersionId: version.id,
+      durationMs,
+    });
 
     return NextResponse.json({
       ok: true,
