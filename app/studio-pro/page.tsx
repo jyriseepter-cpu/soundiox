@@ -112,6 +112,7 @@ type StudioVersion = {
   provider: string | null;
   duration: number | null;
   versionNumber: number | null;
+  isOriginal?: boolean | null;
   createdAt: string | null;
   stemsStatus: StemStatus;
   stemsRequestedAt?: string | null;
@@ -606,6 +607,15 @@ function formatDate(value: string | null) {
   });
 }
 
+function getStudioProVersionNumber(version: StudioVersion, fallbackIndex: number) {
+  if (typeof version.versionNumber === "number" && Number.isFinite(version.versionNumber)) {
+    return version.versionNumber;
+  }
+
+  if (version.isOriginal || version.label.toLowerCase() === "original") return 1;
+  return fallbackIndex + 1;
+}
+
 function mapVersion(raw: any): StudioVersion {
   return {
     id: String(raw.id || ""),
@@ -619,6 +629,7 @@ function mapVersion(raw: any): StudioVersion {
     provider: raw.provider || null,
     duration: typeof raw.duration === "number" ? raw.duration : null,
     versionNumber: raw.version_number || raw.versionNumber || null,
+    isOriginal: raw.is_original ?? raw.isOriginal ?? false,
     createdAt: raw.created_at || raw.createdAt || null,
     stemsStatus: normalizeStemStatus(raw.stems_status || raw.stemsStatus),
     stemsRequestedAt: raw.stems_requested_at || raw.stemsRequestedAt || null,
@@ -1096,6 +1107,27 @@ export default function StudioProPage() {
   }, [currentProject, projectVersion, selectedProject, selectedVersion]);
   const activeVersion = renderSource;
   const activeProject = currentProject;
+  const versionTimeline = useMemo(
+    () =>
+      [...versions].sort((a, b) => {
+        const byVersionNumber = getStudioProVersionNumber(a, 0) - getStudioProVersionNumber(b, 0);
+        if (byVersionNumber !== 0) return byVersionNumber;
+
+        const aCreated = a.createdAt ? Date.parse(a.createdAt) || 0 : 0;
+        const bCreated = b.createdAt ? Date.parse(b.createdAt) || 0 : 0;
+        return aCreated - bCreated;
+      }),
+    [versions]
+  );
+  const activeVersionTimelineIndex = versionTimeline.findIndex(
+    (version) => version.id === activeVersionId
+  );
+  const previousVersion =
+    activeVersionTimelineIndex > 0 ? versionTimeline[activeVersionTimelineIndex - 1] : null;
+  const nextVersion =
+    activeVersionTimelineIndex >= 0 && activeVersionTimelineIndex < versionTimeline.length - 1
+      ? versionTimeline[activeVersionTimelineIndex + 1]
+      : null;
   useEffect(() => {
     console.log("ACTIVE PROJECT", activeProject);
     console.log("ACTIVE VERSION", activeVersion);
@@ -2362,6 +2394,23 @@ export default function StudioProPage() {
       clearActionState(actionKey, 1800);
       setWorkspaceStatus(status);
     }, 160);
+  }
+
+  function restoreVersion(version: StudioVersion | null, status = "Version restored as active. No files were changed.") {
+    if (!version?.id) return;
+    setActiveVersionId(version.id);
+    setWorkspaceStatus(status);
+    setPreviewMasterReady(Boolean(version.audioUrl));
+  }
+
+  function navigateVersion(version: StudioVersion | null, direction: "previous" | "next") {
+    if (!version) return;
+    restoreVersion(
+      version,
+      direction === "previous"
+        ? "Previous version restored as active. No files were changed."
+        : "Next version restored as active. No files were changed."
+    );
   }
 
   function applyPreset(name: PresetName, presetType: "genre" | "mastering" = "genre") {
@@ -3741,6 +3790,11 @@ export default function StudioProPage() {
                   <span className="rounded-full border border-white/10 bg-white/7 px-3 py-1 text-xs font-semibold text-white/70">
                     V{activeVersion?.versionNumber || "-"}
                   </span>
+                  {activeVersion?.isOriginal || activeVersion?.label?.toLowerCase() === "original" ? (
+                    <span className="rounded-full border border-emerald-200/30 bg-emerald-300/10 px-3 py-1 text-xs font-semibold text-emerald-100">
+                      Original protected
+                    </span>
+                  ) : null}
                   <span className="rounded-full border border-white/10 bg-white/7 px-3 py-1 text-xs font-semibold text-white/70">
                     {activeVersion?.provider || "studio"}
                   </span>
@@ -3750,7 +3804,43 @@ export default function StudioProPage() {
                       : "border-[#ff7a1a] bg-[rgba(255,122,26,0.08)] text-[#fff7ed]"
                   }`}>
                     {activeVersion?.trackGroupId ? "Persisted" : "Local only"}
-                  </span>
+	                  </span>
+	                </div>
+                <div className="mt-4 rounded-2xl border border-white/10 bg-black/16 p-3">
+                  <div className="text-xs leading-5 text-white/58">
+                    Restore changes only the active PRO selection. No files or version rows are changed.
+                  </div>
+                  <div className="mt-3 flex flex-col gap-2">
+                    <button
+                      type="button"
+                      onClick={() => navigateVersion(previousVersion, "previous")}
+                      disabled={!previousVersion}
+                      className={secondaryProButtonClass}
+                    >
+                      Previous Version
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigateVersion(nextVersion, "next")}
+                      disabled={!nextVersion}
+                      className={secondaryProButtonClass}
+                    >
+                      Next Version
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => restoreVersion(activeVersion)}
+                      disabled={!activeVersion}
+                      className={primaryProButtonClass}
+                    >
+                      Restore Version
+                    </button>
+                  </div>
+                  {activeVersion && !activeVersion.audioUrl ? (
+                    <div className="mt-3 rounded-xl border border-amber-200/25 bg-amber-300/10 px-3 py-2 text-xs font-semibold text-amber-50">
+                      This version has no audio. Choose an audio version.
+                    </div>
+                  ) : null}
                 </div>
               </div>
               <SoundioXDropdown
@@ -4725,16 +4815,17 @@ export default function StudioProPage() {
               </button>
               {versionsOpen ? (
                 <div className="mt-4 space-y-2">
-                  {versions.map((version) => (
-                    <button
+                  {[...versionTimeline].reverse().map((version, index) => {
+                    const versionNumber = getStudioProVersionNumber(version, versionTimeline.length - index - 1);
+                    const isOriginalVersion =
+                      version.isOriginal || version.label.toLowerCase() === "original";
+
+                    return (
+                    <div
                       id={`studio-pro-version-${version.id}`}
                       key={version.id}
                       onClick={() =>
-                        applyLocalMixerAction(
-                          `choose-${version.id}`,
-                          () => setActiveVersionId(version.id),
-                          "Version opened."
-                        )
+                        restoreVersion(version)
                       }
                       className={`w-full rounded-2xl border px-3 py-3 text-left transition ${
                         getActionState(`choose-${version.id}`) !== "idle"
@@ -4748,6 +4839,11 @@ export default function StudioProPage() {
                     >
                       <div className="flex items-center gap-2">
                         <div className="truncate text-sm font-semibold text-white">{version.title}</div>
+                        {isOriginalVersion ? (
+                          <span className="shrink-0 rounded-full border border-emerald-100/30 bg-emerald-300/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-emerald-100">
+                            Original protected
+                          </span>
+                        ) : null}
                         {hasFrozenDspMetadata(version) ? (
                           <span className="shrink-0 rounded-full border border-purple-100/25 bg-purple-300/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-purple-100">
                             Frozen DSP
@@ -4764,9 +4860,25 @@ export default function StudioProPage() {
                           </>
                         ) : null}
                       </div>
-                      <div className="mt-1 text-xs text-white/52">{version.label}</div>
-                    </button>
-                  ))}
+                      <div className="mt-1 flex flex-wrap gap-2 text-xs text-white/52">
+                        <span>{version.label}</span>
+                        <span>Version {versionNumber}</span>
+                        <span>{formatDate(version.createdAt)}</span>
+                        {!version.audioUrl ? <span>This version has no audio.</span> : null}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          restoreVersion(version);
+                        }}
+                        className={`${secondaryProButtonClass} mt-3`}
+                      >
+                        Restore Version
+                      </button>
+                    </div>
+                  );
+                  })}
                 </div>
               ) : null}
             </div>

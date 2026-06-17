@@ -1802,6 +1802,27 @@ export default function CreatePage() {
       }),
     [versions]
   );
+  const versionTimeline = useMemo(
+    () =>
+      [...versions].sort((a, b) => {
+        const byVersionNumber = getVersionNumber(a, 0) - getVersionNumber(b, 0);
+        if (byVersionNumber !== 0) return byVersionNumber;
+
+        const aCreated = a.createdAt ? Date.parse(a.createdAt) || 0 : 0;
+        const bCreated = b.createdAt ? Date.parse(b.createdAt) || 0 : 0;
+        return aCreated - bCreated;
+      }),
+    [versions]
+  );
+  const activeVersionTimelineIndex = versionTimeline.findIndex(
+    (version) => version.id === activeVersionId
+  );
+  const previousVersion =
+    activeVersionTimelineIndex > 0 ? versionTimeline[activeVersionTimelineIndex - 1] : null;
+  const nextVersion =
+    activeVersionTimelineIndex >= 0 && activeVersionTimelineIndex < versionTimeline.length - 1
+      ? versionTimeline[activeVersionTimelineIndex + 1]
+      : null;
 
   const studioDraftGroups = useMemo<StudioDraftProjectGroup[]>(() => {
     const groups = new Map<string, StudioDraftTrack[]>();
@@ -3751,8 +3772,26 @@ export default function CreatePage() {
     return `${baseTitle} - Version ${nextVersionNumber}`;
   }
 
-  function selectVersion(version: VersionRecord) {
+  function restoreVersion(version: VersionRecord, message = "Version restored as active. No files were changed.") {
     setActiveVersionId(version.id);
+    if (version.trackGroupId) {
+      setActiveTrackGroupId(version.trackGroupId);
+    }
+    setWorkspaceStatus(message);
+  }
+
+  function selectVersion(version: VersionRecord) {
+    restoreVersion(version);
+  }
+
+  function navigateVersion(version: VersionRecord | null, direction: "previous" | "next") {
+    if (!version) return;
+    restoreVersion(
+      version,
+      direction === "previous"
+        ? "Previous version restored as active. No files were changed."
+        : "Next version restored as active. No files were changed."
+    );
   }
 
   function handleWorkspaceAction(action: string) {
@@ -6611,6 +6650,11 @@ export default function CreatePage() {
                       <span className="rounded-full border border-white/12 bg-white/8 px-2.5 py-1 text-[11px] font-semibold text-white/82">
                         Version {getVersionNumber(activeVersion, 0)}
                       </span>
+                      {activeVersion.isOriginal || activeVersion.label.toLowerCase() === "original" ? (
+                        <span className="rounded-full border border-emerald-200/35 bg-emerald-400/15 px-2.5 py-1 text-[11px] font-semibold text-emerald-100">
+                          Original protected
+                        </span>
+                      ) : null}
                       {activeVersion.createdFrom === "co-producer" ? (
                         <span className="rounded-full border border-fuchsia-200/35 bg-fuchsia-400/15 px-2.5 py-1 text-[11px] font-semibold text-fuchsia-100">
                           Co-Producer
@@ -6653,6 +6697,43 @@ export default function CreatePage() {
                               ? "Duet vocal"
                               : `${vocalMode} vocal`}
                     </div>
+
+                    <div className="mt-3 flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/20 p-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="text-xs font-semibold text-white/70">
+                        Restore changes only the active Studio selection. No files or version rows are changed.
+                      </div>
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <button
+                          type="button"
+                          onClick={() => navigateVersion(previousVersion, "previous")}
+                          disabled={!previousVersion}
+                          className={`${secondaryButtonClass} justify-center disabled:cursor-not-allowed disabled:opacity-50`}
+                        >
+                          Previous Version
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => navigateVersion(nextVersion, "next")}
+                          disabled={!nextVersion}
+                          className={`${secondaryButtonClass} justify-center disabled:cursor-not-allowed disabled:opacity-50`}
+                        >
+                          Next Version
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => restoreVersion(activeVersion)}
+                          className={`${primaryButtonClass} justify-center`}
+                        >
+                          Restore Version
+                        </button>
+                      </div>
+                    </div>
+
+                    {!activeVersion.audioUrl ? (
+                      <div className="mt-3 rounded-2xl border border-amber-200/25 bg-amber-300/10 px-4 py-3 text-sm font-semibold text-amber-50">
+                        This version has no audio. Choose an audio version.
+                      </div>
+                    ) : null}
 
                     <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
                       <div className="text-[11px] font-semibold tracking-[0.18em] text-white">
@@ -6811,7 +6892,7 @@ export default function CreatePage() {
                           </audio>
                         ) : (
                           <div className="mt-3 rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-white/65">
-                            No audio is attached to this version yet.
+                            This version has no audio. Choose an audio version.
                           </div>
                         )}
                         <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -8460,10 +8541,12 @@ export default function CreatePage() {
                   typeof version.duration === "number" ? `${version.duration}s` : "Duration pending";
                 const parentLabel = getCreatedFromLabel(version, versions);
 
+                const isOriginalVersion =
+                  version.isOriginal || version.label.toLowerCase() === "original";
+
                 return (
-                  <button
+                  <div
                     key={version.id}
-                    type="button"
                     onClick={() => selectVersion(version)}
                     className={`group relative grid w-full cursor-pointer grid-cols-[36px_1fr] gap-3 rounded-2xl border px-3 py-3 text-left transition sm:px-4 ${
                       isActive
@@ -8499,6 +8582,11 @@ export default function CreatePage() {
                           >
                             {generationType}
                           </span>
+                          {isOriginalVersion ? (
+                            <span className="rounded-full border border-emerald-200/35 bg-emerald-400/15 px-2.5 py-1 text-[11px] font-semibold text-emerald-100">
+                              Original protected
+                            </span>
+                          ) : null}
                           {isActive ? (
                             <span className="rounded-full border border-sky-100/40 bg-sky-300/18 px-2.5 py-1 text-[11px] font-semibold text-sky-50">
                               Active
@@ -8512,9 +8600,22 @@ export default function CreatePage() {
                         <span>{durationLabel}</span>
                         <span>{createdLabel}</span>
                         {version.provider ? <span>{version.provider}</span> : null}
+                        {!version.audioUrl ? <span>This version has no audio.</span> : null}
+                      </span>
+                      <span className="mt-3 flex flex-col gap-2 sm:flex-row">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            restoreVersion(version);
+                          }}
+                          className={`${secondaryButtonClass} justify-center`}
+                        >
+                          Restore Version
+                        </button>
                       </span>
                     </span>
-                  </button>
+                  </div>
                 );
               })}
             </div>
