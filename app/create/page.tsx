@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateActio
 type VocalMode = "instrumental" | "auto-lyrics" | "write-lyrics" | "male" | "female" | "duet";
 type GenerationMode = "seed" | "full";
 type GenerationIntent = "new_version" | "remix" | "instrumental" | "co_producer" | "seed" | "full";
-type GenerationProvider = "modal" | "replicate";
+type GenerationProvider = "modal" | "replicate" | "eleven_music";
 type BranchActionType = "new-version" | "remix" | "instrumental" | "co-producer";
 type VersionStatus = "generated" | "edit_plan";
 type StemStatus = "not_started" | "queued" | "processing" | "ready" | "error";
@@ -899,6 +899,12 @@ function normalizeArtworkConcept(value: unknown): ArtworkConcept | null {
     styleTags,
     summary,
   };
+}
+
+function normalizeArtworkConceptFromMetadata(value: unknown): ArtworkConcept | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const metadata = value as { artwork?: unknown };
+  return normalizeArtworkConcept(metadata.artwork);
 }
 
 function summarizeArtworkText(value: string) {
@@ -2405,6 +2411,26 @@ export default function CreatePage() {
     return fallback;
   }
 
+  function formatElevenMusicProviderError(payload: any, fallback: string) {
+    const providerMessage =
+      typeof payload?.providerMessage === "string" ? payload.providerMessage.trim() : "";
+    const providerStatus =
+      typeof payload?.providerStatus === "number" || typeof payload?.providerStatus === "string"
+        ? String(payload.providerStatus).trim()
+        : "";
+    const providerRequestId =
+      typeof payload?.providerRequestId === "string" ? payload.providerRequestId.trim() : "";
+
+    if (!providerMessage) return extractApiError(payload, fallback);
+
+    return [
+      `Eleven Music failed${providerStatus ? ` ${providerStatus}` : ""}: ${providerMessage}`,
+      providerRequestId ? `Request ID: ${providerRequestId}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
   function createGenerationToken() {
     return `${Date.now()}-${crypto.randomUUID()}`;
   }
@@ -2470,6 +2496,8 @@ export default function CreatePage() {
       artwork_url?: string | null;
       artworkUrl?: string | null;
       createdAt?: string | null;
+      generation_metadata?: unknown | null;
+      generationMetadata?: unknown | null;
       isOriginal?: boolean | null;
       parentVersionId?: string | null;
       rootVersionId?: string | null;
@@ -2529,7 +2557,9 @@ export default function CreatePage() {
       dynamics: { ...initialDynamics },
       audioUrl: raw.audio_url || raw.audioUrl || null,
       artworkUrl: raw.artwork_url || raw.artworkUrl || null,
-      artworkConcept: normalizeArtworkConcept(raw.artwork_concept ?? raw.artworkConcept ?? null),
+      artworkConcept:
+        normalizeArtworkConcept(raw.artwork_concept ?? raw.artworkConcept ?? null) ||
+        normalizeArtworkConceptFromMetadata(raw.generation_metadata ?? raw.generationMetadata ?? null),
       vocalUrl: raw.vocal_url || raw.vocalUrl || raw.voiceover_url || raw.voiceoverUrl || null,
       voiceoverUrl: raw.voiceover_url || raw.voiceoverUrl || raw.vocal_url || raw.vocalUrl || null,
       trackGroupId: raw.track_group_id || raw.trackGroupId || null,
@@ -3147,7 +3177,7 @@ export default function CreatePage() {
 
     const startedAt = Date.now();
     const token = createGenerationToken();
-    const generationProvider: GenerationProvider = "replicate";
+    const generationProvider: GenerationProvider = "eleven_music";
     const generationActionKey: ActionKey =
       generationIntent === "full" || generationMode === "full" ? "generateFull" : "generateSeed";
     setActionFeedback(generationActionKey, "working", 0);
@@ -3180,6 +3210,32 @@ export default function CreatePage() {
     setGenerateStartedAt(startedAt);
 
     try {
+      if (generationProvider === "eleven_music") {
+        await generateSingingVersion({
+          actionKey: generationActionKey,
+          generationMode:
+            generationIntent === "remix"
+              ? "remix"
+              : generationIntent === "new_version"
+                ? "new_version"
+                : "singing",
+          parentVersion: selectedParentVersion,
+          promptOverride: finalDirectionForRequest,
+          titleOverride: trimmedTitle,
+          lyricsOverride: lyricsPreviewForRequest,
+          allowProviderLyrics: true,
+          durationSeconds: requestedDurationSeconds,
+          generatingMessage: "Generating with ElevenLabs...",
+          uploadingMessage: "Uploading ElevenLabs generation...",
+          readyMessage: "ElevenLabs generation ready ✓",
+        });
+        stopGenerationPolling();
+        clearActiveGenerationRefs();
+        setGenerateJobId(null);
+        setGenerateStartedAt(null);
+        return;
+      }
+
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -4211,6 +4267,8 @@ export default function CreatePage() {
     parentVersion?: VersionRecord;
     promptOverride?: string;
     titleOverride?: string;
+    lyricsOverride?: string;
+    allowProviderLyrics?: boolean;
     durationSeconds?: number;
     requireVocalMode?: boolean;
     generatingMessage?: string;
@@ -4225,7 +4283,7 @@ export default function CreatePage() {
     const stylePrompt = appendLanguageInstruction(
       options?.promptOverride?.trim() || finalDirection.trim() || musicDirection.trim() || idea.trim()
     );
-    const rawLyrics = lyricsPreview.trim();
+    const rawLyrics = options?.lyricsOverride?.trim() || lyricsPreview.trim();
     const lyrics = appendLanguageInstruction(rawLyrics);
     const artworkConceptForGeneration = getArtworkConceptForGeneration(parentVersion);
     const generatingMessage = options?.generatingMessage || "Generating singing version...";
@@ -4248,7 +4306,7 @@ export default function CreatePage() {
       return;
     }
 
-    if (!rawLyrics) {
+    if (!rawLyrics && !options?.allowProviderLyrics) {
       const message = "Failed: Add or generate lyrics first.";
       setSingingVersionMessage(message);
       setWorkspaceStatus(message);
@@ -4299,22 +4357,39 @@ export default function CreatePage() {
           genre: trackGenre,
           prompt: stylePrompt,
           vocalMode,
-          lyrics,
+          lyrics:
+            lyrics ||
+            appendLanguageInstruction(
+              "No written lyrics were provided. Generate original lyrics from the title, style, and artist direction."
+            ),
           durationSeconds,
           generationMode: options?.generationMode || "singing",
           trackGroupId: parentVersion.trackGroupId || activeTrackGroupId || null,
           parentVersionId: isUuid(parentVersion.id) ? parentVersion.id : null,
           artworkUrl: parentVersion.artworkUrl || null,
           artworkConcept: artworkConceptForGeneration,
+          artworkDirection,
+          artworkTags: artworkConceptForGeneration?.styleTags || [],
+          artworkPalette: artworkConceptForGeneration?.palette || null,
         }),
       });
-      setSingingVersionMessage(uploadingMessage);
-      setWorkspaceStatus(uploadingMessage);
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
-        throw new Error(extractApiError(payload, "Singing version generation failed"));
+        const message = formatElevenMusicProviderError(payload, "Singing version generation failed");
+        console.error("ELEVEN_MUSIC_PROVIDER_ERROR", {
+          status: payload?.providerStatus || response.status,
+          requestId: payload?.providerRequestId || null,
+          message:
+            typeof payload?.providerMessage === "string"
+              ? payload.providerMessage.replace(/\s+/g, " ").trim().slice(0, 240)
+              : message.replace(/\s+/g, " ").trim().slice(0, 240),
+        });
+        throw new Error(message);
       }
+
+      setSingingVersionMessage(uploadingMessage);
+      setWorkspaceStatus(uploadingMessage);
 
       const singingVersion = payload?.version
         ? mapTrackVersion(payload.version as TrackVersionApiRecord)
@@ -4856,25 +4931,55 @@ export default function CreatePage() {
     }
   }
 
-  function downloadActiveVersion() {
-    if (!activeVersion.audioUrl) {
-      setWorkspaceStatus("Select a version with audio before downloading.");
+  async function downloadActiveVersion() {
+    if (!activeVersion.id || !activeVersion.audioUrl || !activeVersionIsPersisted) {
+      setWorkspaceStatus("Select a saved version with audio before downloading.");
       setActionFeedback("downloadVersion", "error");
       return;
     }
 
     setActionFeedback("downloadVersion", "working", 0);
 
-    const link = document.createElement("a");
-    link.href = activeVersion.audioUrl;
-    link.download = getAudioDownloadFilename(activeVersion.audioUrl, activeVersion.title || title);
-    link.rel = "noopener";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    setWorkspaceStatus("Download started");
-    setActionFeedback("downloadVersion", "success");
+      if (!session?.access_token) {
+        throw new Error("Log in to download this version.");
+      }
+
+      const response = await fetch(
+        `/api/studio/versions/download/${encodeURIComponent(activeVersion.id)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(extractApiError(payload, "Download unavailable"));
+      }
+
+      const audioBlob = await response.blob();
+      const downloadUrl = URL.createObjectURL(audioBlob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = getAudioDownloadFilename(activeVersion.audioUrl, activeVersion.title || title);
+      link.rel = "noopener";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(downloadUrl);
+
+      setWorkspaceStatus("Download started");
+      setActionFeedback("downloadVersion", "success");
+    } catch (error: any) {
+      setWorkspaceStatus(error?.message || "Download unavailable.");
+      setActionFeedback("downloadVersion", "error");
+    }
   }
 
   async function exportActiveVersionStems() {
@@ -6902,10 +7007,15 @@ export default function CreatePage() {
                           <div className="flex flex-col gap-2 sm:flex-row">
                             <button
                               type="button"
-                              onClick={downloadActiveVersion}
-                              disabled={!activeVersion.audioUrl || getActionState("downloadVersion") === "working"}
+                              onClick={() => void downloadActiveVersion()}
+                              disabled={
+                                !activeVersion.id ||
+                                !activeVersion.audioUrl ||
+                                !activeVersionIsPersisted ||
+                                getActionState("downloadVersion") === "working"
+                              }
                               className={getActionButtonClass(
-                                activeVersion.audioUrl
+                                activeVersion.id && activeVersion.audioUrl && activeVersionIsPersisted
                                   ? getActionState("downloadVersion")
                                   : "disabled",
                                 "justify-center"
@@ -6921,6 +7031,9 @@ export default function CreatePage() {
                                 "Download version"
                               )}
                             </button>
+                            <div className="text-xs font-semibold text-white/60 sm:max-w-xs">
+                              MP3 download includes audio only. Cover art is included later in Release Package.
+                            </div>
                             <button
                               type="button"
                               onClick={() => void exportActiveVersionStems()}

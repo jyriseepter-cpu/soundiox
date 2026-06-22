@@ -17,6 +17,9 @@ type ElevenMusicBody = {
   parentVersionId?: string | null;
   artworkUrl?: string | null;
   artworkConcept?: unknown;
+  artworkDirection?: string | null;
+  artworkTags?: unknown;
+  artworkPalette?: string | null;
 };
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
@@ -104,6 +107,33 @@ function buildElevenMusicPrompt(args: {
     .join("\n\n");
 }
 
+function summarizeArtworkText(value: string) {
+  const trimmed = value.trim().replace(/\s+/g, " ");
+  if (trimmed.length <= 160) return trimmed;
+  return `${trimmed.slice(0, 157).trim()}...`;
+}
+
+function normalizeArtworkConceptPayload(body: ElevenMusicBody) {
+  if (body?.artworkConcept && typeof body.artworkConcept === "object") {
+    return body.artworkConcept;
+  }
+
+  const artworkDirection = String(body?.artworkDirection || "").trim();
+  if (!artworkDirection) return null;
+
+  const styleTags = Array.isArray(body?.artworkTags)
+    ? body.artworkTags.map((tag) => String(tag || "").trim()).filter(Boolean)
+    : [];
+
+  return {
+    concept: artworkDirection,
+    imagePrompt: artworkDirection,
+    palette: String(body?.artworkPalette || "").trim() || "Use the palette described in the artwork direction.",
+    styleTags: styleTags.length > 0 ? styleTags : ["Studio artwork direction"],
+    summary: summarizeArtworkText(artworkDirection),
+  };
+}
+
 function getDurationMs(durationSeconds: unknown) {
   const parsed =
     typeof durationSeconds === "number" && Number.isFinite(durationSeconds)
@@ -151,6 +181,42 @@ function getElevenResponseMetadata(response: Response) {
     responseContentType: response.headers.get("content-type") || null,
     responseContentLength: response.headers.get("content-length") || null,
   };
+}
+
+function parseProviderErrorBody(rawBody: string) {
+  if (!rawBody.trim()) {
+    return { parsed: null as unknown, message: "" };
+  }
+
+  try {
+    const parsed = JSON.parse(rawBody);
+    const candidates = [
+      parsed?.detail?.message,
+      parsed?.detail?.error,
+      parsed?.detail,
+      parsed?.error?.message,
+      parsed?.error,
+      parsed?.message,
+    ];
+    const message =
+      candidates.find((candidate) => typeof candidate === "string" && candidate.trim()) ||
+      JSON.stringify(parsed);
+
+    return {
+      parsed,
+      message: String(message || "").trim(),
+    };
+  } catch {
+    return {
+      parsed: null as unknown,
+      message: rawBody.trim(),
+    };
+  }
+}
+
+function truncateLogMessage(value: string) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length > 240 ? `${normalized.slice(0, 237)}...` : normalized;
 }
 
 async function getExistingColumns(
@@ -229,6 +295,7 @@ export async function POST(request: NextRequest) {
     const requestedParentVersionId = String(body?.parentVersionId || "").trim();
     const trackGroupId = requestedTrackGroupId || randomUUID();
     const durationMs = getDurationMs(body?.durationSeconds);
+    const artworkConcept = normalizeArtworkConceptPayload(body || {});
 
     if (!title) {
       return NextResponse.json({ error: "Title is required." }, { status: 400 });
@@ -385,6 +452,7 @@ export async function POST(request: NextRequest) {
     let audioBuffer: ArrayBuffer;
 
     try {
+      const elevenStartedAt = Date.now();
       const elevenResponse = await fetch(
         "https://api.elevenlabs.io/v1/music?output_format=mp3_44100_128",
         {
@@ -402,12 +470,14 @@ export async function POST(request: NextRequest) {
           signal: controller.signal,
         }
       );
+      const elevenDurationMs = Date.now() - elevenStartedAt;
       const elevenResponseMetadata = getElevenResponseMetadata(elevenResponse);
       costMetadata = {
         ...costMetadata,
         eleven_request_id: elevenResponseMetadata.requestId || null,
         response_content_type: elevenResponseMetadata.responseContentType,
         response_content_length: elevenResponseMetadata.responseContentLength,
+        eleven_duration_ms: elevenDurationMs,
       };
       console.log("ELEVEN_MUSIC_RESPONSE", {
         generationJobId,
@@ -416,21 +486,59 @@ export async function POST(request: NextRequest) {
         requestId: elevenResponseMetadata.requestId || null,
         contentType: elevenResponseMetadata.responseContentType,
         contentLength: elevenResponseMetadata.responseContentLength,
+        durationMs: elevenDurationMs,
       });
 
       if (!elevenResponse.ok) {
-        const errorText = await elevenResponse.text().catch(() => "");
-        await failGenerationJob(
-          "eleven_failed",
-          errorText || `ElevenLabs failed with status ${elevenResponse.status}`
-        );
+        const responseBody = await elevenResponse.text().catch(() => "");
+        const parsedError = parseProviderErrorBody(responseBody);
+        const providerMessage =
+          parsedError.message || `ElevenLabs failed with status ${elevenResponse.status}`;
+        const providerError = {
+          provider: "eleven_music",
+          status: elevenResponse.status,
+          statusText: elevenResponse.statusText,
+          responseBody,
+          parsedBody: parsedError.parsed,
+          providerMessage,
+          requestId: elevenResponseMetadata.requestId || null,
+          responseContentType: elevenResponseMetadata.responseContentType,
+          responseContentLength: elevenResponseMetadata.responseContentLength,
+          durationMs,
+          elevenDurationMs,
+          generationMode: requestedGenerationMode,
+          promptLength: elevenPrompt.length,
+          sourcePromptLength: prompt.length,
+          lyricsLength: lyrics.length,
+        };
+        costMetadata = {
+          ...costMetadata,
+          failure_stage: "eleven_failed",
+          failed_at: new Date().toISOString(),
+          error: providerError,
+        };
+        await updateGenerationJob(serviceClient, generationJobId, generationJobColumns, {
+          status: "failed",
+          provider_status: String(elevenResponse.status),
+          provider_job_id: elevenResponseMetadata.requestId || null,
+          failed_at: new Date().toISOString(),
+          error: providerMessage,
+          error_message: providerMessage,
+          cost_metadata: costMetadata,
+        });
+        console.error("ELEVEN_MUSIC_PROVIDER_ERROR", {
+          generationJobId,
+          status: elevenResponse.status,
+          statusText: elevenResponse.statusText,
+          requestId: elevenResponseMetadata.requestId || null,
+          message: truncateLogMessage(providerMessage),
+        });
         return NextResponse.json(
           {
-            error: "Eleven Music generation failed.",
-            provider: "eleven_music",
-            status: elevenResponse.status,
-            code: elevenResponse.statusText,
-            message: errorText || `ElevenLabs failed with status ${elevenResponse.status}`,
+            error: "Eleven Music failed",
+            providerStatus: elevenResponse.status,
+            providerMessage,
+            providerRequestId: elevenResponseMetadata.requestId || null,
           },
           { status: elevenResponse.status }
         );
@@ -586,10 +694,10 @@ export async function POST(request: NextRequest) {
 
     if (
       hasArtworkConcept &&
-      body?.artworkConcept &&
-      typeof body.artworkConcept === "object"
+      artworkConcept &&
+      typeof artworkConcept === "object"
     ) {
-      insertPayload.artwork_concept = body.artworkConcept;
+      insertPayload.artwork_concept = artworkConcept;
     }
 
     if (hasGenerationMetadata) {
@@ -597,6 +705,8 @@ export async function POST(request: NextRequest) {
         ...costMetadata,
         generation_job_id: generationJobId,
         generation_intent: generationIntent,
+        artwork: artworkConcept,
+        artwork_direction: body?.artworkDirection || null,
       };
     }
 

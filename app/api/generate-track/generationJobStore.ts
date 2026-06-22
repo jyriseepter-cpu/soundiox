@@ -49,6 +49,7 @@ export type TrackVersionRow = {
   audio_url: string;
   artwork_url: string | null;
   artwork_concept?: unknown | null;
+  generation_metadata?: unknown | null;
   imported_source?: string | null;
   vocal_url?: string | null;
   voiceover_url?: string | null;
@@ -171,7 +172,7 @@ function selectTrackVersionFields(
     "audio_url",
     "artwork_url",
     ...(includeExtendedFields
-      ? ["artwork_concept", "imported_source", "vocal_url", "voiceover_url"]
+      ? ["artwork_concept", "generation_metadata", "imported_source", "vocal_url", "voiceover_url"]
       : includeArtworkConceptOnly
         ? ["artwork_concept"]
         : []),
