@@ -17,7 +17,7 @@ import {
   unlikeTrack,
 } from "@/lib/trackEngagement";
 
-type SortKey = "plays_month" | "likes_month";
+type SortKey = "plays_month" | "likes_month" | "newest" | "oldest";
 type CategoryKey = "global" | "new_rising" | "estonia";
 
 type PulseTrack = {
@@ -115,6 +115,11 @@ function getArtworkSrc(t: Partial<PulseTrack>) {
 function getOfficialGenreLabel(value: string | null | undefined) {
   const raw = safeStr(value).trim();
   return isSoundioXGenre(raw) ? raw : "";
+}
+
+function getCreatedTime(t: { created_at: string | null }) {
+  const created = t.created_at ? new Date(t.created_at).getTime() : 0;
+  return Number.isFinite(created) ? created : 0;
 }
 
 function normalizeRole(value: string | null | undefined) {
@@ -584,6 +589,14 @@ export default function PulsePage() {
       const aLikes = likesMonth.get(String(a.id)) ?? 0;
       const bLikes = likesMonth.get(String(b.id)) ?? 0;
 
+      if (sort === "newest") {
+        return getCreatedTime(b) - getCreatedTime(a);
+      }
+
+      if (sort === "oldest") {
+        return getCreatedTime(a) - getCreatedTime(b);
+      }
+
       if (sort === "likes_month") {
         return bLikes - aLikes;
       }
@@ -824,6 +837,8 @@ export default function PulsePage() {
   const sortOptions = [
     { value: "plays_month", label: "Sort: Plays (month)" },
     { value: "likes_month", label: "Sort: Likes (month)" },
+    { value: "newest", label: "Sort: Newest" },
+    { value: "oldest", label: "Sort: Oldest" },
   ];
 
   return (
