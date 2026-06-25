@@ -55,6 +55,9 @@ type ViewerProfile = {
 
 const MONTHLY_LIKE_LIMIT = 100;
 const PAGE_SIZE = 50;
+const TRACK_FETCH_PAGE_SIZE = 1000;
+const PULSE_TRACK_COLUMNS =
+  "id,title,artist,genre,created_at,plays_this_month,audio_url,artwork_url,user_id,is_published";
 
 function monthStartISO() {
   const now = new Date();
@@ -132,11 +135,52 @@ function logSupabaseError(label: string, error: unknown) {
   });
 }
 
+async function fetchAllPublishedPulseTracks() {
+  const rows: PulseTrack[] = [];
+  let totalCount = 0;
+  let from = 0;
+
+  while (true) {
+    const to = from + TRACK_FETCH_PAGE_SIZE - 1;
+    const { data, error, count } = await supabase
+      .from("tracks")
+      .select(PULSE_TRACK_COLUMNS, { count: from === 0 ? "exact" : undefined })
+      .eq("is_published", true)
+      .order("created_at", { ascending: false })
+      .range(from, to);
+
+    if (error) {
+      throw error;
+    }
+
+    if (from === 0) {
+      totalCount = count ?? data?.length ?? 0;
+    }
+
+    const pageRows = ((data ?? []) as any[]).map((track) => ({
+      ...track,
+      artistDisplayName: safeStr(track.artist || "AI Artist"),
+      artistSlug: null as string | null,
+    }));
+
+    rows.push(...pageRows);
+
+    if (pageRows.length < TRACK_FETCH_PAGE_SIZE) {
+      break;
+    }
+
+    from += TRACK_FETCH_PAGE_SIZE;
+  }
+
+  return { rows, totalCount };
+}
+
 export default function PulsePage() {
   const router = useRouter();
   const { playTrack, currentTrack, isPlaying, toggle } = usePlayer();
 
   const [tracks, setTracks] = useState<PulseTrack[]>([]);
+  const [publishedTrackCount, setPublishedTrackCount] = useState(0);
   const [likesMonth, setLikesMonth] = useState<Map<string, number>>(new Map());
   const [previousMonthWinnerTrackId, setPreviousMonthWinnerTrackId] = useState<string | null>(
     null
@@ -256,22 +300,16 @@ export default function PulsePage() {
     const load = async () => {
       setLoading(true);
 
-      const { data: tRows, error: tErr } = await supabase
-        .from("tracks")
-        .select(
-          "id,title,artist,genre,created_at,plays_this_month,audio_url,artwork_url,user_id,is_published"
-        )
-        .eq("is_published", true);
+      let safeTracks: PulseTrack[] = [];
 
-      if (tErr) {
-        logSupabaseError("Pulse tracks error", tErr);
+      try {
+        const result = await fetchAllPublishedPulseTracks();
+        safeTracks = result.rows;
+        setPublishedTrackCount(result.totalCount);
+      } catch (trackError) {
+        logSupabaseError("Pulse tracks error", trackError);
+        setPublishedTrackCount(0);
       }
-
-      const safeTracks: PulseTrack[] = ((tRows ?? []) as any[]).map((track) => ({
-        ...track,
-        artistDisplayName: safeStr(track.artist || "AI Artist"),
-        artistSlug: null as string | null,
-      }));
 
       const artistIds = Array.from(
         new Set(
@@ -523,6 +561,7 @@ export default function PulsePage() {
   }, [q, genre, sort, category]);
 
   const totalRows = rows.length;
+  const totalPublishedTracks = publishedTrackCount || tracks.length;
   const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const startIndex = (currentPage - 1) * PAGE_SIZE;
@@ -813,8 +852,8 @@ export default function PulsePage() {
       <div className="mb-4 flex flex-col gap-3 rounded-2xl bg-white/8 px-4 py-3 ring-1 ring-white/10 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-sm text-white/75">
           {totalRows === 0
-            ? "Showing 0 tracks"
-            : `Showing ${startIndex + 1}-${endIndex} of ${totalRows} tracks`}
+            ? `Showing 0 tracks · ${totalPublishedTracks} total published`
+            : `Showing ${startIndex + 1}-${endIndex} of ${totalRows} tracks · ${totalPublishedTracks} total published`}
         </div>
 
         <div className="flex items-center gap-2">

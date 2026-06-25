@@ -87,6 +87,9 @@ type UpgradeTier = "premium" | "artist";
 
 const MONTHLY_LIKE_LIMIT = 100;
 const PAGE_SIZE = 50;
+const TRACK_FETCH_PAGE_SIZE = 1000;
+const DISCOVER_TRACK_COLUMNS =
+  "id,title,artist,genre,audio_url,artwork_url,created_at,plays_all_time,plays_this_month,is_published,is_promo,user_id";
 
 function pickTitle(t: DiscoverTrack) {
   return (t.title ?? "Untitled").toString();
@@ -128,6 +131,36 @@ function monthStartDateString(offsetMonths = 0) {
 function getCreatedTime(t: { created_at: string | null }) {
   const created = t.created_at ? new Date(t.created_at).getTime() : 0;
   return Number.isFinite(created) ? created : 0;
+}
+
+async function fetchAllPublishedDiscoverTracks() {
+  const rows: TrackRow[] = [];
+  let from = 0;
+
+  while (true) {
+    const to = from + TRACK_FETCH_PAGE_SIZE - 1;
+    const { data, error } = await supabase
+      .from("tracks")
+      .select(DISCOVER_TRACK_COLUMNS)
+      .eq("is_published", true)
+      .order("created_at", { ascending: false })
+      .range(from, to);
+
+    if (error) {
+      throw error;
+    }
+
+    const pageRows = (data ?? []) as TrackRow[];
+    rows.push(...pageRows);
+
+    if (pageRows.length < TRACK_FETCH_PAGE_SIZE) {
+      break;
+    }
+
+    from += TRACK_FETCH_PAGE_SIZE;
+  }
+
+  return rows;
 }
 
 export default function DiscoverPage() {
@@ -213,18 +246,8 @@ export default function DiscoverPage() {
       try {
         setLoading(true);
 
-        const { data, error } = await supabase
-          .from("tracks")
-          .select(
-            "id,title,artist,genre,audio_url,artwork_url,created_at,plays_all_time,plays_this_month,is_published,is_promo,user_id"
-          )
-          .eq("is_published", true)
-          .order("created_at", { ascending: false });
-
-        if (error) throw error;
+        const rawTracks = await fetchAllPublishedDiscoverTracks();
         if (!alive) return;
-
-        const rawTracks = (data ?? []) as TrackRow[];
 
         const profileIds = Array.from(
           new Set(
